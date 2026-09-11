@@ -1,39 +1,52 @@
-# AI Market Scanner V2
+# Market Hunt V3 — Broad U.S. Stock Opportunity Scanner
 
-Agentic AI U.S. stock opportunity scanner focused on identifying high-quality 10–15% move setups.
+This branch upgrades the original 18-symbol prototype into a broad U.S. discovery engine.
 
-## V2 Starter Scope
-- Market regime analysis
-- Sector ranking
-- Stock technical scoring
-- Volume / RVOL analysis
-- Risk / target generation
-- Opportunity and Risk scores
-- BUY / WAIT / WATCH / NO TRADE decision framework
-- Streamlit mobile dashboard
-- Backtesting scaffold
-- Agent architecture scaffold
-- GitHub Actions daily workflow scaffold
+## Implemented now
+- Automatically builds a broad U.S.-listed stock universe from Nasdaq Trader symbol directories
+- Batch Yahoo Finance daily-history download (no API key)
+- Price and average-dollar-volume filters
+- EMA20 / EMA50 / EMA200, SMA200, RSI, ATR, MACD, RVOL
+- 20-day relative strength versus SPY
+- Early bullish-formation detector: rising EMA50, EMA50 support, EMA200 pivot, compression below resistance, tight range, bull-flag/pullback, volume contraction/expansion
+- Stages: DISCOVER → FORMING → ARMED → CONFIRMED
+- Daily / weekly / monthly support and resistance
+- Entry trigger, technical stop, +5% / +8% / +10% targets and R:R
+- Ranked top opportunities plus full liquid-candidate export
+- Streamlit dashboard
 
-## Later modules
-- News catalyst agent
-- Options agent
-- Social sentiment agent
-- Historical +10% / +15% probability engine
-- Bull vs Bear debate agents
-- Supabase storage
-- Telegram alerts
-- Paper-trading journal
+## Not implemented yet
+Catalyst/news calendar, earnings-estimate analysis, options flow, social sentiment, live intraday VWAP/opening-range confirmation, alerts, database, and paper-trade journal.
+
+## Install
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Run
+Refresh broad ticker universe:
+```bash
+python -m scanner.main --refresh-universe
+```
+
+Fast smoke test:
+```bash
+python -m scanner.main --limit 300 --top 20
+```
+
+Dashboard:
+```bash
+streamlit run app.py
+```
+
+Outputs:
+- `outputs/latest_scan.csv`
+- `outputs/all_candidates.csv`
 
 ## Important
-This project is for research and decision support. It does not guarantee returns and does not place live trades.
+Yahoo Finance is a practical free prototype data source but may throttle very large scans. Validate the discovery logic before paying for a dedicated market-data API.
 
-## Run locally
-1. Install Python 3.11+
-2. Create a virtual environment
-3. Install dependencies:
-   pip install -r requirements.txt
-4. Run scanner:
-   python -m scanner.main
-5. Run dashboard:
-   streamlit run app.py
+This project is for research and decision support only. It does not guarantee returns or place live trades.
