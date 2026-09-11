@@ -1,3 +1,4 @@
+import math
 import pandas as pd
 from .indicators import add_indicators
 from .patterns import detect_forming_setup, timeframe_levels
@@ -28,7 +29,7 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     rs20 = _f(last["RET20"]) - benchmark_return20
 
     breakout_trigger = max(price, levels["daily_resistance"] * 1.002)
-    entry = price if formation["stage"] == "CONFIRMED" else breakout_trigger
+    entry = price if formation["stage"] in {"CONFIRMED", "EXTENDED"} else breakout_trigger
 
     ema50 = _f(last["EMA50"])
     technical_supports = [x for x in [levels["daily_support"], ema50] if 0 < x < entry]
@@ -43,8 +44,8 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     rr8 = (target8 - entry) / risk
 
     higher_res = [x for x in [levels["weekly_resistance"], levels["monthly_resistance"]] if x > entry]
-    next_res = min(higher_res) if higher_res else target10
-    runway_pct = (next_res / entry - 1) * 100
+    next_res = min(higher_res) if higher_res else math.nan
+    runway_pct = ((next_res / entry) - 1) * 100 if math.isfinite(next_res) else math.nan
 
     technical_score = formation["formation_score"]
     if rs20 >= 10: technical_score += 12
@@ -55,13 +56,14 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     atr_pct = atr / price * 100
     if 2 <= atr_pct <= 8: technical_score += 6
     if _f(last["RVOL"]) > 3.5: technical_score -= 8
+    if formation["stage"] == "EXTENDED": technical_score -= 20
     technical_score = max(0, min(100, round(technical_score, 1)))
 
     risk_score = 0
     if rsi > 75: risk_score += 20
     if atr_pct > 9: risk_score += 20
     if price < ema50: risk_score += 20
-    if formation["distance_to_20d_high_pct"] < -5: risk_score += 20
+    if formation["extension_above_20d_high_pct"] > 5: risk_score += 30
     if rr8 < 2: risk_score += 20
     risk_score = min(100, risk_score)
 
@@ -103,6 +105,8 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
         "target_8": round(target8, 2),
         "target_10": round(target10, 2),
         "rr_to_8pct": round(rr8, 2),
-        "runway_to_next_resistance_pct": round(runway_pct, 2),
+        "next_higher_resistance": round(next_res, 2) if math.isfinite(next_res) else math.nan,
+        "runway_to_next_resistance_pct": round(runway_pct, 2) if math.isfinite(runway_pct) else math.nan,
         "distance_to_20d_high_pct": formation["distance_to_20d_high_pct"],
+        "extension_above_20d_high_pct": formation["extension_above_20d_high_pct"],
     }
