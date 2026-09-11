@@ -1,5 +1,6 @@
 import math
 import pandas as pd
+from .config import MIN_RUNWAY_PCT
 from .indicators import add_indicators
 from .patterns import detect_forming_setup, timeframe_levels
 
@@ -26,10 +27,11 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
 
     levels = timeframe_levels(d)
     formation = detect_forming_setup(d)
+    technical_stage = formation["stage"]
     rs20 = _f(last["RET20"]) - benchmark_return20
 
     breakout_trigger = max(price, levels["daily_resistance"] * 1.002)
-    entry = price if formation["stage"] in {"CONFIRMED", "EXTENDED"} else breakout_trigger
+    entry = price if technical_stage in {"CONFIRMED", "EXTENDED"} else breakout_trigger
 
     ema50 = _f(last["EMA50"])
     technical_supports = [x for x in [levels["daily_support"], ema50] if 0 < x < entry]
@@ -46,6 +48,18 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     higher_res = [x for x in [levels["weekly_resistance"], levels["monthly_resistance"]] if x > entry]
     next_res = min(higher_res) if higher_res else math.nan
     runway_pct = ((next_res / entry) - 1) * 100 if math.isfinite(next_res) else math.nan
+    runway_ok = math.isfinite(runway_pct) and runway_pct >= MIN_RUNWAY_PCT
+
+    # ARMED/CONFIRMED are trade-quality stages, so they must have at least
+    # MIN_RUNWAY_PCT clean space to the next known higher-timeframe resistance.
+    # Unknown runway is treated conservatively and cannot qualify.
+    stage = technical_stage
+    runway_blocked = technical_stage in {"ARMED", "CONFIRMED"} and not runway_ok
+    pattern = formation["pattern"]
+    if runway_blocked:
+        stage = "FORMING"
+        reason = "runway unknown" if not math.isfinite(runway_pct) else f"runway {runway_pct:.1f}% < {MIN_RUNWAY_PCT:.1f}%"
+        pattern = f"{pattern}, {reason}" if pattern else reason
 
     technical_score = formation["formation_score"]
     if rs20 >= 10: technical_score += 12
@@ -56,7 +70,8 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     atr_pct = atr / price * 100
     if 2 <= atr_pct <= 8: technical_score += 6
     if _f(last["RVOL"]) > 3.5: technical_score -= 8
-    if formation["stage"] == "EXTENDED": technical_score -= 20
+    if technical_stage == "EXTENDED": technical_score -= 20
+    if runway_blocked: technical_score -= 12
     technical_score = max(0, min(100, round(technical_score, 1)))
 
     risk_score = 0
@@ -65,13 +80,14 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     if price < ema50: risk_score += 20
     if formation["extension_above_20d_high_pct"] > 5: risk_score += 30
     if rr8 < 2: risk_score += 20
+    if runway_blocked: risk_score += 20
     risk_score = min(100, risk_score)
 
-    if formation["stage"] == "CONFIRMED" and rr8 >= 2 and risk_score <= 40:
+    if stage == "CONFIRMED" and rr8 >= 2 and risk_score <= 40 and runway_ok:
         decision = "BUY / CONFIRMED"
-    elif formation["stage"] == "ARMED" and rr8 >= 2:
+    elif stage == "ARMED" and rr8 >= 2 and runway_ok:
         decision = "WAIT FOR TRIGGER"
-    elif formation["stage"] in {"FORMING", "DISCOVER"}:
+    elif stage in {"FORMING", "DISCOVER"}:
         decision = "WATCHLIST"
     else:
         decision = "NO TRADE"
@@ -79,8 +95,9 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     return {
         "ticker": ticker,
         "price": round(price, 2),
-        "stage": formation["stage"],
-        "pattern": formation["pattern"],
+        "stage": stage,
+        "technical_stage": technical_stage,
+        "pattern": pattern,
         "formation_score": formation["formation_score"],
         "technical_score": technical_score,
         "risk_score": risk_score,
@@ -107,6 +124,8 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
         "rr_to_8pct": round(rr8, 2),
         "next_higher_resistance": round(next_res, 2) if math.isfinite(next_res) else math.nan,
         "runway_to_next_resistance_pct": round(runway_pct, 2) if math.isfinite(runway_pct) else math.nan,
+        "runway_ok": runway_ok,
+        "min_runway_required_pct": MIN_RUNWAY_PCT,
         "distance_to_20d_high_pct": formation["distance_to_20d_high_pct"],
         "extension_above_20d_high_pct": formation["extension_above_20d_high_pct"],
     }
