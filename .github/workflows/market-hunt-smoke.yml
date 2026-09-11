@@ -3,6 +3,8 @@ name: Market Hunt Smoke Test
 on:
   push:
     paths:
+      - 'scanner/**'
+      - 'requirements.txt'
       - '.github/workflows/market-hunt-smoke.yml'
   workflow_dispatch:
 
@@ -22,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run 300-stock smoke test
+      - name: Run 300-stock representative smoke test
         run: python -m scanner.main --limit 300 --top 20
 
       - name: Upload scan outputs
