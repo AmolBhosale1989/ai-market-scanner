@@ -3,6 +3,8 @@ name: Market Hunt Full Universe Scan
 on:
   push:
     paths:
+      - 'scanner/**'
+      - 'requirements.txt'
       - '.github/workflows/market-hunt-full.yml'
   workflow_dispatch:
 
