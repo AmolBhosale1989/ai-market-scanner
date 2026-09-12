@@ -45,6 +45,7 @@ df,_=load_csv("latest_scan.csv")
 tradable,_=load_csv("tradable_universe.csv")
 all_candidates,_=load_csv("all_candidates.csv")
 events,_=load_csv("upcoming_events.csv")
+event_status,_=load_csv("event_status.csv")
 journal,_=load_csv("paper_journal.csv")
 
 if not scan_meta.empty:
@@ -85,6 +86,13 @@ if not journal.empty:
                   "last_price","outcome","return_pct","r_multiple","closed_at_et"]
     st.dataframe(journal[[c for c in journal_cols if c in journal.columns]].tail(200).iloc[::-1],
                  use_container_width=True,hide_index=True)
+
+if not event_status.empty:
+    er=event_status.iloc[0]
+    provider=str(er.get("provider",""))
+    status=str(er.get("status",""))
+    detail=str(er.get("detail",""))
+    st.caption(f"Event calendar status: {provider} · {status}" + (f" · {detail}" if detail else ""))
 
 if not events.empty:
     st.subheader("📅 Upcoming Events")
