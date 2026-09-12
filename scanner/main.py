@@ -12,6 +12,7 @@ from .config import (
 from .catalysts import enrich_candidates
 from .data import download_history, download_batch
 from .events import build_event_watchlist, merge_technical_context
+from .earnings_intel import enrich_earnings_intelligence
 from .indicators import add_indicators
 from .live import enrich_live_candidates
 from .prefilter import build_tradable_rows
@@ -218,6 +219,10 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
 
     df=pd.DataFrame(rows)
     event_watchlist=merge_technical_context(event_watchlist,df)
+    print("Enriching upcoming earnings with historical reactions, beat/miss, compression, guidance/revision context and options...")
+    event_watchlist=enrich_earnings_intelligence(event_watchlist)
+    if event_watchlist is not None:
+        event_watchlist.to_csv(OUTPUT_DIR/"upcoming_events.csv",index=False)
     stage_rank={"CONFIRMED":5,"ARMED":4,"FORMING":3,"DISCOVER":2,"EXTENDED":1,"REJECT":0}
     df["stage_rank"]=df["stage"].map(stage_rank).fillna(0)
 
