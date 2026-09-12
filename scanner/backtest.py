@@ -10,6 +10,7 @@ from .config import (
 )
 from .data import download_history
 from .stocks import analyze_dataframe
+from .regime import evaluate_regime
 
 RR_THRESHOLDS = [1.5, 2.0, 2.5, 3.0]
 
@@ -108,7 +109,13 @@ def run(tickers=None,max_tickers=BACKTEST_MAX_TICKERS,horizon=BACKTEST_HORIZON_D
         for i in range(MIN_HISTORY_DAYS,last_signal_index,stride):
             hist=d.iloc[:i+1]
             cutoff=hist.index[-1]
-            result=analyze_dataframe(ticker,hist,benchmark_return20=_benchmark_ret20(spy,cutoff))
+            spy_hist=spy.loc[:cutoff]
+            market_regime=evaluate_regime(spy_hist)
+            result=analyze_dataframe(
+                ticker,hist,
+                benchmark_return20=_benchmark_ret20(spy,cutoff),
+                market_regime=market_regime,
+            )
             if not result or result["technical_stage"] not in {"ARMED","CONFIRMED"}:
                 continue
 
@@ -140,6 +147,8 @@ def run(tickers=None,max_tickers=BACKTEST_MAX_TICKERS,horizon=BACKTEST_HORIZON_D
                 "ticker":ticker,
                 "signal_date":str(pd.Timestamp(cutoff).date()),
                 "technical_stage":result["technical_stage"],
+                "market_regime_state":result.get("market_regime_state","NEUTRAL"),
+                "market_regime_score":result.get("market_regime_score",50.0),
                 "entry":round(entry,2),
                 "entry_model":result.get("entry_model",""),
                 "entry_condition":result.get("entry_condition","BREAKOUT"),
