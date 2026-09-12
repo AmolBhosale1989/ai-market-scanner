@@ -58,7 +58,7 @@ def columns(frame, preferred):
 files = {
     "scan_meta":"scan_metadata.csv", "live_meta":"live_metadata.csv", "health":"scan_health.csv",
     "live":"intraday_live.csv", "transitions":"state_transitions.csv", "themes":"trending_themes.csv",
-    "recommendations":"recommended_trades.csv", "watchlist":"watchlist.csv",
+    "recommendations":"recommended_trades.csv", "leaders":"liquid_leaders.csv", "watchlist":"watchlist.csv",
     "picks":"latest_scan.csv", "tradable":"tradable_universe.csv", "candidates":"all_candidates.csv",
     "events":"upcoming_events.csv", "event_status":"event_status.csv", "journal":"paper_journal.csv",
     "performance":"performance_summary.csv", "performance_setup":"performance_by_setup.csv",
@@ -95,13 +95,14 @@ overview, opportunities, live_tab, event_tab, validation, system = st.tabs(
 with overview:
     st.subheader("Today at a glance")
     st.markdown('<div class="section-note">Only evidence-backed rows published by the production workflows are displayed.</div>', unsafe_allow_html=True)
-    themes, recommendations, watchlist, live = data["themes"], data["recommendations"], data["watchlist"], data["live"]
-    a,b,c,d = st.columns(4)
+    themes, recommendations, leaders, watchlist, live = data["themes"], data["recommendations"], data["leaders"], data["watchlist"], data["live"]
+    a,b,c,d,e = st.columns(5)
     a.metric("Live recommendations", len(recommendations))
-    b.metric("Research watchlist", len(watchlist))
-    c.metric("Leading themes", len(themes))
+    b.metric("Tracked leaders", len(leaders))
+    c.metric("Research watchlist", len(watchlist))
+    d.metric("Leading themes", len(themes))
     confirmed = int(live["monitor_state"].astype(str).eq("LIVE_CONFIRMED").sum()) if not live.empty and "monitor_state" in live else 0
-    d.metric("Live confirmed", confirmed)
+    e.metric("Live confirmed", confirmed)
     if not recommendations.empty:
         for _, row in recommendations.head(3).iterrows():
             ticker = str(row.get("ticker","—")); stage = str(row.get("stage","WATCH"))
@@ -118,6 +119,17 @@ with overview:
                      hide_index=True,use_container_width=True)
 
 with opportunities:
+    leaders = data["leaders"]
+    st.subheader("Liquid market leaders")
+    st.markdown('<div class="section-note">Widely followed stocks remain visible even without a trade setup. Gate failures are shown explicitly and never promoted to BUY.</div>', unsafe_allow_html=True)
+    leader_cols=["ticker","company_name","gate_price","price","leader_status","stage","market_hunt_score",
+                 "avg_share_volume20","median_dollar_volume20","adr20_pct","atr_pct",
+                 "catalyst_status","effective_rr","runway_to_next_resistance_pct","pattern"]
+    if leaders.empty:
+        st.info("Leader tracker will appear after the next full-universe scan.")
+    else:
+        st.dataframe(leaders[columns(leaders,leader_cols)],hide_index=True,use_container_width=True)
+
     recommendations = data["recommendations"]
     st.subheader("Live-confirmed recommendations")
     st.markdown('<div class="section-note">Only stocks passing liquidity, volatility, catalyst, spread, runway, R/R and live VWAP/ORB/RVOL gates appear here.</div>', unsafe_allow_html=True)
