@@ -5,6 +5,9 @@ on:
     - cron: '*/15 13-20 * * 1-5'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   intraday-monitor:
     runs-on: ubuntu-latest
@@ -54,6 +57,32 @@ jobs:
           else
             echo "No new actionable state transitions." >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Publish live monitor data for dashboard
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "market-hunt-bot"
+          git config user.email "market-hunt-bot@users.noreply.github.com"
+          rm -rf /tmp/market-hunt-scan-data
+          git fetch origin scan-data:scan-data
+          git worktree add /tmp/market-hunt-scan-data scan-data
+          mkdir -p /tmp/market-hunt-scan-data/dashboard-data
+          for f in intraday_live.csv state_transitions.csv live_alerts.txt; do
+            if [ -f "outputs/$f" ]; then
+              cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
+            fi
+          done
+          printf "updated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-scan-data/dashboard-data/live_metadata.csv
+          cd /tmp/market-hunt-scan-data
+          git add dashboard-data
+          if git diff --cached --quiet; then
+            echo "Live dashboard data unchanged."
+          else
+            git commit -m "Update live dashboard data [skip ci]"
+            git push origin scan-data
+          fi
+
       - name: Upload intraday monitor outputs
         if: always()
         uses: actions/upload-artifact@v4
