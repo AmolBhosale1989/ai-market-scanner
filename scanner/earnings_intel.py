@@ -387,6 +387,36 @@ def enrich_earnings_intelligence(events: pd.DataFrame, limit: int=EARNINGS_INTEL
         score=max(0,min(100,score))
         metrics["pre_earnings_intel_score"]=round(score,1)
 
+        tech=_safe_float(row.get("technical_score"))
+        rr=_safe_float(row.get("effective_rr"))
+        days=_safe_float(row.get("days_to_event"))
+        market=str(row.get("market_regime_state","")).upper()
+        compression=_safe_float(metrics.get("pre_event_compression_score"))
+
+        opportunity=score*0.55
+        opportunity+=(tech if math.isfinite(tech) else 35)*0.25
+        opportunity+=(compression if math.isfinite(compression) else 40)*0.15
+        if math.isfinite(rr) and rr>=2.5:
+            opportunity+=5
+        if math.isfinite(days) and days<=3:
+            opportunity+=3
+        if market=="WEAK":
+            opportunity-=5
+        opportunity=max(0,min(100,opportunity))
+        metrics["event_opportunity_score"]=round(opportunity,1)
+
+        if opportunity>=70 and (not math.isfinite(rr) or rr>=2.0):
+            label="HIGH-PRIORITY WATCH"
+        elif opportunity>=52:
+            label="WATCH"
+        else:
+            label="LOW-PRIORITY"
+        metrics["pre_event_decision"]=label
+
+        implied=_safe_float(metrics.get("options_implied_move_pct"))
+        if math.isfinite(implied):
+            metrics["implied_move_vs_5pct"]="ABOVE_5PCT" if implied>=5 else "BELOW_5PCT"
+
         for k,v in metrics.items():
             out.at[idx,k]=v
 
