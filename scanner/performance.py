@@ -20,7 +20,8 @@ def build_performance_reports(journal: pd.DataFrame | None=None):
 
     summary_cols=[
         "signals","open_signals","closed_signals","target_hits","failed_breakouts","invalidated",
-        "win_rate_pct","target_hit_rate_pct","avg_return_pct","median_return_pct",
+        "win_rate_pct","target_hit_rate_pct","hit_5pct_rate","hit_8pct_rate","hit_10pct_rate",
+        "avg_return_pct","median_return_pct","avg_mfe_pct","avg_mae_pct",
         "avg_r_multiple","median_r_multiple","profit_factor_r","expectancy_r"
     ]
     if journal is None or journal.empty:
@@ -49,7 +50,12 @@ def build_performance_reports(journal: pd.DataFrame | None=None):
         "invalidated":int(closed.get("outcome",pd.Series(index=closed.index,dtype=object)).eq("INVALIDATED").sum()),
         "win_rate_pct":round(float((r>0).mean()*100),1) if r.notna().any() else math.nan,
         "target_hit_rate_pct":round(float(closed.get("outcome",pd.Series(index=closed.index,dtype=object)).eq("TARGET_HIT").mean()*100),1) if len(closed) else math.nan,
+        "hit_5pct_rate":round(float(closed.get("hit_5pct",pd.Series(False,index=closed.index)).fillna(False).astype(bool).mean()*100),1) if len(closed) else math.nan,
+        "hit_8pct_rate":round(float(closed.get("hit_8pct",pd.Series(False,index=closed.index)).fillna(False).astype(bool).mean()*100),1) if len(closed) else math.nan,
+        "hit_10pct_rate":round(float(closed.get("hit_10pct",pd.Series(False,index=closed.index)).fillna(False).astype(bool).mean()*100),1) if len(closed) else math.nan,
         "avg_return_pct":round(float(ret.mean()),2) if ret.notna().any() else math.nan,
+        "avg_mfe_pct":round(float(_num(closed.get("mfe_pct",pd.Series(index=closed.index,dtype=float))).mean()),2) if _num(closed.get("mfe_pct",pd.Series(index=closed.index,dtype=float))).notna().any() else math.nan,
+        "avg_mae_pct":round(float(_num(closed.get("mae_pct",pd.Series(index=closed.index,dtype=float))).mean()),2) if _num(closed.get("mae_pct",pd.Series(index=closed.index,dtype=float))).notna().any() else math.nan,
         "median_return_pct":round(float(ret.median()),2) if ret.notna().any() else math.nan,
         "avg_r_multiple":round(float(r.mean()),2) if r.notna().any() else math.nan,
         "median_r_multiple":round(float(r.median()),2) if r.notna().any() else math.nan,
@@ -71,6 +77,9 @@ def build_performance_reports(journal: pd.DataFrame | None=None):
                 "closed_signals":len(g),
                 "win_rate_pct":round(float((gr>0).mean()*100),1) if gr.notna().any() else math.nan,
                 "target_hit_rate_pct":round(float(g.get("outcome",pd.Series(index=g.index,dtype=object)).eq("TARGET_HIT").mean()*100),1),
+                "hit_5pct_rate":round(float(g.get("hit_5pct",pd.Series(False,index=g.index)).fillna(False).astype(bool).mean()*100),1),
+                "hit_8pct_rate":round(float(g.get("hit_8pct",pd.Series(False,index=g.index)).fillna(False).astype(bool).mean()*100),1),
+                "hit_10pct_rate":round(float(g.get("hit_10pct",pd.Series(False,index=g.index)).fillna(False).astype(bool).mean()*100),1),
                 "avg_return_pct":round(float(gret.mean()),2) if gret.notna().any() else math.nan,
                 "avg_r_multiple":round(float(gr.mean()),2) if gr.notna().any() else math.nan,
             })
