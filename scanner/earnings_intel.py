@@ -133,13 +133,34 @@ def _reaction_stats(symbol: str, earnings_df: pd.DataFrame):
             continue
         d=pd.Timestamp(dt).normalize()
         pos=hist.index.searchsorted(d,side="left")
-        # approximate next-session close-to-close earnings reaction
-        if pos<=0 or pos>=len(hist):
-            continue
-        prev_close=_safe_float(hist["Close"].iloc[pos-1])
-        next_close=_safe_float(hist["Close"].iloc[pos])
-        if prev_close>0 and math.isfinite(next_close):
-            reactions.append((next_close/prev_close-1)*100)
+        report_time=str(r.get("reportTime") or "").strip().lower()
+
+        # Alpha Vantage reports whether the release was before or after market.
+        # Before-market: prior close -> event-day close.
+        # After-market: event-day close -> next-session close.
+        if "post" in report_time or "after" in report_time:
+            if pos>=len(hist):
+                continue
+            if hist.index[pos] != d:
+                # if the reported date is not a trading day, use the prior
+                # trading session as the release-session close.
+                event_pos=pos-1
+            else:
+                event_pos=pos
+            next_pos=event_pos+1
+            if event_pos<0 or next_pos>=len(hist):
+                continue
+            before=_safe_float(hist["Close"].iloc[event_pos])
+            after=_safe_float(hist["Close"].iloc[next_pos])
+        else:
+            # pre-market or unknown: prior session close -> first session on/after report date
+            if pos<=0 or pos>=len(hist):
+                continue
+            before=_safe_float(hist["Close"].iloc[pos-1])
+            after=_safe_float(hist["Close"].iloc[pos])
+
+        if before>0 and math.isfinite(after):
+            reactions.append((after/before-1)*100)
 
     if not reactions:
         return {}
@@ -247,6 +268,9 @@ def _options_implied_move(symbol: str, event_date):
         return {"options_implied_move_pct":math.nan,"options_expiry":"","options_data_status":"NO_OPTIONS"}
 
     ed=pd.Timestamp(event_date)
+    if ed.tzinfo is not None:
+        ed=ed.tz_convert("UTC").tz_localize(None)
+    ed=ed.normalize()
     candidates=[]
     for x in expiries:
         try:
@@ -266,9 +290,11 @@ def _options_implied_move(symbol: str, event_date):
         calls=chain.calls.copy(); puts=chain.puts.copy()
         if calls.empty or puts.empty:
             return {"options_implied_move_pct":math.nan,"options_expiry":exp.strftime("%Y-%m-%d"),"options_data_status":"EMPTY_CHAIN"}
-        strike=float(calls.iloc[(calls["strike"]-spot).abs().argsort()[:1]]["strike"].iloc[0])
-        c=calls.iloc[(calls["strike"]-strike).abs().argsort()[:1]].iloc[0]
-        p=puts.iloc[(puts["strike"]-strike).abs().argsort()[:1]].iloc[0]
+        cidx=(pd.to_numeric(calls["strike"],errors="coerce")-spot).abs().idxmin()
+        strike=float(calls.loc[cidx,"strike"])
+        pidx=(pd.to_numeric(puts["strike"],errors="coerce")-strike).abs().idxmin()
+        c=calls.loc[cidx]
+        p=puts.loc[pidx]
         def px(r):
             bid=_safe_float(r.get("bid")); ask=_safe_float(r.get("ask")); last=_safe_float(r.get("lastPrice"))
             if math.isfinite(bid) and math.isfinite(ask) and ask>=bid and (bid>0 or ask>0):
