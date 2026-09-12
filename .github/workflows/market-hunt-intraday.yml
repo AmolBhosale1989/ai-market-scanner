@@ -72,7 +72,7 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
           mkdir -p /tmp/market-hunt-scan-data/dashboard-data
-          for f in intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json; do
+          for f in recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
