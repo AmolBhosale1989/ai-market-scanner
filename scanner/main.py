@@ -6,11 +6,12 @@ import pandas as pd
 from .config import (
     OUTPUT_DIR, MIN_PRICE, MIN_AVG_DOLLAR_VOLUME, TOP_N, BATCH_SIZE, BENCHMARK,
     CATALYST_ENRICH_LIMIT, CATALYST_STRONG_SCORE, CATALYST_ACTIVE_SCORE,
-    MIN_DATA_COVERAGE, MIN_ANALYZABLE_COVERAGE,
+    MIN_DATA_COVERAGE, MIN_ANALYZABLE_COVERAGE, LIVE_ENRICH_LIMIT,
 )
 from .catalysts import enrich_candidates
 from .data import download_history, download_batch
 from .indicators import add_indicators
+from .live import enrich_live_candidates
 from .stocks import analyze_dataframe
 from .universe import load_or_build_universe
 
@@ -146,12 +147,21 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     df["final_score"]=(df["rank_score"].fillna(-100)+catalyst*0.20-neg*15).round(1)
     df["final_decision"]=df.apply(_final_decision,axis=1)
 
+    print(f"Checking live VWAP/opening-range/volume confirmation for up to {LIVE_ENRICH_LIMIT} advanced candidates...")
+    df=enrich_live_candidates(df,limit=LIVE_ENRICH_LIMIT)
+
+    # Live score only helps ranking while the live layer itself decides whether
+    # the signal is actionable. Stale/closed sessions do not create BUYs.
+    live_score=pd.to_numeric(df["live_confirmation_score"],errors="coerce").fillna(0)
+    live_bonus=np.where(df["live_status"].eq("LIVE"),live_score*0.10,0)
+    df["market_hunt_score"]=(df["final_score"].fillna(-100)+live_bonus).round(1)
+
     all_out=OUTPUT_DIR/"all_candidates.csv"
-    df.sort_values(["final_score","avg_dollar_volume"],ascending=[False,False]).to_csv(all_out,index=False)
+    df.sort_values(["market_hunt_score","avg_dollar_volume"],ascending=[False,False]).to_csv(all_out,index=False)
 
     shortlist=df[df["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
     shortlist=shortlist.sort_values(
-        ["stage_rank","final_score","rr_to_8pct"],ascending=[False,False,False]
+        ["stage_rank","market_hunt_score","rr_to_8pct"],ascending=[False,False,False]
     ).head(top_n)
     shortlist=shortlist.drop(columns=["stage_rank"],errors="ignore")
 
@@ -161,10 +171,10 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
 
     print("\nTOP MARKET HUNT CANDIDATES")
     cols=[
-        "ticker","company_name","price","stage","final_score","catalyst_score",
-        "catalyst_status","catalyst_relevance","catalyst_type","earnings_days",
-        "entry_trigger","stop","target_8","rr_to_8pct",
-        "runway_to_next_resistance_pct","final_decision",
+        "ticker","price","stage","market_hunt_score","catalyst_score","catalyst_status",
+        "entry_trigger","stop","target_8","rr_to_8pct","runway_to_next_resistance_pct",
+        "live_status","live_price","live_vwap","opening_range_high","intraday_rvol",
+        "live_confirmation_score","live_trade_action",
     ]
     print(shortlist[cols].to_string(index=False))
     print(f"\nSaved shortlist: {out}")

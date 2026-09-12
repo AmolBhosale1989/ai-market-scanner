@@ -16,19 +16,27 @@ TOP_N = 20
 BATCH_SIZE = 75
 BENCHMARK = "SPY"
 
-# Data-integrity controls. A scan that does not retrieve enough market data
-# must fail instead of silently producing a misleading shortlist.
+# Data-integrity controls.
 MIN_DATA_COVERAGE = 0.75
 MIN_ANALYZABLE_COVERAGE = 0.20
 BATCH_RETRIES = 3
 RETRY_CHUNK_SIZE = 20
 RETRY_BACKOFF_SECONDS = 2.0
 
+# Catalyst/news enrichment.
 CATALYST_ENRICH_LIMIT = 60
 CATALYST_LOOKBACK_HOURS = 72
 CATALYST_LOOKAHEAD_DAYS = 7
 CATALYST_STRONG_SCORE = 45
 CATALYST_ACTIVE_SCORE = 30
+
+# Live confirmation. Only the strongest advanced technical candidates are
+# queried intraday so the free prototype remains practical.
+LIVE_ENRICH_LIMIT = 20
+LIVE_INTERVAL = "5m"
+LIVE_PERIOD = "5d"
+LIVE_MIN_INTRADAY_RVOL = 1.20
+OPENING_RANGE_MINUTES = 30
 
 NASDAQ_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
 OTHER_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"

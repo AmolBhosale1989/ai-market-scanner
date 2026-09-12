@@ -1,67 +1,38 @@
 # Market Hunt V3 — Broad U.S. Stock Opportunity Scanner
 
-Market Hunt V3 is a broad U.S. technical discovery engine with a lightweight catalyst/news layer.
+Market Hunt V3 scans a broad U.S. stock universe for early technical setups, validates catalysts/news, and applies a live intraday confirmation layer to advanced candidates.
 
-## Implemented now
-- Automatically builds a broad U.S.-listed stock universe from Nasdaq Trader symbol directories
-- Batch Yahoo Finance daily-history download (no API key)
-- Price and average-dollar-volume filters
-- EMA20 / EMA50 / EMA200, SMA200, RSI, ATR, MACD, RVOL
-- 20-day relative strength versus SPY
-- Early bullish-formation detector: rising EMA50, EMA50 support, EMA200 pivot, compression below resistance, tight range, bull-flag/pullback, volume contraction/expansion
-- Stages: DISCOVER → FORMING → ARMED → CONFIRMED, plus EXTENDED rejection
+## Implemented
+- Broad U.S.-listed universe from Nasdaq Trader directories
+- Data-health gate with retry logic and scan coverage report
+- Daily technical engine: EMA20/50/200, SMA200, RSI, ATR, MACD, RVOL, relative strength
+- Early formation stages: DISCOVER → FORMING → ARMED → CONFIRMED, with EXTENDED rejection
 - Daily / weekly / monthly support and resistance
-- Minimum 5% clean runway requirement before ARMED / CONFIRMED
-- Entry trigger, technical stop, +5% / +8% / +10% targets and R:R
-- Catalyst/news enrichment for the strongest technical candidates using Yahoo Finance data
-- Fresh-news recency scoring, positive/negative headline keyword scoring, and upcoming-earnings detection
-- Catalyst-aware final score and final decision without allowing news alone to create a BUY
-- Ranked top opportunities plus full liquid-candidate export
-- Streamlit dashboard
+- Minimum 5% clean runway before ARMED / CONFIRMED
+- Entry trigger, stop, +5 / +8 / +10 targets and R:R
+- Verified catalyst/news enrichment with ticker/company relevance validation
+- Upcoming-earnings detection
+- Live confirmation for top advanced setups using 5-minute data:
+  - regular-session VWAP
+  - 30-minute opening range
+  - trigger reached/not reached
+  - time-normalized cumulative intraday RVOL versus prior sessions
+  - explicit market-open/stale-session protection
+- Streamlit dashboard and CSV exports
 
-## Catalyst layer behavior
-The scanner enriches up to 60 of the strongest technical candidates after the broad technical scan. This keeps the free-data prototype practical instead of making thousands of sequential news requests.
+## Live signal rule
+A live BUY can only be produced when the U.S. regular session is live and the candidate is already ARMED/CONFIRMED. The prototype requires the price above VWAP, above the completed opening-range high, at/above the technical trigger, intraday RVOL >= 1.20, sufficient runway/R:R, and no negative catalyst. It also requires an active catalyst score.
 
-It checks:
-- recent company news, emphasizing the last 72 hours
-- bullish catalyst terms such as guidance raises, estimate beats, contracts, approvals, partnerships and launches
-- negative-risk terms such as guidance cuts, offerings/dilution, investigations, recalls and bankruptcies
-- upcoming earnings, emphasizing events inside the next 7 days
+When the market is closed, premarket, or intraday data is stale, the scanner returns WAIT rather than a live BUY.
 
-Catalyst data improves ranking and can block a technically valid trade when fresh negative news is detected. A catalyst does not override weak technicals, poor R:R, insufficient runway, or EXTENDED status.
-
-## Not implemented yet
-Deep earnings-estimate/revision models, FDA/PDUFA calendar feeds, conference/investor-day calendars, options flow, social sentiment, live intraday VWAP/opening-range confirmation, alerts, database, and paper-trade journal.
-
-## Install
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Run
-Refresh broad ticker universe:
-```bash
-python -m scanner.main --refresh-universe
-```
-
-Fast smoke test:
-```bash
-python -m scanner.main --limit 300 --top 20
-```
-
-Dashboard:
-```bash
-streamlit run app.py
-```
-
-Outputs:
+## Outputs
 - `outputs/latest_scan.csv`
 - `outputs/all_candidates.csv`
+- `outputs/scan_health.csv`
 
-## Important
-Yahoo Finance is a practical free prototype source and can throttle or omit news/earnings data. The catalyst layer therefore reports NO DATA/ERROR rather than treating missing data as bullish. A production/commercial version should eventually use a licensed structured news and corporate-events provider.
+## Still to add
+Theme/sector momentum scoring, deeper earnings-estimate/revision models, FDA/PDUFA and conference calendars, options flow, social sentiment, alerts, database, and paper-trade journal.
+
+Yahoo Finance remains a practical free prototype source and can throttle or omit data. The health gate prevents low-coverage scans from being presented as valid.
 
 This project is for research and decision support only. It does not guarantee returns or place live trades.
