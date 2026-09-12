@@ -18,6 +18,7 @@ from .events import build_event_watchlist, merge_technical_context
 from .earnings_intel import enrich_earnings_intelligence
 from .indicators import add_indicators
 from .live import enrich_live_candidates
+from .legendary_agents import run_legendary_agents
 from .prefilter import build_tradable_rows
 from .product_feed import build_product_feed
 from .regime import evaluate_regime
@@ -277,6 +278,11 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     live_bonus=np.where(df["live_status"].eq("LIVE"),live_score*0.10,0)
     df["market_hunt_score"]=(df["final_score"].fillna(-100)+live_bonus).round(1)
 
+    print("Running legendary trader setup agents...")
+    legendary=run_legendary_agents(df, OUTPUT_DIR, top_n=max(25, top_n))
+    if not legendary.empty:
+        print(f"Legendary trader agents identified {len(legendary):,} setup matches across {legendary[\"trader\"].nunique()} agents.")
+
     all_out=OUTPUT_DIR/"all_candidates.csv"
     df.sort_values(["market_hunt_score","avg_dollar_volume"],ascending=[False,False]).to_csv(all_out,index=False)
 
@@ -354,6 +360,8 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     print(f"Saved research watchlist: {OUTPUT_DIR/'watchlist.csv'}")
     print(f"Saved monitor input shortlist: {out}")
     print(f"Saved all technical candidates: {all_out}")
+    print(f"Saved legendary trader setup lists: {OUTPUT_DIR/\"legendary_setups.csv\"}")
+    print(f"Saved legendary consensus: {OUTPUT_DIR/\"legendary_consensus.csv\"}")
     print(f"Saved themes: {OUTPUT_DIR/'trending_themes.csv'}")
     print(f"Saved event-first watchlist: {OUTPUT_DIR/'upcoming_events.csv'}")
     print(f"Saved scan health: {OUTPUT_DIR/'scan_health.csv'}")
