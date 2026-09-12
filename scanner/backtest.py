@@ -21,17 +21,23 @@ def _benchmark_ret20(spy, cutoff):
         return 0.0
     return float((x["Close"].iloc[-1]/x["Close"].iloc[-21]-1)*100)
 
-def _evaluate_trade(future, entry, stop, target):
+def _evaluate_trade(future, entry, stop, target, entry_condition="BREAKOUT"):
     entered=False
     entry_date=None
     for dt,row in future.iterrows():
         if not entered:
-            if float(row["High"])>=entry:
+            high=float(row["High"])
+            low=float(row["Low"])
+            if entry_condition=="TOUCH_AND_RECLAIM":
+                triggered=(low<=entry<=high)
+            else:
+                triggered=(high>=entry)
+            if triggered:
                 entered=True
                 entry_date=dt
-                if float(row["Low"])<=stop:
+                if low<=stop:
                     return "STOP",entry_date,stop
-                if float(row["High"])>=target:
+                if high>=target:
                     return "TARGET",entry_date,target
             continue
         if float(row["Low"])<=stop:
@@ -118,7 +124,9 @@ def run(tickers=None,max_tickers=BACKTEST_MAX_TICKERS,horizon=BACKTEST_HORIZON_D
             stop=float(result["stop"])
             target=float(result["effective_target"])
             effective_rr=float(result["effective_rr"])
-            outcome,entry_date,exit_price=_evaluate_trade(future,entry,stop,target)
+            outcome,entry_date,exit_price=_evaluate_trade(
+                future,entry,stop,target,result.get("entry_condition","BREAKOUT")
+            )
 
             ret_pct=math.nan
             r_multiple=math.nan
@@ -134,6 +142,9 @@ def run(tickers=None,max_tickers=BACKTEST_MAX_TICKERS,horizon=BACKTEST_HORIZON_D
                 "technical_stage":result["technical_stage"],
                 "entry":round(entry,2),
                 "entry_model":result.get("entry_model",""),
+                "entry_condition":result.get("entry_condition","BREAKOUT"),
+                "retest_reference":result.get("retest_reference",math.nan),
+                "retest_distance_pct":result.get("retest_distance_pct",math.nan),
                 "stop":round(stop,2),
                 "stop_basis":result.get("stop_basis",""),
                 "risk_pct":result.get("risk_pct",math.nan),
