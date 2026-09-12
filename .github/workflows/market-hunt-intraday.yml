@@ -2,7 +2,7 @@ name: Market Hunt Intraday Monitor
 
 on:
   schedule:
-    - cron: '*/15 13-20 * * 1-5'
+    - cron: '*/15 12-22 * * 1-5'
   workflow_dispatch:
 
 permissions:
@@ -68,7 +68,7 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
           mkdir -p /tmp/market-hunt-scan-data/dashboard-data
-          for f in intraday_live.csv state_transitions.csv live_alerts.txt; do
+          for f in intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
@@ -92,4 +92,5 @@ jobs:
             outputs/intraday_live.csv
             outputs/state_transitions.csv
             outputs/live_alerts.txt
+            outputs/paper_journal.csv
           if-no-files-found: warn
