@@ -55,6 +55,58 @@ def _earnings_history(symbol: str):
     return df.sort_values("reportedDate",ascending=False).head(EARNINGS_HISTORY_QUARTERS)
 
 
+def _estimate_revision_context(symbol: str):
+    data=_alpha_request("EARNINGS_ESTIMATES",symbol)
+    if not data:
+        return {"estimate_revision_status":"UNAVAILABLE"}
+
+    records=[]
+    for _,value in data.items():
+        if isinstance(value,list):
+            records.extend([x for x in value if isinstance(x,dict)])
+
+    if not records:
+        return {"estimate_revision_status":"UNAVAILABLE"}
+
+    # Prefer the forward quarter nearest the upcoming event.
+    def _rank(r):
+        h=str(r.get("horizon","")).lower()
+        if "next fiscal quarter" in h: return 0
+        if "current fiscal quarter" in h: return 1
+        if "fiscal quarter" in h and "historical" not in h: return 2
+        if "next fiscal year" in h: return 3
+        return 9
+
+    r=sorted(records,key=_rank)[0]
+    current=_safe_float(r.get("eps_estimate_average"))
+    analyst_count=_safe_float(r.get("eps_estimate_analyst_count"))
+
+    revisions={}
+    for days in [7,30,60,90]:
+        key=f"eps_estimate_average_{days}_days_ago"
+        old=_safe_float(r.get(key))
+        if math.isfinite(current) and math.isfinite(old):
+            base=max(abs(old),0.01)
+            revisions[days]=(current-old)/base*100
+
+    score=0.0
+    weights={7:0.45,30:0.30,60:0.15,90:0.10}
+    for days,pct in revisions.items():
+        score+=max(-25,min(25,pct))*weights.get(days,0)
+    score=max(-25,min(25,score))*4
+
+    out={
+        "estimate_revision_status":"OK",
+        "forward_eps_estimate":round(current,4) if math.isfinite(current) else math.nan,
+        "forward_eps_analyst_count":int(analyst_count) if math.isfinite(analyst_count) else math.nan,
+        "estimate_revision_score":round(float(score),1),
+        "estimate_horizon":str(r.get("horizon","")),
+    }
+    for days,pct in revisions.items():
+        out[f"eps_revision_{days}d_pct"]=round(float(pct),2)
+    return out
+
+
 def _reaction_stats(symbol: str, earnings_df: pd.DataFrame):
     if earnings_df is None or earnings_df.empty or "reportedDate" not in earnings_df.columns:
         return {}
@@ -285,6 +337,7 @@ def enrich_earnings_intelligence(events: pd.DataFrame, limit: int=EARNINGS_INTEL
         hist=_earnings_history(symbol)
         metrics={}
         metrics.update(_beat_miss_stats(hist))
+        metrics.update(_estimate_revision_context(symbol))
         metrics.update(_reaction_stats(symbol,hist))
         metrics.update(_compression_stats(symbol))
         metrics.update(_guidance_context(symbol))
@@ -298,11 +351,13 @@ def enrich_earnings_intelligence(events: pd.DataFrame, limit: int=EARNINGS_INTEL
         reaction=_safe_float(metrics.get("prior_earnings_positive_reaction_rate"))
         compression=_safe_float(metrics.get("pre_event_compression_score"))
         guide=_safe_float(metrics.get("guidance_revision_score"))
+        revisions=_safe_float(metrics.get("estimate_revision_score"))
         if math.isfinite(beat): score+=(beat-50)*0.20
         if math.isfinite(med): score+=max(-10,min(10,med*0.35))
         if math.isfinite(reaction): score+=(reaction-50)*0.12
         if math.isfinite(compression): score+=(compression-50)*0.15
-        if math.isfinite(guide): score+=guide*0.12
+        if math.isfinite(guide): score+=guide*0.08
+        if math.isfinite(revisions): score+=revisions*0.12
         score=max(0,min(100,score))
         metrics["pre_earnings_intel_score"]=round(score,1)
 
