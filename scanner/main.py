@@ -299,6 +299,10 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
         "name":"company_name_gate",
     })
     leader_details=df[df["ticker"].isin(CORE_LEADER_TICKERS)].copy()
+    leader_details=leader_details.drop(
+        columns=["avg_share_volume20","median_dollar_volume20","adr20_pct"],
+        errors="ignore",
+    )
     leaders=leader_gate.merge(leader_details,on="ticker",how="left",suffixes=("_gate",""))
     if not leaders.empty:
         leaders["company_name"]=leaders.get("company_name",pd.Series(index=leaders.index,dtype=object)).fillna(
