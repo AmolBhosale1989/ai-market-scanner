@@ -52,7 +52,8 @@ if out.exists():
     view=df[df["stage"].isin(selected)] if selected else df
     priority=["ticker","company_name","price","stage","theme","theme_state","theme_score",
               "market_hunt_score","final_decision","catalyst_score","catalyst_status",
-              "entry_trigger","entry_model","entry_condition","retest_reference","retest_distance_pct","entry_buffer_pct",
+              "entry_trigger","entry_model","entry_condition","retest_reference","retest_distance_pct",
+              "retest_quality_score","ema20_slope5_pct","support_touch_count","higher_low","bullish_close","entry_buffer_pct",
               "stop","stop_basis","stop_anchor","risk_pct",
               "effective_target","effective_rr","target_5","target_8","target_10","rr_to_8pct",
               "runway_to_next_resistance_pct","pattern"]
