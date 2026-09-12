@@ -17,6 +17,8 @@ from .config import (
     OPENING_RANGE_MINUTES,
     MIN_RUNWAY_PCT,
     MIN_EFFECTIVE_RR,
+    CATALYST_ACTIVE_SCORE,
+    MAX_BID_ASK_SPREAD_PCT,
 )
 
 NY = ZoneInfo("America/New_York")
@@ -35,6 +37,10 @@ def _empty_live(status="NOT CHECKED"):
         "opening_range_low": math.nan,
         "live_above_or_high": False,
         "intraday_rvol": math.nan,
+        "quote_bid": math.nan,
+        "quote_ask": math.nan,
+        "bid_ask_spread_pct": math.nan,
+        "spread_gate_passed": False,
         "live_trigger_reached": False,
         "live_retest_touched": False,
         "live_confirmation_score": 0,
@@ -146,6 +152,23 @@ def _intraday_rvol(d: pd.DataFrame, session_date, current_session: pd.DataFrame)
     baseline=float(np.mean(comps))
     return current_volume/baseline if baseline>0 else math.nan
 
+def _quote_spread(ticker: str):
+    try:
+        info=yf.Ticker(ticker).get_info()
+    except Exception:
+        return math.nan,math.nan,math.nan
+    try:
+        bid=float(info.get("bid",math.nan))
+        ask=float(info.get("ask",math.nan))
+    except (TypeError,ValueError):
+        return math.nan,math.nan,math.nan
+    if not (math.isfinite(bid) and math.isfinite(ask) and bid>0 and ask>=bid):
+        return math.nan,math.nan,math.nan
+    midpoint=(bid+ask)/2
+    spread_pct=(ask-bid)/midpoint*100 if midpoint>0 else math.nan
+    return bid,ask,spread_pct
+
+
 def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, catalyst_score: float,
                            rr_to_8pct: float, runway_pct: float, negative_catalyst_risk: bool,
                            entry_condition: str = "BREAKOUT"):
@@ -230,6 +253,8 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
     vwap=_session_vwap(latest_session)
     or_high,or_low,or_complete=_opening_range(latest_session)
     rvol=_intraday_rvol(d,latest_date,latest_session)
+    bid,ask,spread_pct=_quote_spread(ticker) if state=="LIVE" else (math.nan,math.nan,math.nan)
+    spread_ok=math.isfinite(spread_pct) and spread_pct<=MAX_BID_ASK_SPREAD_PCT
 
     above_vwap=math.isfinite(vwap) and price>vwap
     above_or=or_complete and math.isfinite(or_high) and price>or_high
@@ -258,13 +283,13 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
 
     live_action="NO LIVE SIGNAL"
     technical_ok=stage in {"ARMED","CONFIRMED"}
-    catalyst_bonus=(not negative_catalyst_risk) and catalyst_score>=30
+    catalyst_ok=(not negative_catalyst_risk) and catalyst_score>=CATALYST_ACTIVE_SCORE
     rr_ok=math.isfinite(rr_to_8pct) and rr_to_8pct>=MIN_EFFECTIVE_RR
     runway_ok=math.isfinite(runway_pct) and runway_pct>=MIN_RUNWAY_PCT
     if entry_condition=="TOUCH_AND_RECLAIM":
-        live_conditions=above_vwap and retest_touched and trigger_reached and math.isfinite(rvol) and rvol>=LIVE_MIN_INTRADAY_RVOL
+        live_conditions=above_vwap and retest_touched and trigger_reached and math.isfinite(rvol) and rvol>=LIVE_MIN_INTRADAY_RVOL and spread_ok
     else:
-        live_conditions=above_vwap and above_or and trigger_reached and math.isfinite(rvol) and rvol>=LIVE_MIN_INTRADAY_RVOL
+        live_conditions=above_vwap and above_or and trigger_reached and math.isfinite(rvol) and rvol>=LIVE_MIN_INTRADAY_RVOL and spread_ok
 
     if status!="LIVE":
         live_action="WAIT / MARKET NOT LIVE"
@@ -272,8 +297,14 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
         live_action="WAIT / OPENING RANGE FORMING"
     elif negative_catalyst_risk:
         live_action="NO TRADE / NEGATIVE CATALYST"
+    elif not catalyst_ok:
+        live_action="WAIT / ACTIVE CATALYST REQUIRED"
+    elif not math.isfinite(spread_pct):
+        live_action="WAIT / QUOTE SPREAD UNAVAILABLE"
+    elif not spread_ok:
+        live_action="NO TRADE / SPREAD TOO WIDE"
     elif technical_ok and rr_ok and runway_ok and live_conditions:
-        live_action="BUY / LIVE CONFIRMED + CATALYST" if catalyst_bonus else "BUY / LIVE CONFIRMED"
+        live_action="BUY / LIVE CONFIRMED + CATALYST"
     elif technical_ok:
         live_action="WAIT / LIVE CONFIRMATION"
     else:
@@ -291,6 +322,10 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
         "opening_range_low":round(or_low,2) if math.isfinite(or_low) else math.nan,
         "live_above_or_high":bool(above_or),
         "intraday_rvol":round(rvol,2) if math.isfinite(rvol) else math.nan,
+        "quote_bid":round(bid,4) if math.isfinite(bid) else math.nan,
+        "quote_ask":round(ask,4) if math.isfinite(ask) else math.nan,
+        "bid_ask_spread_pct":round(spread_pct,3) if math.isfinite(spread_pct) else math.nan,
+        "spread_gate_passed":bool(spread_ok),
         "live_trigger_reached":bool(trigger_reached),
         "live_retest_touched":bool(retest_touched),
         "live_confirmation_score":int(score),
