@@ -97,7 +97,8 @@ if not event_status.empty:
 if not events.empty:
     st.subheader("📅 Upcoming Events")
     event_cols=["ticker","company_name","event_type","event_date_utc","days_to_event","event_priority",
-                "pre_earnings_intel_score","eps_estimate","forward_eps_estimate","forward_eps_analyst_count",
+                "pre_event_decision","event_opportunity_score","pre_earnings_intel_score",
+                "eps_estimate","forward_eps_estimate","forward_eps_analyst_count",
                 "estimate_revision_score","eps_revision_7d_pct","eps_revision_30d_pct","eps_revision_60d_pct",
                 "eps_revision_90d_pct","beat_rate_pct","median_surprise_pct",
                 "latest_surprise_pct","surprise_streak","prior_earnings_reaction_avg_pct",
@@ -105,7 +106,7 @@ if not events.empty:
                 "pre_event_compression_score","pre_event_range10_pct","pre_event_vol5_vs20",
                 "guidance_revision_score","guidance_positive_mentions","guidance_negative_mentions",
                 "revision_up_mentions","revision_down_mentions","options_implied_move_pct",
-                "options_expiry","options_data_status","pre_event_setup_state","price","technical_score",
+                "implied_move_vs_5pct","options_expiry","options_data_status","pre_event_setup_state","price","technical_score",
                 "entry_trigger","entry_model","stop","effective_target","effective_rr",
                 "market_regime_state","avg_dollar_volume20"]
     st.dataframe(events[[c for c in event_cols if c in events.columns]].head(100),
