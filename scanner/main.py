@@ -7,12 +7,14 @@ from .config import (
     OUTPUT_DIR, MIN_PRICE, MIN_AVG_DOLLAR_VOLUME, TOP_N, BATCH_SIZE, BENCHMARK,
     CATALYST_ENRICH_LIMIT, CATALYST_STRONG_SCORE, CATALYST_ACTIVE_SCORE,
     MIN_DATA_COVERAGE, MIN_ANALYZABLE_COVERAGE, LIVE_ENRICH_LIMIT,
+    THEME_PROFILE_LIMIT,
 )
 from .catalysts import enrich_candidates
 from .data import download_history, download_batch
 from .indicators import add_indicators
 from .live import enrich_live_candidates
 from .stocks import analyze_dataframe
+from .themes import rank_themes, enrich_candidate_themes
 from .universe import load_or_build_universe
 
 def _benchmark_return20():
@@ -66,6 +68,12 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     print(f"Universe used: {expected:,} symbols")
     if expected==0:
         raise RuntimeError("Universe is empty.")
+
+    print("Ranking market themes...")
+    theme_table=rank_themes()
+    if not theme_table.empty:
+        print("\nTOP TRENDING THEMES")
+        print(theme_table.head(10)[["theme_rank","theme","etf","theme_score","theme_state","rel5_vs_spy","rel20_vs_spy"]].to_string(index=False))
 
     bench20=_benchmark_return20()
     rows=[]
@@ -139,19 +147,21 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     risk=pd.to_numeric(df["risk_score"],errors="coerce").fillna(100)
     df["rank_score"]=(tech*0.65+form*0.20+rs*0.50-risk*0.15).round(1)
 
+    print(f"Tagging up to {THEME_PROFILE_LIMIT} top candidates with leading themes...")
+    df=enrich_candidate_themes(df,theme_table,limit=THEME_PROFILE_LIMIT)
+
     print(f"Enriching up to {CATALYST_ENRICH_LIMIT} top technical candidates with catalyst/news data...")
     df=enrich_candidates(df,limit=CATALYST_ENRICH_LIMIT)
 
     catalyst=pd.to_numeric(df["catalyst_score"],errors="coerce").fillna(0).clip(0,100)
     neg=df["negative_catalyst_risk"].fillna(False).astype(bool).astype(int)
-    df["final_score"]=(df["rank_score"].fillna(-100)+catalyst*0.20-neg*15).round(1)
+    theme_bonus=pd.to_numeric(df["theme_bonus"],errors="coerce").fillna(0)
+    df["final_score"]=(df["rank_score"].fillna(-100)+theme_bonus+catalyst*0.20-neg*15).round(1)
     df["final_decision"]=df.apply(_final_decision,axis=1)
 
     print(f"Checking live VWAP/opening-range/volume confirmation for up to {LIVE_ENRICH_LIMIT} advanced candidates...")
     df=enrich_live_candidates(df,limit=LIVE_ENRICH_LIMIT)
 
-    # Live score only helps ranking while the live layer itself decides whether
-    # the signal is actionable. Stale/closed sessions do not create BUYs.
     live_score=pd.to_numeric(df["live_confirmation_score"],errors="coerce").fillna(0)
     live_bonus=np.where(df["live_status"].eq("LIVE"),live_score*0.10,0)
     df["market_hunt_score"]=(df["final_score"].fillna(-100)+live_bonus).round(1)
@@ -171,14 +181,15 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
 
     print("\nTOP MARKET HUNT CANDIDATES")
     cols=[
-        "ticker","price","stage","market_hunt_score","catalyst_score","catalyst_status",
-        "entry_trigger","stop","target_8","rr_to_8pct","runway_to_next_resistance_pct",
-        "live_status","live_price","live_vwap","opening_range_high","intraday_rvol",
+        "ticker","price","stage","theme","theme_score","market_hunt_score",
+        "catalyst_score","entry_trigger","stop","target_8","rr_to_8pct",
+        "runway_to_next_resistance_pct","live_status","intraday_rvol",
         "live_confirmation_score","live_trade_action",
     ]
     print(shortlist[cols].to_string(index=False))
     print(f"\nSaved shortlist: {out}")
     print(f"Saved all liquid candidates: {all_out}")
+    print(f"Saved themes: {OUTPUT_DIR/'trending_themes.csv'}")
     print(f"Saved scan health: {OUTPUT_DIR/'scan_health.csv'}")
     return shortlist
 

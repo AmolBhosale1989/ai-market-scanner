@@ -30,8 +30,12 @@ CATALYST_LOOKAHEAD_DAYS = 7
 CATALYST_STRONG_SCORE = 45
 CATALYST_ACTIVE_SCORE = 30
 
-# Live confirmation. Only the strongest advanced technical candidates are
-# queried intraday so the free prototype remains practical.
+# Theme/sector momentum. Theme strength is an additive ranking bonus, not a
+# hard requirement for a trade.
+THEME_PROFILE_LIMIT = 80
+THEME_BONUS_MAX = 6.0
+
+# Live confirmation.
 LIVE_ENRICH_LIMIT = 20
 LIVE_INTERVAL = "5m"
 LIVE_PERIOD = "5d"
