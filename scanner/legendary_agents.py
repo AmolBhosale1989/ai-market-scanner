@@ -26,6 +26,9 @@ AGENTS = [
     TraderAgent("darvas", "Nicolas Darvas", "Darvas Box Breakout"),
     TraderAgent("livermore", "Jesse Livermore", "Pivot / Line of Least Resistance"),
     TraderAgent("qullamaggie", "Kristjan Kullamägi", "Momentum Breakout / EP-style"),
+    TraderAgent("druckenmiller", "Stanley Druckenmiller", "Liquidity + Catalyst + Technical Confirmation"),
+    TraderAgent("lawwaisum", "Law Wai-Sum", "Growth Momentum + Position/Swing Hybrid"),
+    TraderAgent("martinluk", "Martin Luk", "Asymmetric 5:1 Momentum Swing"),
 ]
 
 
@@ -177,6 +180,76 @@ def _qullamaggie(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
     return _finalize(d, a, score, matched, why)
 
 
+
+def _druckenmiller(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
+    score = (
+        18 + d["_tech"] * 0.28 + d["_rs"].clip(-10, 20) * 0.9
+        + d["_cat"].clip(0, 100) * 0.22
+        + np.where(d["_theme"].isin(["STRONG", "LEADING"]), 10, 0)
+        + np.where(d["_regime"].isin(["STRONG", "BULLISH", "HEALTHY"]), 7, 0)
+        + np.where(d["_stage"].isin(["ARMED", "CONFIRMED"]), 8, 0)
+    )
+    matched = (
+        _quality_gate(d)
+        & d["_rs"].ge(0)
+        & d["_cat"].ge(30)
+        & d["_runway"].ge(5)
+        & d["_rr"].ge(2.2)
+        & d["_stage"].isin(["FORMING", "ARMED", "CONFIRMED"])
+    )
+    why = pd.Series(
+        "Liquid leadership + meaningful catalyst + supportive market/theme context + technical price confirmation",
+        index=d.index,
+    )
+    return _finalize(d, a, score, matched, why)
+
+
+def _lawwaisum(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
+    score = (
+        16 + d["_tech"] * 0.30 + d["_form"] * 0.24
+        + d["_rs"].clip(-10, 20) * 0.85
+        + d["_cat"].clip(0, 100) * 0.15
+        + np.where(d["_theme"].isin(["STRONG", "LEADING"]), 8, 0)
+        + np.where(d["_stage"].isin(["FORMING", "ARMED", "CONFIRMED"]), 6, 0)
+    )
+    matched = (
+        _quality_gate(d)
+        & d["_rs"].ge(0)
+        & d["_form"].ge(40)
+        & d["_rr"].ge(2.2)
+        & d["_runway"].ge(4)
+    )
+    why = pd.Series(
+        "Growth-momentum leadership with constructive base/position structure, disciplined risk and room for a sustained move",
+        index=d.index,
+    )
+    return _finalize(d, a, score, matched, why)
+
+
+def _martinluk(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
+    score = (
+        12 + d["_tech"] * 0.26 + d["_form"] * 0.20
+        + d["_rs"].clip(-10, 20) * 0.75
+        + d["_cat"].clip(0, 100) * 0.14
+        + d["_rvol"].clip(0, 5) * 3.5
+        + np.where(d["_rr"].ge(5), 18, np.where(d["_rr"].ge(3.5), 10, 0))
+        + np.where(d["_stage"].isin(["ARMED", "CONFIRMED"]), 7, 0)
+    )
+    matched = (
+        _quality_gate(d)
+        & d["_rs"].ge(0)
+        & d["_adr"].ge(2.5)
+        & d["_rr"].ge(3.0)
+        & d["_risk"].le(4.5)
+        & d["_runway"].ge(5)
+    )
+    why = pd.Series(
+        "High-momentum swing with tightly capped downside and strongly asymmetric upside; prioritizes 3:1+ and rewards 5:1 opportunities",
+        index=d.index,
+    )
+    return _finalize(d, a, score, matched, why)
+
+
 _RUNNERS = {
     "minervini": _minervini,
     "oneil": _oneil,
@@ -184,6 +257,9 @@ _RUNNERS = {
     "darvas": _darvas,
     "livermore": _livermore,
     "qullamaggie": _qullamaggie,
+    "druckenmiller": _druckenmiller,
+    "lawwaisum": _lawwaisum,
+    "martinluk": _martinluk,
 }
 
 
