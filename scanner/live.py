@@ -27,6 +27,8 @@ def _empty_live(status="NOT CHECKED"):
         "live_status": status,
         "live_session_date": "",
         "live_price": math.nan,
+        "session_high": math.nan,
+        "session_low": math.nan,
         "live_vwap": math.nan,
         "live_above_vwap": False,
         "opening_range_high": math.nan,
@@ -223,6 +225,8 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
         status="MARKET CLOSED"
 
     price=float(latest_session["Close"].iloc[-1])
+    session_high=float(latest_session["High"].max())
+    session_low=float(latest_session["Low"].min())
     vwap=_session_vwap(latest_session)
     or_high,or_low,or_complete=_opening_range(latest_session)
     rvol=_intraday_rvol(d,latest_date,latest_session)
@@ -279,6 +283,8 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
         "live_status":status,
         "live_session_date":str(latest_date),
         "live_price":round(price,2),
+        "session_high":round(session_high,2),
+        "session_low":round(session_low,2),
         "live_vwap":round(vwap,2) if math.isfinite(vwap) else math.nan,
         "live_above_vwap":bool(above_vwap),
         "opening_range_high":round(or_high,2) if math.isfinite(or_high) else math.nan,
