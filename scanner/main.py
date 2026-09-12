@@ -11,6 +11,7 @@ from .config import (
 )
 from .catalysts import enrich_candidates
 from .data import download_history, download_batch
+from .events import build_event_watchlist, merge_technical_context
 from .indicators import add_indicators
 from .live import enrich_live_candidates
 from .prefilter import build_tradable_rows
@@ -133,6 +134,13 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
         f"TRADABLE UNIVERSE: {tradable_count:,}/{master_expected:,} "
         f"({tradable_count/master_expected:.1%}) passed price/liquidity gate"
     )
+
+    print("Building event-first earnings watchlist for the most liquid stocks...")
+    event_watchlist=build_event_watchlist(tradable_df)
+    if not event_watchlist.empty:
+        print("\nUPCOMING EVENT-FIRST WATCHLIST")
+        event_cols=[c for c in ["ticker","company_name","event_type","days_to_event","event_priority","avg_dollar_volume20"] if c in event_watchlist.columns]
+        print(event_watchlist.head(25)[event_cols].to_string(index=False))
     if tradable_count==0:
         raise RuntimeError("SCAN ABORTED: no symbols passed the tradability gate.")
 
@@ -209,6 +217,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
         raise RuntimeError("SCAN ABORTED: no valid candidate rows after a healthy deep scan.")
 
     df=pd.DataFrame(rows)
+    event_watchlist=merge_technical_context(event_watchlist,df)
     stage_rank={"CONFIRMED":5,"ARMED":4,"FORMING":3,"DISCOVER":2,"EXTENDED":1,"REJECT":0}
     df["stage_rank"]=df["stage"].map(stage_rank).fillna(0)
 
@@ -268,6 +277,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     print(f"Saved shortlist: {out}")
     print(f"Saved all technical candidates: {all_out}")
     print(f"Saved themes: {OUTPUT_DIR/'trending_themes.csv'}")
+    print(f"Saved event-first watchlist: {OUTPUT_DIR/'upcoming_events.csv'}")
     print(f"Saved scan health: {OUTPUT_DIR/'scan_health.csv'}")
     return shortlist
 
