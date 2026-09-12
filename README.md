@@ -99,3 +99,16 @@ Pullback/retest entries now consider the broader market regime. SPY is scored fr
 After theme/sector enrichment, a classified retest is also downgraded when its matched theme is WEAK. Unclassified stocks are not rejected solely for lacking a theme tag.
 
 Historical calibration uses the SPY regime as it existed at each signal date, avoiding use of today's market state in past trades. The live scanner applies both current SPY regime and current theme/sector state.
+
+
+## Event-first catalyst discovery
+Market Hunt now scans the most liquid 400 stocks independently of the technical shortlist for upcoming earnings in the next 7 days. This closes the previous gap where a major company could have a known event but remain invisible until the chart had already moved.
+
+The event-first watchlist:
+- prioritizes the most liquid tradable stocks
+- scans 1-7 days ahead for upcoming earnings
+- marks <=3 days as HIGH priority, 3-5 days as MEDIUM and later events as WATCH
+- merges current technical state, entry, stop, runway, R/R and market regime after the broad scan
+- remains visible even when a stock has no qualifying technical setup yet
+
+Output: `outputs/upcoming_events.csv`, also published automatically to the deployed dashboard.
