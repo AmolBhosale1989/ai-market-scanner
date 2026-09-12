@@ -5,6 +5,7 @@ on:
     paths:
       - 'scanner/backtest.py'
       - 'scanner/stocks.py'
+      - 'scanner/entry_model.py'
       - 'scanner/config.py'
       - '.github/workflows/market-hunt-backtest.yml'
   workflow_dispatch:
