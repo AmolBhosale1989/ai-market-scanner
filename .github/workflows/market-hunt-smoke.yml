@@ -85,6 +85,40 @@ jobs:
           print("Earnings intelligence self-check passed.")
           PY
 
+      - name: Run performance calibration self-check
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pandas as pd
+          from scanner.performance import build_performance_reports, build_empirical_calibration
+
+          rows=[]
+          for i in range(24):
+              rows.append({
+                  "ticker":f"T{i}",
+                  "outcome":"TARGET_HIT" if i%2==0 else "INVALIDATED",
+                  "return_pct":5.0 if i%2==0 else -2.0,
+                  "r_multiple":2.0 if i%2==0 else -1.0,
+                  "entry_model":"RESISTANCE_BREAKOUT",
+                  "market_regime_state":"STRONG",
+                  "theme":"TEST",
+                  "catalyst_status":"NONE",
+                  "stage":"ARMED",
+                  "market_hunt_score":70 if i<20 else 50,
+                  "technical_score":70,
+                  "effective_rr":3.0,
+                  "live_confirmation_score":80,
+              })
+          j=pd.DataFrame(rows)
+          s,g=build_performance_reports(j)
+          assert int(s.iloc[0]["closed_signals"])==24
+          assert float(s.iloc[0]["win_rate_pct"])==50.0
+          c=build_empirical_calibration(j,min_samples=20)
+          assert not c.empty
+          assert "USABLE" in set(c["calibration_status"])
+          print("Performance and calibration self-check passed.")
+          PY
+
       - name: Run live/journal self-checks
         shell: bash
         run: |
