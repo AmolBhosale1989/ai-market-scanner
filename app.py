@@ -97,7 +97,9 @@ if not event_status.empty:
 if not events.empty:
     st.subheader("📅 Upcoming Events")
     event_cols=["ticker","company_name","event_type","event_date_utc","days_to_event","event_priority",
-                "pre_earnings_intel_score","eps_estimate","beat_rate_pct","median_surprise_pct",
+                "pre_earnings_intel_score","eps_estimate","forward_eps_estimate","forward_eps_analyst_count",
+                "estimate_revision_score","eps_revision_7d_pct","eps_revision_30d_pct","eps_revision_60d_pct",
+                "eps_revision_90d_pct","beat_rate_pct","median_surprise_pct",
                 "latest_surprise_pct","surprise_streak","prior_earnings_reaction_avg_pct",
                 "prior_earnings_reaction_abs_avg_pct","prior_earnings_positive_reaction_rate",
                 "pre_event_compression_score","pre_event_range10_pct","pre_event_vol5_vs20",
