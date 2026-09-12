@@ -126,6 +126,16 @@ def _parse_alpha_vantage_calendar(body: str, tradable_df: pd.DataFrame, now=None
     if symbol_col is None or date_col is None:
         return []
 
+    symbols=set(tradable_df["ticker"].astype(str))
+    name_map=dict(zip(
+        tradable_df["ticker"].astype(str),
+        tradable_df.get("name",pd.Series([""]*len(tradable_df))).astype(str)
+    ))
+    adv_map=dict(zip(
+        tradable_df["ticker"].astype(str),
+        pd.to_numeric(tradable_df.get("avg_dollar_volume20",0),errors="coerce").fillna(0)
+    ))
+
     rows=[]
     for _,r in df.iterrows():
         ticker=str(r.get(symbol_col,"")).strip().upper().replace(".","-")
@@ -174,15 +184,6 @@ def _alpha_vantage_earnings_events(tradable_df: pd.DataFrame):
         return []
 
     now=pd.Timestamp.now(tz="UTC")
-    symbols=set(tradable_df["ticker"].astype(str))
-    name_map=dict(zip(
-        tradable_df["ticker"].astype(str),
-        tradable_df.get("name",pd.Series([""]*len(tradable_df))).astype(str)
-    ))
-    adv_map=dict(zip(
-        tradable_df["ticker"].astype(str),
-        pd.to_numeric(tradable_df.get("avg_dollar_volume20",0),errors="coerce").fillna(0)
-    ))
 
     try:
         r=requests.get(
