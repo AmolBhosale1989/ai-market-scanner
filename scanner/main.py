@@ -229,8 +229,9 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
 
     print(f"Tagging up to {THEME_PROFILE_LIMIT} top candidates with leading themes...")
     df=enrich_candidate_themes(df,theme_table,limit=THEME_PROFILE_LIMIT)
-    df["sector_regime_ok"]=~df["theme_state"].eq("WEAK")
-    retest_mask=df["entry_model"].eq("PULLBACK_RETEST") & df["theme_state"].eq("WEAK")
+    theme_conf=pd.to_numeric(df.get("theme_match_confidence",0),errors="coerce").fillna(0)
+    df["sector_regime_ok"]=~(df["theme_state"].eq("WEAK") & theme_conf.ge(0.70))
+    retest_mask=df["entry_model"].eq("PULLBACK_RETEST") & df["theme_state"].eq("WEAK") & theme_conf.ge(0.70)
     if retest_mask.any():
         df.loc[retest_mask,"stage"]="FORMING"
         df.loc[retest_mask,"decision"]="WATCHLIST"
