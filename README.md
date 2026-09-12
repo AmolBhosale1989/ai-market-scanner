@@ -112,3 +112,18 @@ The event-first watchlist:
 - remains visible even when a stock has no qualifying technical setup yet
 
 Output: `outputs/upcoming_events.csv`, also published automatically to the deployed dashboard.
+
+
+## Forward-event discovery beyond earnings
+The event-first scanner also checks a smaller high-liquidity subset for announced future events with an explicit date in the next seven days. Supported categories include FDA/PDUFA or regulatory decisions, investor/analyst/capital-markets days, conferences/presentations, product launches, clinical-data releases and contract-award announcements. Vague phrases such as "next week" are intentionally ignored unless an explicit date can be parsed.
+
+## Theme classification confidence
+Theme matching is now industry/sector-first. A direct Yahoo industry match receives high confidence; industry keywords receive medium confidence; business-summary keywords are low-confidence fallback only. Low-confidence matches receive no theme ranking bonus and cannot veto a retest merely because the matched theme is weak.
+
+## Exchange-aware live monitoring
+Live market state now uses the NYSE trading calendar rather than fixed clock assumptions. This covers DST, U.S. exchange holidays and scheduled early closes. The GitHub intraday window is deliberately broad in UTC; the scanner itself decides whether the NYSE session is actually live.
+
+First-observation actionable states now generate alerts. A ticker first seen already TRIGGERED/LIVE_CONFIRMED/INVALIDATED/TARGET_HIT can therefore alert immediately instead of waiting for a second state transition.
+
+## Forward paper-trading journal
+The intraday monitor automatically maintains a persistent paper journal for ARMED/CONFIRMED candidates. It records first/last seen time, planned entry, stop, effective target and R/R, entry model, market regime, theme/catalyst context, monitor state and eventual outcome. Trigger, live-confirmed and close timestamps are retained, together with forward return and R-multiple when a paper trade closes.
