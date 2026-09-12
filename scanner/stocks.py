@@ -47,13 +47,15 @@ def _plan_metrics(plan, levels):
         "effective_rr":effective_rr,
     }
 
-def _choose_plan(plans, levels):
+def _choose_plan(plans, levels, market_regime_state="NEUTRAL"):
     evaluated=[_plan_metrics(p,levels) for p in plans]
     if not evaluated:
         return None
 
     breakout=next((x for x in evaluated if x["entry_condition"]=="BREAKOUT"),evaluated[0])
     retests=[x for x in evaluated if x["entry_condition"]=="TOUCH_AND_RECLAIM"]
+    if market_regime_state=="WEAK":
+        retests=[]
 
     # Retest is preferred only when it materially improves asymmetry without
     # becoming an unrealistically tight or distant order.
@@ -69,7 +71,7 @@ def _choose_plan(plans, levels):
         return max(eligible,key=lambda x:x["effective_rr"])
     return breakout
 
-def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float = 0.0):
+def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float = 0.0, market_regime: dict | None = None):
     if df is None or len(df)<MIN_HISTORY_DAYS:
         return None
 
@@ -90,8 +92,12 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     technical_stage=formation["stage"]
     rs20=_f(last["RET20"])-benchmark_return20
 
+    market_regime=market_regime or {"regime_score":50.0,"regime_state":"NEUTRAL","regime_reason":"not provided"}
+    market_regime_state=str(market_regime.get("regime_state","NEUTRAL"))
+    market_regime_score=_f(market_regime.get("regime_score",50.0),50.0)
+
     candidates=build_entry_stop_candidates(d,levels,technical_stage)
-    plan=_choose_plan(candidates,levels)
+    plan=_choose_plan(candidates,levels,market_regime_state=market_regime_state)
     if not plan:
         return None
 
@@ -162,6 +168,9 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
         "technical_score":technical_score,
         "risk_score":risk_score,
         "decision":decision,
+        "market_regime_state":market_regime_state,
+        "market_regime_score":round(market_regime_score,1),
+        "market_regime_reason":str(market_regime.get("regime_reason","")),
         "rs20_vs_spy":round(rs20,2),
         "rsi14":round(rsi,1),
         "rvol":round(_f(last["RVOL"]),2),
