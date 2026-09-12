@@ -127,3 +127,9 @@ First-observation actionable states now generate alerts. A ticker first seen alr
 
 ## Forward paper-trading journal
 The intraday monitor automatically maintains a persistent paper journal for ARMED/CONFIRMED candidates. It records first/last seen time, planned entry, stop, effective target and R/R, entry model, market regime, theme/catalyst context, monitor state and eventual outcome. Trigger, live-confirmed and close timestamps are retained, together with forward return and R-multiple when a paper trade closes.
+
+
+## Alpha Vantage earnings calendar
+Upcoming earnings discovery uses Alpha Vantage's broad earnings calendar and intersects it with Market Hunt's liquid tradable universe. Set the GitHub Actions repository secret `ALPHA_VANTAGE_API_KEY` to enable this layer. Yahoo earnings-calendar endpoints are no longer used because repeated authorization/crumb failures made them unreliable in GitHub Actions.
+
+The scanner writes `outputs/event_status.csv` so the dashboard can distinguish a healthy empty event window from a missing provider key or provider failure.
