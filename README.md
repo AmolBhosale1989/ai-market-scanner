@@ -42,3 +42,7 @@ The backtest is a validation framework, not proof of future performance. Daily O
 5,000+ master symbols -> fast tradability gate -> tradable universe -> theme momentum -> pre-move structure -> D/W/M support/resistance -> resistance-capped effective R/R -> optional fresh catalyst -> ARMED/CONFIRMED -> 15-minute live VWAP/ORB/RVOL state monitor.
 
 Research and decision support only. No guaranteed returns and no automatic trade execution.
+
+
+## R/R calibration workflow
+A dedicated calibration run now tests the most liquid 100 stocks across three years and compares effective R/R thresholds of 1.5, 2.0, 2.5 and 3.0. This is intended to calibrate selectivity from historical outcomes instead of lowering the 2.5 threshold merely to produce more trades.

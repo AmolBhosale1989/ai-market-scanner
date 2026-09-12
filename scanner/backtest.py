@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import argparse
 import math
-from pathlib import Path
-
 import pandas as pd
 
 from .config import (
     OUTPUT_DIR, MIN_HISTORY_DAYS, BACKTEST_PERIOD, BACKTEST_HORIZON_DAYS,
-    BACKTEST_MAX_TICKERS, BACKTEST_SIGNAL_STRIDE,
+    BACKTEST_MAX_TICKERS, BACKTEST_SIGNAL_STRIDE, MIN_RUNWAY_PCT,
 )
 from .data import download_history
 from .stocks import analyze_dataframe
 
-def _benchmark_ret20(spy: pd.DataFrame, cutoff):
+RR_THRESHOLDS = [1.5, 2.0, 2.5, 3.0]
+
+def _benchmark_ret20(spy, cutoff):
     if spy is None or spy.empty:
         return 0.0
     x=spy.loc[:cutoff]
@@ -21,7 +21,7 @@ def _benchmark_ret20(spy: pd.DataFrame, cutoff):
         return 0.0
     return float((x["Close"].iloc[-1]/x["Close"].iloc[-21]-1)*100)
 
-def _evaluate_trade(future: pd.DataFrame,entry,stop,target):
+def _evaluate_trade(future, entry, stop, target):
     entered=False
     entry_date=None
     for dt,row in future.iterrows():
@@ -29,8 +29,6 @@ def _evaluate_trade(future: pd.DataFrame,entry,stop,target):
             if float(row["High"])>=entry:
                 entered=True
                 entry_date=dt
-                # Conservative same-day assumption: if both target and stop are
-                # touched on the entry bar, count stop first.
                 if float(row["Low"])<=stop:
                     return "STOP",entry_date,stop
                 if float(row["High"])>=target:
@@ -42,8 +40,39 @@ def _evaluate_trade(future: pd.DataFrame,entry,stop,target):
             return "TARGET",entry_date,target
     if not entered:
         return "NOT_TRIGGERED",None,math.nan
-    exit_price=float(future["Close"].iloc[-1])
-    return "TIME_EXIT",entry_date,exit_price
+    return "TIME_EXIT",entry_date,float(future["Close"].iloc[-1])
+
+def _threshold_summary(tdf,horizon,stride,tickers_tested):
+    rows=[]
+    for threshold in RR_THRESHOLDS:
+        if tdf.empty:
+            subset=tdf
+        else:
+            subset=tdf[
+                (pd.to_numeric(tdf["effective_rr"],errors="coerce")>=threshold)
+                & (pd.to_numeric(tdf["runway_pct"],errors="coerce")>=MIN_RUNWAY_PCT)
+            ].copy()
+        triggered=subset[subset["outcome"]!="NOT_TRIGGERED"].copy() if len(subset) else subset
+        wins=triggered[triggered["r_multiple"]>0] if len(triggered) else triggered
+        losses=triggered[triggered["r_multiple"]<=0] if len(triggered) else triggered
+        rows.append({
+            "rr_threshold":threshold,
+            "signals":len(subset),
+            "triggered":len(triggered),
+            "trigger_rate_pct":round(len(triggered)/len(subset)*100,1) if len(subset) else 0,
+            "wins":len(wins),
+            "losses":len(losses),
+            "win_rate_pct":round(len(wins)/len(triggered)*100,1) if len(triggered) else 0,
+            "avg_return_pct":round(triggered["return_pct"].mean(),2) if len(triggered) else math.nan,
+            "median_return_pct":round(triggered["return_pct"].median(),2) if len(triggered) else math.nan,
+            "avg_r_multiple":round(triggered["r_multiple"].mean(),2) if len(triggered) else math.nan,
+            "target_hit_rate_pct":round((triggered["outcome"]=="TARGET").mean()*100,1) if len(triggered) else 0,
+            "stop_hit_rate_pct":round((triggered["outcome"]=="STOP").mean()*100,1) if len(triggered) else 0,
+            "horizon_days":horizon,
+            "signal_stride_days":stride,
+            "tickers_tested":tickers_tested,
+        })
+    return pd.DataFrame(rows)
 
 def run(tickers=None,max_tickers=BACKTEST_MAX_TICKERS,horizon=BACKTEST_HORIZON_DAYS,
         stride=BACKTEST_SIGNAL_STRIDE,period=BACKTEST_PERIOD):
@@ -55,8 +84,8 @@ def run(tickers=None,max_tickers=BACKTEST_MAX_TICKERS,horizon=BACKTEST_HORIZON_D
             raise RuntimeError("Run Market Hunt first so outputs/tradable_universe.csv exists.")
         u=pd.read_csv(source)
         u=u[u["tradable"].astype(bool)] if "tradable" in u.columns else u
-        sort_col="avg_dollar_volume20" if "avg_dollar_volume20" in u.columns else None
-        if sort_col: u=u.sort_values(sort_col,ascending=False)
+        if "avg_dollar_volume20" in u.columns:
+            u=u.sort_values("avg_dollar_volume20",ascending=False)
         symbols=u["ticker"].astype(str).head(max_tickers).tolist()
 
     symbols=symbols[:max_tickers]
@@ -73,12 +102,12 @@ def run(tickers=None,max_tickers=BACKTEST_MAX_TICKERS,horizon=BACKTEST_HORIZON_D
         for i in range(MIN_HISTORY_DAYS,last_signal_index,stride):
             hist=d.iloc[:i+1]
             cutoff=hist.index[-1]
-            bench20=_benchmark_ret20(spy,cutoff)
-            result=analyze_dataframe(ticker,hist,benchmark_return20=bench20)
+            result=analyze_dataframe(ticker,hist,benchmark_return20=_benchmark_ret20(spy,cutoff))
             if not result or result["technical_stage"] not in {"ARMED","CONFIRMED"}:
                 continue
-            # Only test signals that would meet today's trade-quality rules.
-            if result["effective_rr"] < result["min_effective_rr_required"] or not result["runway_ok"]:
+
+            runway=float(result["runway_to_next_resistance_pct"]) if pd.notna(result["runway_to_next_resistance_pct"]) else math.nan
+            if not math.isfinite(runway) or runway<MIN_RUNWAY_PCT:
                 continue
 
             future=d.iloc[i+1:i+1+horizon]
@@ -88,7 +117,9 @@ def run(tickers=None,max_tickers=BACKTEST_MAX_TICKERS,horizon=BACKTEST_HORIZON_D
             entry=float(result["entry_trigger"])
             stop=float(result["stop"])
             target=float(result["effective_target"])
+            effective_rr=float(result["effective_rr"])
             outcome,entry_date,exit_price=_evaluate_trade(future,entry,stop,target)
+
             ret_pct=math.nan
             r_multiple=math.nan
             if outcome!="NOT_TRIGGERED" and math.isfinite(exit_price):
@@ -104,8 +135,9 @@ def run(tickers=None,max_tickers=BACKTEST_MAX_TICKERS,horizon=BACKTEST_HORIZON_D
                 "entry":round(entry,2),
                 "stop":round(stop,2),
                 "effective_target":round(target,2),
-                "effective_rr":result["effective_rr"],
-                "runway_pct":result["runway_to_next_resistance_pct"],
+                "effective_target_pct":result["effective_target_pct"],
+                "effective_rr":round(effective_rr,2),
+                "runway_pct":runway,
                 "outcome":outcome,
                 "entry_date":str(pd.Timestamp(entry_date).date()) if entry_date is not None else "",
                 "exit_price":round(exit_price,2) if math.isfinite(exit_price) else math.nan,
@@ -116,38 +148,18 @@ def run(tickers=None,max_tickers=BACKTEST_MAX_TICKERS,horizon=BACKTEST_HORIZON_D
     tdf=pd.DataFrame(trades)
     tdf.to_csv(OUTPUT_DIR/"backtest_trades.csv",index=False)
 
-    if tdf.empty:
-        summary=pd.DataFrame([{"signals":0,"triggered":0,"message":"No qualifying historical signals found."}])
-    else:
-        triggered=tdf[tdf["outcome"]!="NOT_TRIGGERED"].copy()
-        wins=triggered[triggered["r_multiple"]>0]
-        losses=triggered[triggered["r_multiple"]<=0]
-        summary=pd.DataFrame([{
-            "signals":len(tdf),
-            "triggered":len(triggered),
-            "trigger_rate_pct":round(len(triggered)/len(tdf)*100,1) if len(tdf) else 0,
-            "wins":len(wins),
-            "losses":len(losses),
-            "win_rate_pct":round(len(wins)/len(triggered)*100,1) if len(triggered) else 0,
-            "avg_return_pct":round(triggered["return_pct"].mean(),2) if len(triggered) else math.nan,
-            "median_return_pct":round(triggered["return_pct"].median(),2) if len(triggered) else math.nan,
-            "avg_r_multiple":round(triggered["r_multiple"].mean(),2) if len(triggered) else math.nan,
-            "target_hit_rate_pct":round((triggered["outcome"]=="TARGET").mean()*100,1) if len(triggered) else 0,
-            "stop_hit_rate_pct":round((triggered["outcome"]=="STOP").mean()*100,1) if len(triggered) else 0,
-            "horizon_days":horizon,
-            "signal_stride_days":stride,
-            "tickers_tested":len(symbols),
-        }])
+    thresholds=_threshold_summary(tdf,horizon,stride,len(symbols))
+    thresholds.to_csv(OUTPUT_DIR/"backtest_thresholds.csv",index=False)
 
-    summary.to_csv(OUTPUT_DIR/"backtest_summary.csv",index=False)
-    print("\nBACKTEST SUMMARY")
-    print(summary.to_string(index=False))
-    print(f"Saved {OUTPUT_DIR/'backtest_trades.csv'}")
-    print(f"Saved {OUTPUT_DIR/'backtest_summary.csv'}")
-    return summary,tdf
+    strict=thresholds[thresholds["rr_threshold"].eq(2.5)].copy()
+    strict.to_csv(OUTPUT_DIR/"backtest_summary.csv",index=False)
+
+    print("\nR/R THRESHOLD CALIBRATION")
+    print(thresholds.to_string(index=False))
+    return strict,tdf
 
 if __name__=="__main__":
-    p=argparse.ArgumentParser(description="Market Hunt historical walk-forward backtest")
+    p=argparse.ArgumentParser(description="Market Hunt historical walk-forward calibration")
     p.add_argument("--tickers",default="")
     p.add_argument("--max-tickers",type=int,default=BACKTEST_MAX_TICKERS)
     p.add_argument("--horizon",type=int,default=BACKTEST_HORIZON_DAYS)

@@ -1,0 +1,59 @@
+name: Market Hunt Calibration Backtest
+
+on:
+  push:
+    paths:
+      - 'scanner/backtest.py'
+      - 'scanner/stocks.py'
+      - 'scanner/config.py'
+      - '.github/workflows/market-hunt-backtest.yml'
+  workflow_dispatch:
+
+jobs:
+  calibration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore latest tradable universe
+        uses: actions/cache/restore@v4
+        with:
+          path: outputs
+          key: market-hunt-base-calibration
+          restore-keys: |
+            market-hunt-base-
+
+      - name: Run 100-stock 3-year R/R calibration
+        run: python -m scanner.backtest --max-tickers 100 --period 3y --horizon 7 --stride 10
+
+      - name: Add calibration table to summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## Market Hunt R/R Calibration" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f outputs/backtest_thresholds.csv ]; then
+            cat outputs/backtest_thresholds.csv >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No calibration output generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload calibration outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-hunt-calibration-results
+          path: |
+            outputs/backtest_trades.csv
+            outputs/backtest_thresholds.csv
+            outputs/backtest_summary.csv
+          if-no-files-found: warn
