@@ -6,176 +6,195 @@ import pandas as pd
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="Market Hunt V3",page_icon="📈",layout="wide")
-st.title("📈 Market Hunt V3 — U.S. Opportunity Scanner")
-st.caption("Technical discovery + theme momentum + optional catalysts + intraday state monitoring. Research/decision support only.")
+st.set_page_config(page_title="Market Hunt V3", page_icon="⚡", layout="wide", initial_sidebar_state="collapsed")
 
-REMOTE_BASE=os.getenv(
-    "SCAN_DATA_BASE_URL",
-    "https://raw.githubusercontent.com/AmolBhosale1989/ai-market-scanner/scan-data/dashboard-data",
-).rstrip("/")
-LOCAL_DIR=Path("outputs")
+st.markdown("""<style>
+:root{--bg:#07101d;--panel:#0e1b2d;--panel2:#12243a;--line:#203a58;--text:#f2f7ff;--muted:#91a6bf;--green:#65e6b2;--amber:#ffd166;--blue:#73b7ff}
+.stApp{background:radial-gradient(circle at 8% 0%,#152b47 0,var(--bg) 38%);color:var(--text)}
+.block-container{max-width:1380px;padding-top:1.25rem;padding-bottom:5rem}
+.hero{padding:24px 26px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#142b48,#0c1727 62%);
+box-shadow:0 18px 45px #0006;margin-bottom:16px}.eyebrow{font-size:.75rem;letter-spacing:.14em;color:var(--green);font-weight:800}
+.hero h1{font-size:clamp(2rem,5vw,3.35rem);line-height:1;margin:.4rem 0}.hero p{color:var(--muted);max-width:760px;margin:.7rem 0 0}
+[data-testid="stMetric"]{background:linear-gradient(145deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:18px;padding:14px 15px;box-shadow:0 10px 28px #0004}
+[data-testid="stMetricLabel"]{color:var(--muted)}[data-testid="stMetricValue"]{color:var(--text)}
+.status{display:inline-flex;gap:7px;align-items:center;padding:6px 11px;border:1px solid #275171;border-radius:999px;background:#10253a;color:var(--blue);font-size:.78rem}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green)}
+.section-note{color:var(--muted);font-size:.88rem;margin-top:-.55rem;margin-bottom:.8rem}
+.signal{border:1px solid var(--line);border-radius:18px;padding:16px;background:linear-gradient(145deg,#102039,#0c1727);margin:.4rem 0}
+.signal b{font-size:1.15rem}.good{color:var(--green)}.warn{color:var(--amber)}.muted{color:var(--muted)}
+.stTabs [data-baseweb="tab-list"]{gap:8px;overflow-x:auto}.stTabs [data-baseweb="tab"]{background:#0c192a;border:1px solid #1e3855;border-radius:999px;padding:8px 16px}
+.stTabs [aria-selected="true"]{background:#183353!important;color:#fff!important}
+div[data-testid="stDataFrame"]{border:1px solid var(--line);border-radius:16px;overflow:hidden}
+@media(max-width:640px){.block-container{padding:1rem .72rem 5rem}.hero{padding:19px;border-radius:20px}.hero p{font-size:.9rem}
+[data-testid="stMetric"]{padding:11px}.stTabs [data-baseweb="tab"]{padding:7px 12px}}
+</style>""", unsafe_allow_html=True)
 
-@st.cache_data(ttl=60,show_spinner=False)
-def _remote_csv(name: str):
-    url=f"{REMOTE_BASE}/{name}"
-    r=requests.get(url,timeout=8)
-    r.raise_for_status()
-    return pd.read_csv(StringIO(r.text))
+REMOTE_BASE = os.getenv("SCAN_DATA_BASE_URL", "https://raw.githubusercontent.com/AmolBhosale1989/ai-market-scanner/scan-data/dashboard-data").rstrip("/")
+LOCAL_DIR = Path("outputs")
 
-def load_csv(name: str):
+@st.cache_data(ttl=60, show_spinner=False)
+def remote_csv(name):
+    response = requests.get(f"{REMOTE_BASE}/{name}", timeout=8)
+    response.raise_for_status()
+    return pd.read_csv(StringIO(response.text))
+
+def load_csv(name):
     try:
-        return _remote_csv(name),"scan-data"
+        return remote_csv(name), "published"
     except Exception:
-        path=LOCAL_DIR/name
+        path = LOCAL_DIR / name
         if path.exists():
-            try:
-                return pd.read_csv(path),"local"
-            except Exception:
-                pass
-    return pd.DataFrame(),"unavailable"
+            try: return pd.read_csv(path), "local"
+            except Exception: pass
+    return pd.DataFrame(), "unavailable"
 
-scan_meta,scan_meta_source=load_csv("scan_metadata.csv")
-live_meta,live_meta_source=load_csv("live_metadata.csv")
-health,_=load_csv("scan_health.csv")
-live,_=load_csv("intraday_live.csv")
-transitions,_=load_csv("state_transitions.csv")
-themes,_=load_csv("trending_themes.csv")
-df,_=load_csv("latest_scan.csv")
-tradable,_=load_csv("tradable_universe.csv")
-all_candidates,_=load_csv("all_candidates.csv")
-events,_=load_csv("upcoming_events.csv")
-event_status,_=load_csv("event_status.csv")
-journal,_=load_csv("paper_journal.csv")
-performance,_=load_csv("performance_summary.csv")
-performance_by_setup,_=load_csv("performance_by_setup.csv")
-calibration,_=load_csv("probability_calibration.csv")
-monitor_health,_=load_csv("monitor_health.csv")
+def number(value, default=0):
+    try: return float(value)
+    except (TypeError, ValueError): return default
 
-if not scan_meta.empty:
-    stamp=str(scan_meta.iloc[0].get("generated_at_utc",""))
-    st.caption(f"Base scan data: {stamp} UTC · source: {scan_meta_source}")
-else:
-    st.caption(f"Base scan source: {scan_meta_source}")
+def columns(frame, preferred):
+    return [name for name in preferred if name in frame.columns]
 
-if not live_meta.empty:
-    live_stamp=str(live_meta.iloc[0].get("updated_at_utc",""))
-    st.caption(f"Live monitor data: {live_stamp} UTC · source: {live_meta_source}")
+files = {
+    "scan_meta":"scan_metadata.csv", "live_meta":"live_metadata.csv", "health":"scan_health.csv",
+    "live":"intraday_live.csv", "transitions":"state_transitions.csv", "themes":"trending_themes.csv",
+    "picks":"latest_scan.csv", "tradable":"tradable_universe.csv", "candidates":"all_candidates.csv",
+    "events":"upcoming_events.csv", "event_status":"event_status.csv", "journal":"paper_journal.csv",
+    "performance":"performance_summary.csv", "performance_setup":"performance_by_setup.csv",
+    "calibration":"probability_calibration.csv", "monitor":"monitor_health.csv",
+}
+data, sources = {}, {}
+for key, filename in files.items():
+    data[key], sources[key] = load_csv(filename)
 
-if not health.empty:
-    r=health.iloc[0]
-    c=st.columns(4)
-    c[0].metric("Scan",str(r.get("status","?")))
-    c[1].metric("Master universe",f"{int(r.get('master_universe_symbols',0)):,}")
-    c[2].metric("Tradable universe",f"{int(r.get('tradable_symbols',0)):,}")
-    c[3].metric("Analyzable",f"{float(r.get('analyzable_coverage',0))*100:.1f}%")
-else:
-    st.warning("Scan health data is not available yet.")
+st.markdown("""<div class="hero"><div class="eyebrow">PERSONAL RESEARCH TERMINAL · V3</div>
+<h1>Market Hunt</h1><p>Broad U.S. discovery, leading themes, multi-timeframe structure,
+event intelligence and live confirmation—distilled into actionable research states.</p></div>""", unsafe_allow_html=True)
 
-if not monitor_health.empty:
-    mh=monitor_health.iloc[0]
-    st.caption(
-        f"Live monitor health: {mh.get('status','?')} · monitored {int(mh.get('monitored_candidates',0))} · "
-        f"alerts {int(mh.get('alerts_generated',0))} · Telegram configured {bool(mh.get('telegram_configured',False))}"
-    )
+scan_meta, live_meta, health, monitor = data["scan_meta"], data["live_meta"], data["health"], data["monitor"]
+scan_stamp = str(scan_meta.iloc[0].get("generated_at_utc", "Waiting for first scan")) if not scan_meta.empty else "Waiting for first scan"
+live_stamp = str(live_meta.iloc[0].get("updated_at_utc", "Waiting for monitor")) if not live_meta.empty else "Waiting for monitor"
+source_state = "CONNECTED" if sources["picks"] != "unavailable" else "WAITING"
+st.markdown(f'<span class="status"><span class="dot"></span>{source_state} · base {sources["picks"]} · refreshes every 60s</span>', unsafe_allow_html=True)
+st.caption(f"Base scan: {scan_stamp} UTC · Live monitor: {live_stamp} UTC")
 
-if not performance.empty:
-    st.subheader("📊 Forward Validation")
-    p=performance.iloc[0]
-    c=st.columns(5)
-    c[0].metric("Signals",int(p.get("signals",0)))
-    c[1].metric("Closed",int(p.get("closed_signals",0)))
-    c[2].metric("Win rate",f"{float(p.get('win_rate_pct',0) or 0):.1f}%")
-    c[3].metric("Avg R",f"{float(p.get('avg_r_multiple',0) or 0):.2f}")
-    c[4].metric("Target hit",f"{float(p.get('target_hit_rate_pct',0) or 0):.1f}%")
-    if not performance_by_setup.empty:
-        with st.expander("Performance by setup / regime / theme"):
-            st.dataframe(performance_by_setup,use_container_width=True,hide_index=True)
+h = health.iloc[0] if not health.empty else {}
+mh = monitor.iloc[0] if not monitor.empty else {}
+m1,m2,m3,m4,m5 = st.columns(5)
+m1.metric("Scan health", str(h.get("status", "WAITING")))
+m2.metric("Master universe", f'{int(number(h.get("master_universe_symbols"))):,}')
+m3.metric("Tradable", f'{int(number(h.get("tradable_symbols"))):,}')
+m4.metric("Analyzable", f'{number(h.get("analyzable_coverage"))*100:.1f}%')
+m5.metric("Live alerts", f'{int(number(mh.get("alerts_generated"))):,}')
 
-if not calibration.empty:
-    st.subheader("🎯 Probability Calibration")
-    usable=calibration[calibration["calibration_status"].eq("USABLE")] if "calibration_status" in calibration.columns else pd.DataFrame()
-    if usable.empty:
-        st.info("Calibration is collecting forward samples. Probabilities remain provisional until each score bucket has enough closed trades.")
-    st.dataframe(calibration,use_container_width=True,hide_index=True)
+overview, opportunities, live_tab, event_tab, validation, system = st.tabs(
+    ["Overview", "Opportunities", "Live monitor", "Events", "Validation", "System"]
+)
 
-if not live.empty:
-    st.subheader("⚡ Live Monitor")
-    live_cols=["ticker","monitor_state","previous_state","state_changed","premarket_price","premarket_gap_pct",
-               "premarket_volume","premarket_status","live_price","entry_trigger","stop","live_vwap",
-               "opening_range_high","intraday_rvol","live_confirmation_score","theme","catalyst_status",
-               "live_trade_action","checked_at_et"]
-    st.dataframe(live[[c for c in live_cols if c in live.columns]],use_container_width=True,hide_index=True)
+with overview:
+    st.subheader("Today at a glance")
+    st.markdown('<div class="section-note">Only evidence-backed rows published by the production workflows are displayed.</div>', unsafe_allow_html=True)
+    themes, picks, live = data["themes"], data["picks"], data["live"]
+    a,b,c = st.columns(3)
+    a.metric("Ranked opportunities", len(picks))
+    b.metric("Leading themes", len(themes))
+    confirmed = int(live["monitor_state"].astype(str).eq("CONFIRMED").sum()) if not live.empty and "monitor_state" in live else 0
+    c.metric("Live confirmed", confirmed)
+    if not picks.empty:
+        for _, row in picks.head(3).iterrows():
+            ticker = str(row.get("ticker","—")); stage = str(row.get("stage","WATCH"))
+            decision = str(row.get("final_decision", row.get("decision","RESEARCH")))
+            score = number(row.get("market_hunt_score")); rr = number(row.get("effective_rr"))
+            tone = "good" if "BUY" in decision or stage == "CONFIRMED" else "warn"
+            st.markdown(f'<div class="signal"><b>{ticker}</b> · <span class="{tone}">{stage}</span>'
+                        f'<br><span class="muted">{decision} · score {score:.1f} · R/R {rr:.2f}×</span></div>', unsafe_allow_html=True)
+    else:
+        st.info("The next successful full scan will publish ranked opportunities here.")
+    if not themes.empty:
+        st.subheader("Leading themes")
+        st.dataframe(themes.head(10)[columns(themes,["theme_rank","theme","etf","theme_score","theme_state","ret5_pct","ret20_pct","rel5_vs_spy","rel20_vs_spy"])],
+                     hide_index=True,use_container_width=True)
 
-if not transitions.empty:
-    with st.expander("State transition history"):
-        st.dataframe(transitions.tail(100).iloc[::-1],use_container_width=True,hide_index=True)
-
-if not journal.empty:
-    st.subheader("🧪 Paper Trading Journal")
-    journal_cols=["ticker","first_seen_et","stage","entry_trigger","stop","effective_target","effective_rr",
-                  "entry_model","market_regime_state","theme","catalyst_status","paper_state",
-                  "last_price","outcome","return_pct","r_multiple","closed_at_et"]
-    st.dataframe(journal[[c for c in journal_cols if c in journal.columns]].tail(200).iloc[::-1],
-                 use_container_width=True,hide_index=True)
-
-if not event_status.empty:
-    er=event_status.iloc[0]
-    provider=str(er.get("provider",""))
-    status=str(er.get("status",""))
-    detail=str(er.get("detail",""))
-    st.caption(f"Event calendar status: {provider} · {status}" + (f" · {detail}" if detail else ""))
-
-if not events.empty:
-    st.subheader("📅 Upcoming Events")
-    event_cols=["ticker","company_name","event_type","event_date_utc","earnings_report_time","days_to_event","event_priority",
-                "pre_event_decision","event_opportunity_score","pre_earnings_intel_score",
-                "eps_estimate","forward_eps_estimate","forward_eps_analyst_count",
-                "estimate_revision_score","eps_revision_7d_pct","eps_revision_30d_pct","eps_revision_60d_pct",
-                "eps_revision_90d_pct","beat_rate_pct","median_surprise_pct",
-                "latest_surprise_pct","surprise_streak","prior_earnings_reaction_avg_pct",
-                "prior_earnings_reaction_abs_avg_pct","prior_earnings_positive_reaction_rate",
-                "pre_event_compression_score","pre_event_range10_pct","pre_event_vol5_vs20",
-                "guidance_revision_score","guidance_positive_mentions","guidance_negative_mentions",
-                "revision_up_mentions","revision_down_mentions","options_implied_move_pct",
-                "implied_move_vs_5pct","options_expiry","options_data_status","pre_event_setup_state","price","technical_score",
-                "entry_trigger","entry_model","stop","effective_target","effective_rr",
-                "market_regime_state","avg_dollar_volume20"]
-    st.dataframe(events[[c for c in event_cols if c in events.columns]].head(100),
-                 use_container_width=True,hide_index=True)
-
-if not themes.empty:
-    st.subheader("🔥 Trending Themes")
-    theme_cols=["theme_rank","theme","etf","theme_score","theme_state","ret5_pct","ret20_pct","rel5_vs_spy","rel20_vs_spy"]
-    st.dataframe(themes.head(12)[[c for c in theme_cols if c in themes.columns]],use_container_width=True,hide_index=True)
-
-if not df.empty:
-    st.subheader("Top Market Hunt Opportunities")
-    stages=sorted(df["stage"].dropna().unique()) if "stage" in df.columns else []
-    selected=st.multiselect("Stage",stages,default=stages)
-    view=df[df["stage"].isin(selected)] if selected and "stage" in df.columns else df
-    priority=["ticker","company_name","price","stage","theme","theme_state","theme_score",
-              "market_hunt_score","final_decision","market_regime_state","market_regime_score","sector_regime_ok",
-              "catalyst_score","catalyst_status","entry_trigger","entry_model","entry_condition",
-              "retest_reference","retest_distance_pct","retest_quality_score","ema20_slope5_pct",
-              "support_touch_count","higher_low","bullish_close","entry_buffer_pct","stop","stop_basis",
-              "stop_anchor","risk_pct","effective_target","effective_rr","target_5","target_8","target_10",
-              "rr_to_8pct","runway_to_next_resistance_pct","pattern"]
-    cols=[c for c in priority if c in view.columns]+[c for c in view.columns if c not in priority]
-    st.dataframe(view[cols],use_container_width=True,hide_index=True)
-else:
-    st.info("No base scan results are available yet. The next successful full scan will publish them automatically.")
-
-if not tradable.empty:
-    with st.expander("Tradable universe"):
-        count=int(tradable["tradable"].sum()) if "tradable" in tradable.columns else len(tradable)
-        st.write(f"{count:,} stocks currently pass the tradability gate.")
-        st.dataframe(tradable.head(500),use_container_width=True,hide_index=True)
-
-if not all_candidates.empty:
+with opportunities:
+    picks = data["picks"]
+    st.subheader("Market Hunt shortlist")
+    st.markdown('<div class="section-note">Stage and score narrow attention; entry trigger and invalidation govern action.</div>', unsafe_allow_html=True)
+    if picks.empty: st.info("No base scan results are available yet.")
+    else:
+        query = st.text_input("Find ticker or company", placeholder="AXTI, IOVA…")
+        view = picks.copy()
+        if query:
+            mask = view.astype(str).apply(lambda col: col.str.contains(query,case=False,na=False)).any(axis=1)
+            view = view[mask]
+        stages = sorted(view["stage"].dropna().astype(str).unique()) if "stage" in view else []
+        selected = st.multiselect("Stage", stages, default=stages)
+        if selected and "stage" in view: view = view[view["stage"].astype(str).isin(selected)]
+        priority=["ticker","company_name","price","stage","theme","theme_state","market_hunt_score","final_decision",
+                  "market_regime_state","catalyst_status","entry_trigger","entry_model","entry_condition","stop","stop_basis",
+                  "risk_pct","effective_target","effective_rr","target_5","target_8","target_10",
+                  "runway_to_next_resistance_pct","pattern"]
+        st.dataframe(view[columns(view,priority)],hide_index=True,use_container_width=True)
+        st.download_button("Download shortlist", view.to_csv(index=False), "market_hunt_shortlist.csv", "text/csv", use_container_width=True)
     with st.expander("All deep-scanned candidates"):
-        st.dataframe(all_candidates,use_container_width=True,hide_index=True)
+        candidates=data["candidates"]
+        st.dataframe(candidates,hide_index=True,use_container_width=True) if not candidates.empty else st.write("Not available.")
 
-st.divider()
-st.subheader("Pipeline")
-st.write("5k+ master universe → fast liquidity/price gate → tradable universe → themes → early technical structure → D/W/M S/R → runway/R:R → optional catalyst → ARMED/CONFIRMED → 15-minute live VWAP/ORB/RVOL state monitor → BUY/FAILED/INVALIDATED")
+with live_tab:
+    live, transitions, journal = data["live"], data["transitions"], data["journal"]
+    st.subheader("Intraday confirmation")
+    st.markdown('<div class="section-note">VWAP, opening range and RVOL update research states; no broker orders are placed.</div>', unsafe_allow_html=True)
+    if not live.empty:
+        preferred=["ticker","monitor_state","previous_state","state_changed","premarket_price","premarket_gap_pct","premarket_volume",
+                   "premarket_status","live_price","entry_trigger","stop","live_vwap","opening_range_high","intraday_rvol",
+                   "live_confirmation_score","theme","catalyst_status","live_trade_action","checked_at_et"]
+        st.dataframe(live[columns(live,preferred)],hide_index=True,use_container_width=True)
+    else: st.info("Live monitor output is not available yet.")
+    with st.expander("State transition history"):
+        st.dataframe(transitions.tail(100).iloc[::-1],hide_index=True,use_container_width=True) if not transitions.empty else st.write("No transitions yet.")
+    with st.expander("Paper-trading journal"):
+        st.dataframe(journal.tail(200).iloc[::-1],hide_index=True,use_container_width=True) if not journal.empty else st.write("No journal rows yet.")
+
+with event_tab:
+    events, event_status = data["events"], data["event_status"]
+    st.subheader("Upcoming catalysts")
+    if not event_status.empty:
+        row=event_status.iloc[0]
+        st.caption(f'{row.get("provider","")} · {row.get("status","")} · {row.get("detail","")}')
+    if events.empty: st.info("Event calendar output is not available yet.")
+    else:
+        preferred=["ticker","company_name","event_type","event_date_utc","earnings_report_time","days_to_event","event_priority",
+                   "pre_event_decision","event_opportunity_score","pre_earnings_intel_score","estimate_revision_score",
+                   "beat_rate_pct","median_surprise_pct","latest_surprise_pct","surprise_streak",
+                   "prior_earnings_reaction_abs_avg_pct","options_implied_move_pct","pre_event_setup_state",
+                   "entry_trigger","stop","effective_target","effective_rr"]
+        st.dataframe(events[columns(events,preferred)].head(100),hide_index=True,use_container_width=True)
+
+with validation:
+    performance, setup, calibration = data["performance"], data["performance_setup"], data["calibration"]
+    st.subheader("Forward validation")
+    if not performance.empty:
+        p=performance.iloc[0]; c1,c2,c3,c4,c5=st.columns(5)
+        c1.metric("Signals",int(number(p.get("signals")))); c2.metric("Closed",int(number(p.get("closed_signals"))))
+        c3.metric("Win rate",f'{number(p.get("win_rate_pct")):.1f}%'); c4.metric("Average R",f'{number(p.get("avg_r_multiple")):.2f}')
+        c5.metric("Target hit",f'{number(p.get("target_hit_rate_pct")):.1f}%')
+    else: st.info("Forward-validation samples are still being collected.")
+    if not setup.empty:
+        st.subheader("Performance by setup")
+        st.dataframe(setup,hide_index=True,use_container_width=True)
+    st.subheader("Probability calibration")
+    if calibration.empty: st.info("Calibration output is not available yet.")
+    else:
+        usable=calibration[calibration["calibration_status"].eq("USABLE")] if "calibration_status" in calibration else pd.DataFrame()
+        if usable.empty: st.warning("Probabilities remain provisional until score buckets have enough closed trades.")
+        st.dataframe(calibration,hide_index=True,use_container_width=True)
+
+with system:
+    st.subheader("Pipeline and data health")
+    st.write("5k+ universe → liquidity gate → themes → technical structure → D/W/M levels → runway and R/R → catalysts → live VWAP/ORB/RVOL → research state")
+    status_rows=pd.DataFrame([{"dataset":key,"rows":len(data[key]),"source":sources[key]} for key in files])
+    st.dataframe(status_rows,hide_index=True,use_container_width=True)
+    tradable=data["tradable"]
+    if not tradable.empty:
+        passed=int(tradable["tradable"].sum()) if "tradable" in tradable else len(tradable)
+        st.metric("Current tradability gate",f"{passed:,} symbols")
+    st.warning("Research and decision support only. Data may be delayed or incomplete. Stops can gap and no setup guarantees a 5–10% move.")
