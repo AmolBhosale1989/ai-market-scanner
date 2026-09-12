@@ -58,6 +58,7 @@ def columns(frame, preferred):
 files = {
     "scan_meta":"scan_metadata.csv", "live_meta":"live_metadata.csv", "health":"scan_health.csv",
     "live":"intraday_live.csv", "transitions":"state_transitions.csv", "themes":"trending_themes.csv",
+    "recommendations":"recommended_trades.csv", "watchlist":"watchlist.csv",
     "picks":"latest_scan.csv", "tradable":"tradable_universe.csv", "candidates":"all_candidates.csv",
     "events":"upcoming_events.csv", "event_status":"event_status.csv", "journal":"paper_journal.csv",
     "performance":"performance_summary.csv", "performance_setup":"performance_by_setup.csv",
@@ -94,14 +95,15 @@ overview, opportunities, live_tab, event_tab, validation, system = st.tabs(
 with overview:
     st.subheader("Today at a glance")
     st.markdown('<div class="section-note">Only evidence-backed rows published by the production workflows are displayed.</div>', unsafe_allow_html=True)
-    themes, picks, live = data["themes"], data["picks"], data["live"]
-    a,b,c = st.columns(3)
-    a.metric("Ranked opportunities", len(picks))
-    b.metric("Leading themes", len(themes))
-    confirmed = int(live["monitor_state"].astype(str).eq("CONFIRMED").sum()) if not live.empty and "monitor_state" in live else 0
-    c.metric("Live confirmed", confirmed)
-    if not picks.empty:
-        for _, row in picks.head(3).iterrows():
+    themes, recommendations, watchlist, live = data["themes"], data["recommendations"], data["watchlist"], data["live"]
+    a,b,c,d = st.columns(4)
+    a.metric("Live recommendations", len(recommendations))
+    b.metric("Research watchlist", len(watchlist))
+    c.metric("Leading themes", len(themes))
+    confirmed = int(live["monitor_state"].astype(str).eq("LIVE_CONFIRMED").sum()) if not live.empty and "monitor_state" in live else 0
+    d.metric("Live confirmed", confirmed)
+    if not recommendations.empty:
+        for _, row in recommendations.head(3).iterrows():
             ticker = str(row.get("ticker","—")); stage = str(row.get("stage","WATCH"))
             decision = str(row.get("final_decision", row.get("decision","RESEARCH")))
             score = number(row.get("market_hunt_score")); rr = number(row.get("effective_rr"))
@@ -109,17 +111,29 @@ with overview:
             st.markdown(f'<div class="signal"><b>{ticker}</b> · <span class="{tone}">{stage}</span>'
                         f'<br><span class="muted">{decision} · score {score:.1f} · R/R {rr:.2f}×</span></div>', unsafe_allow_html=True)
     else:
-        st.info("The next successful full scan will publish ranked opportunities here.")
+        st.info("No stock currently passes every recommendation gate. Preliminary setups remain in the research watchlist.")
     if not themes.empty:
         st.subheader("Leading themes")
         st.dataframe(themes.head(10)[columns(themes,["theme_rank","theme","etf","theme_score","theme_state","ret5_pct","ret20_pct","rel5_vs_spy","rel20_vs_spy"])],
                      hide_index=True,use_container_width=True)
 
 with opportunities:
-    picks = data["picks"]
-    st.subheader("Market Hunt shortlist")
-    st.markdown('<div class="section-note">Stage and score narrow attention; entry trigger and invalidation govern action.</div>', unsafe_allow_html=True)
-    if picks.empty: st.info("No base scan results are available yet.")
+    recommendations = data["recommendations"]
+    st.subheader("Live-confirmed recommendations")
+    st.markdown('<div class="section-note">Only stocks passing liquidity, volatility, catalyst, spread, runway, R/R and live VWAP/ORB/RVOL gates appear here.</div>', unsafe_allow_html=True)
+    recommendation_cols=["ticker","company_name","live_price","stage","theme","market_hunt_score","catalyst_status",
+                         "catalyst_score","intraday_rvol","bid_ask_spread_pct","entry_trigger","stop",
+                         "effective_target","effective_rr","live_trade_action"]
+    if recommendations.empty:
+        st.info("No actionable recommendation currently passes every gate.")
+    else:
+        st.dataframe(recommendations[columns(recommendations,recommendation_cols)],hide_index=True,use_container_width=True)
+        st.download_button("Download recommendations", recommendations.to_csv(index=False), "market_hunt_recommendations.csv", "text/csv", use_container_width=True)
+
+    picks = data["watchlist"] if not data["watchlist"].empty else data["picks"]
+    st.subheader("Research watchlist")
+    st.markdown('<div class="section-note">FORMING, DISCOVER and waiting setups are research candidates—not trade recommendations.</div>', unsafe_allow_html=True)
+    if picks.empty: st.info("No watchlist results are available yet.")
     else:
         query = st.text_input("Find ticker or company", placeholder="AXTI, IOVA…")
         view = picks.copy()
@@ -130,11 +144,12 @@ with opportunities:
         selected = st.multiselect("Stage", stages, default=stages)
         if selected and "stage" in view: view = view[view["stage"].astype(str).isin(selected)]
         priority=["ticker","company_name","price","stage","theme","theme_state","market_hunt_score","final_decision",
+                  "avg_share_volume20","median_dollar_volume20","atr_pct","adr20_pct",
                   "market_regime_state","catalyst_status","entry_trigger","entry_model","entry_condition","stop","stop_basis",
                   "risk_pct","effective_target","effective_rr","target_5","target_8","target_10",
                   "runway_to_next_resistance_pct","pattern"]
         st.dataframe(view[columns(view,priority)],hide_index=True,use_container_width=True)
-        st.download_button("Download shortlist", view.to_csv(index=False), "market_hunt_shortlist.csv", "text/csv", use_container_width=True)
+        st.download_button("Download watchlist", view.to_csv(index=False), "market_hunt_watchlist.csv", "text/csv", use_container_width=True)
     with st.expander("All deep-scanned candidates"):
         candidates=data["candidates"]
         st.dataframe(candidates,hide_index=True,use_container_width=True) if not candidates.empty else st.write("Not available.")
