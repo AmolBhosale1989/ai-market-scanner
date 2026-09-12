@@ -133,3 +133,9 @@ The intraday monitor automatically maintains a persistent paper journal for ARME
 Upcoming earnings discovery uses Alpha Vantage's broad earnings calendar and intersects it with Market Hunt's liquid tradable universe. Set the GitHub Actions repository secret `ALPHA_VANTAGE_API_KEY` to enable this layer. Yahoo earnings-calendar endpoints are no longer used because repeated authorization/crumb failures made them unreliable in GitHub Actions.
 
 The scanner writes `outputs/event_status.csv` so the dashboard can distinguish a healthy empty event window from a missing provider key or provider failure.
+
+
+## Pre-earnings intelligence
+Upcoming earnings names are enriched only after event discovery, so this heavier analysis runs on a small event set rather than the whole universe. The layer records recent beat/miss history, median EPS surprise, prior earnings close-to-close reaction statistics, analyst estimate revisions when the Alpha Vantage EARNINGS_ESTIMATES endpoint is available, pre-event price/volume compression, guidance/revision headlines and an options-implied move when a usable option chain is available.
+
+The combined `pre_earnings_intel_score` is a ranking aid, not a directional probability or automatic trade signal. Missing estimates/options data does not block the rest of the event analysis.
