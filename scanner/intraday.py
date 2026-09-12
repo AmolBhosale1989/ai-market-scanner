@@ -191,12 +191,20 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
     source=Path(input_file) if input_file else OUTPUT_DIR/"latest_scan.csv"
     if not source.exists():
         print(f"No base shortlist found at {source}. Nothing to monitor.")
+        now=datetime.now(NY).isoformat(timespec="seconds")
+        build_performance_reports()
+        build_empirical_calibration()
+        _write_monitor_health(pd.DataFrame(),now,0,bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip()),False)
         return pd.DataFrame()
 
     base=pd.read_csv(source)
     watch=base[base["stage"].isin(["ARMED","CONFIRMED"])].copy()
     if watch.empty:
         print("No ARMED/CONFIRMED candidates to monitor.")
+        now=datetime.now(NY).isoformat(timespec="seconds")
+        build_performance_reports()
+        build_empirical_calibration()
+        _write_monitor_health(pd.DataFrame(),now,0,bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip()),False)
         return watch
 
     sort_col="market_hunt_score" if "market_hunt_score" in watch.columns else "final_score"
