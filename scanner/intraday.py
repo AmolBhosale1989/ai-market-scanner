@@ -196,6 +196,7 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
         build_performance_reports()
         build_empirical_calibration()
         _write_monitor_health(pd.DataFrame(),now,0,bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip()),False)
+        build_product_feed()
         return pd.DataFrame()
 
     base=pd.read_csv(source)
@@ -206,6 +207,7 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
         build_performance_reports()
         build_empirical_calibration()
         _write_monitor_health(pd.DataFrame(),now,0,bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip()),False)
+        build_product_feed()
         return watch
 
     sort_col="market_hunt_score" if "market_hunt_score" in watch.columns else "final_score"
