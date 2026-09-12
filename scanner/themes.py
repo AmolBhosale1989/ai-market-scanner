@@ -11,11 +11,11 @@ from .indicators import add_indicators
 
 THEMES = {
     "Semiconductors": {"etf":"SMH","industries":["semiconductors","semiconductor equipment"],"keywords":["semiconductor","chip","integrated circuit"]},
-    "AI & Robotics": {"etf":"BOTZ","industries":["specialty industrial machinery","computer hardware"],"keywords":["artificial intelligence","robotics","automation","machine learning"]},
-    "Cloud Computing": {"etf":"SKYY","industries":["software - infrastructure","software - application","information technology services"],"keywords":["cloud computing","cloud platform","saas"]},
-    "Cybersecurity": {"etf":"HACK","industries":["software - infrastructure","software - application"],"keywords":["cybersecurity","security software","network security"]},
+    "AI & Robotics": {"etf":"BOTZ","industries":[],"keywords":["artificial intelligence","robotics","automation","machine learning"]},
+    "Cloud Computing": {"etf":"SKYY","industries":[],"keywords":["cloud computing","cloud platform","saas"]},
+    "Cybersecurity": {"etf":"HACK","industries":[],"keywords":["cybersecurity","security software","network security"]},
     "Biotechnology": {"etf":"XBI","industries":["biotechnology"],"keywords":["biotechnology","biotech"]},
-    "Genomics": {"etf":"ARKG","industries":["biotechnology","diagnostics & research"],"keywords":["genomic","genetics","gene therapy","gene editing"]},
+    "Genomics": {"etf":"ARKG","industries":[],"keywords":["genomic","genetics","gene therapy","gene editing"]},
     "Defense & Aerospace": {"etf":"ITA","industries":["aerospace & defense"],"keywords":["aerospace","defense"]},
     "Energy": {"etf":"XLE","industries":["oil & gas e&p","oil & gas integrated","oil & gas midstream","oil & gas refining & marketing"],"keywords":["oil","gas","energy","exploration","petroleum"]},
     "Oil Services": {"etf":"OIH","industries":["oil & gas equipment & services","oil & gas drilling"],"keywords":["oilfield","drilling","oil services"]},
@@ -26,8 +26,8 @@ THEMES = {
     "Infrastructure": {"etf":"PAVE","industries":["engineering & construction","specialty industrial machinery"],"keywords":["infrastructure","engineering","construction"]},
     "Homebuilders": {"etf":"XHB","industries":["residential construction","building products & equipment"],"keywords":["homebuilding","homebuilder","residential construction"]},
     "Regional Banks": {"etf":"KRE","industries":["banks - regional"],"keywords":["regional bank"]},
-    "Fintech": {"etf":"FINX","industries":["financial data & stock exchanges","credit services"],"keywords":["financial technology","fintech","digital payments"]},
-    "Cannabis": {"etf":"MSOS","industries":["drug manufacturers - specialty & generic"],"keywords":["cannabis","marijuana"]},
+    "Fintech": {"etf":"FINX","industries":[],"keywords":["financial technology","fintech","digital payments"]},
+    "Cannabis": {"etf":"MSOS","industries":[],"keywords":["cannabis","marijuana"]},
 }
 
 def _ret(d: pd.DataFrame, n: int):
@@ -151,11 +151,14 @@ def enrich_candidate_themes(df: pd.DataFrame, theme_table: pd.DataFrame, limit: 
             if confidence>=0.70:
                 bonus=max(0.0,min(THEME_BONUS_MAX,(score-50)/50*THEME_BONUS_MAX))*confidence
 
-            out.at[idx,"theme"]=matched["theme"]
-            out.at[idx,"theme_etf"]=matched["etf"]
-            out.at[idx,"theme_score"]=round(score,1)
-            out.at[idx,"theme_state"]=matched["state"]
-            out.at[idx,"theme_bonus"]=round(bonus,2)
+            # Summary-only matches are retained as diagnostics but are not
+            # presented as an actual theme classification.
+            if confidence>=0.70:
+                out.at[idx,"theme"]=matched["theme"]
+                out.at[idx,"theme_etf"]=matched["etf"]
+                out.at[idx,"theme_score"]=round(score,1)
+                out.at[idx,"theme_state"]=matched["state"]
+                out.at[idx,"theme_bonus"]=round(bonus,2)
             out.at[idx,"theme_match_confidence"]=round(confidence,2)
             out.at[idx,"theme_match_source"]=matched["source"]
             out.at[idx,"theme_match_reason"]=matched["reason"]
