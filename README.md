@@ -46,3 +46,17 @@ Research and decision support only. No guaranteed returns and no automatic trade
 
 ## R/R calibration workflow
 A dedicated calibration run now tests the most liquid 100 stocks across three years and compares effective R/R thresholds of 1.5, 2.0, 2.5 and 3.0. This is intended to calibrate selectivity from historical outcomes instead of lowering the 2.5 threshold merely to produce more trades.
+
+
+## Structure-aware entry/stop model
+Market Hunt now derives trade risk from visible chart structure instead of a single generic ATR stop.
+
+Developing setups use a small volatility-aware buffer above daily resistance. Stops are anchored to the closest valid recent structure among the 5-day swing low, EMA20, 10-day swing low, daily support and EMA50, with an ATR buffer beneath the anchor.
+
+Safety constraints prevent artificial R/R inflation:
+- minimum stop distance is 0.75 ATR
+- anchors more than 7% below entry are ignored for the active swing setup
+- risk wider than 6% is capped and penalized
+- resistance-capped effective target and minimum 2.5 effective R/R remain unchanged
+
+The backtest records entry model, stop basis and risk percentage so this model can be calibrated empirically.
