@@ -29,6 +29,7 @@ def build_product_feed():
         "research_only":True,
         "market_hunt":{
             "recommendations":_records("recommended_trades.csv",20),
+            "liquid_leaders":_records("liquid_leaders.csv",50),
             "watchlist":_records("watchlist.csv",50),
             "opportunities":_records("latest_scan.csv",50),
             "upcoming_events":_records("upcoming_events.csv",100),
