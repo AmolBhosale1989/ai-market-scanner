@@ -34,6 +34,9 @@ jobs:
       - name: Run focused backtest smoke
         run: python -m scanner.backtest --tickers AAPL,MSFT,NVDA,AMD,META --period 2y --horizon 7 --stride 10
 
+      - name: Run intraday monitor smoke
+        run: python -m scanner.intraday --limit 5
+
       - name: Upload scan outputs and health report
         if: always()
         uses: actions/upload-artifact@v4
