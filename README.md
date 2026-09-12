@@ -102,7 +102,7 @@ Historical calibration uses the SPY regime as it existed at each signal date, av
 
 
 ## Event-first catalyst discovery
-Market Hunt now scans the most liquid 400 stocks independently of the technical shortlist for upcoming earnings in the next 7 days. This closes the previous gap where a major company could have a known event but remain invisible until the chart had already moved.
+Market Hunt now scans the most liquid 1,200 stocks independently of the technical shortlist for upcoming earnings in the next 7 days. This closes the previous gap where a major company could have a known event but remain invisible until the chart had already moved.
 
 The event-first watchlist:
 - prioritizes the most liquid tradable stocks
