@@ -1,77 +1,112 @@
-import streamlit as st
-import pandas as pd
+import os
+from io import StringIO
 from pathlib import Path
+
+import pandas as pd
+import requests
+import streamlit as st
 
 st.set_page_config(page_title="Market Hunt V3",page_icon="📈",layout="wide")
 st.title("📈 Market Hunt V3 — U.S. Opportunity Scanner")
 st.caption("Technical discovery + theme momentum + optional catalysts + intraday state monitoring. Research/decision support only.")
 
-out=Path("outputs/latest_scan.csv")
-all_out=Path("outputs/all_candidates.csv")
-health_out=Path("outputs/scan_health.csv")
-themes_out=Path("outputs/trending_themes.csv")
-live_out=Path("outputs/intraday_live.csv")
-transitions_out=Path("outputs/state_transitions.csv")
-tradable_out=Path("outputs/tradable_universe.csv")
+REMOTE_BASE=os.getenv(
+    "SCAN_DATA_BASE_URL",
+    "https://raw.githubusercontent.com/AmolBhosale1989/ai-market-scanner/scan-data/dashboard-data",
+).rstrip("/")
+LOCAL_DIR=Path("outputs")
 
-if health_out.exists():
-    h=pd.read_csv(health_out)
-    if len(h):
-        r=h.iloc[0]
-        c=st.columns(4)
-        c[0].metric("Scan",str(r.get("status","?")))
-        c[1].metric("Master universe",f"{int(r.get('master_universe_symbols',0)):,}")
-        c[2].metric("Tradable universe",f"{int(r.get('tradable_symbols',0)):,}")
-        c[3].metric("Analyzable",f"{float(r.get('analyzable_coverage',0))*100:.1f}%")
+@st.cache_data(ttl=60,show_spinner=False)
+def _remote_csv(name: str):
+    url=f"{REMOTE_BASE}/{name}"
+    r=requests.get(url,timeout=8)
+    r.raise_for_status()
+    return pd.read_csv(StringIO(r.text))
 
-if live_out.exists():
-    live=pd.read_csv(live_out)
+def load_csv(name: str):
+    try:
+        return _remote_csv(name),"scan-data"
+    except Exception:
+        path=LOCAL_DIR/name
+        if path.exists():
+            try:
+                return pd.read_csv(path),"local"
+            except Exception:
+                pass
+    return pd.DataFrame(),"unavailable"
+
+scan_meta,scan_meta_source=load_csv("scan_metadata.csv")
+live_meta,live_meta_source=load_csv("live_metadata.csv")
+health,_=load_csv("scan_health.csv")
+live,_=load_csv("intraday_live.csv")
+transitions,_=load_csv("state_transitions.csv")
+themes,_=load_csv("trending_themes.csv")
+df,_=load_csv("latest_scan.csv")
+tradable,_=load_csv("tradable_universe.csv")
+all_candidates,_=load_csv("all_candidates.csv")
+
+if not scan_meta.empty:
+    stamp=str(scan_meta.iloc[0].get("generated_at_utc",""))
+    st.caption(f"Base scan data: {stamp} UTC · source: {scan_meta_source}")
+else:
+    st.caption(f"Base scan source: {scan_meta_source}")
+
+if not live_meta.empty:
+    live_stamp=str(live_meta.iloc[0].get("updated_at_utc",""))
+    st.caption(f"Live monitor data: {live_stamp} UTC · source: {live_meta_source}")
+
+if not health.empty:
+    r=health.iloc[0]
+    c=st.columns(4)
+    c[0].metric("Scan",str(r.get("status","?")))
+    c[1].metric("Master universe",f"{int(r.get('master_universe_symbols',0)):,}")
+    c[2].metric("Tradable universe",f"{int(r.get('tradable_symbols',0)):,}")
+    c[3].metric("Analyzable",f"{float(r.get('analyzable_coverage',0))*100:.1f}%")
+else:
+    st.warning("Scan health data is not available yet.")
+
+if not live.empty:
     st.subheader("⚡ Live Monitor")
     live_cols=["ticker","monitor_state","previous_state","state_changed","live_price","entry_trigger",
                "stop","live_vwap","opening_range_high","intraday_rvol","live_confirmation_score",
                "theme","catalyst_status","live_trade_action","checked_at_et"]
     st.dataframe(live[[c for c in live_cols if c in live.columns]],use_container_width=True,hide_index=True)
 
-if transitions_out.exists():
-    transitions=pd.read_csv(transitions_out)
-    if len(transitions):
-        with st.expander("State transition history"):
-            st.dataframe(transitions.tail(100).iloc[::-1],use_container_width=True,hide_index=True)
+if not transitions.empty:
+    with st.expander("State transition history"):
+        st.dataframe(transitions.tail(100).iloc[::-1],use_container_width=True,hide_index=True)
 
-if themes_out.exists():
-    themes=pd.read_csv(themes_out)
+if not themes.empty:
     st.subheader("🔥 Trending Themes")
     theme_cols=["theme_rank","theme","etf","theme_score","theme_state","ret5_pct","ret20_pct","rel5_vs_spy","rel20_vs_spy"]
     st.dataframe(themes.head(12)[[c for c in theme_cols if c in themes.columns]],use_container_width=True,hide_index=True)
 
-if out.exists():
-    df=pd.read_csv(out)
+if not df.empty:
     st.subheader("Top Market Hunt Opportunities")
-    stages=sorted(df["stage"].dropna().unique())
+    stages=sorted(df["stage"].dropna().unique()) if "stage" in df.columns else []
     selected=st.multiselect("Stage",stages,default=stages)
-    view=df[df["stage"].isin(selected)] if selected else df
+    view=df[df["stage"].isin(selected)] if selected and "stage" in df.columns else df
     priority=["ticker","company_name","price","stage","theme","theme_state","theme_score",
-              "market_hunt_score","final_decision","market_regime_state","market_regime_score","theme_state","sector_regime_ok","catalyst_score","catalyst_status",
-              "entry_trigger","entry_model","entry_condition","retest_reference","retest_distance_pct",
-              "retest_quality_score","ema20_slope5_pct","support_touch_count","higher_low","bullish_close","entry_buffer_pct",
-              "stop","stop_basis","stop_anchor","risk_pct",
-              "effective_target","effective_rr","target_5","target_8","target_10","rr_to_8pct",
-              "runway_to_next_resistance_pct","pattern"]
+              "market_hunt_score","final_decision","market_regime_state","market_regime_score","sector_regime_ok",
+              "catalyst_score","catalyst_status","entry_trigger","entry_model","entry_condition",
+              "retest_reference","retest_distance_pct","retest_quality_score","ema20_slope5_pct",
+              "support_touch_count","higher_low","bullish_close","entry_buffer_pct","stop","stop_basis",
+              "stop_anchor","risk_pct","effective_target","effective_rr","target_5","target_8","target_10",
+              "rr_to_8pct","runway_to_next_resistance_pct","pattern"]
     cols=[c for c in priority if c in view.columns]+[c for c in view.columns if c not in priority]
     st.dataframe(view[cols],use_container_width=True,hide_index=True)
 else:
-    st.info("No base scan results yet.")
+    st.info("No base scan results are available yet. The next successful full scan will publish them automatically.")
 
-if tradable_out.exists():
+if not tradable.empty:
     with st.expander("Tradable universe"):
-        t=pd.read_csv(tradable_out)
-        count=int(t["tradable"].sum()) if "tradable" in t.columns else len(t)
+        count=int(tradable["tradable"].sum()) if "tradable" in tradable.columns else len(tradable)
         st.write(f"{count:,} stocks currently pass the tradability gate.")
-        st.dataframe(t.head(500),use_container_width=True,hide_index=True)
+        st.dataframe(tradable.head(500),use_container_width=True,hide_index=True)
 
-if all_out.exists():
+if not all_candidates.empty:
     with st.expander("All deep-scanned candidates"):
-        st.dataframe(pd.read_csv(all_out),use_container_width=True,hide_index=True)
+        st.dataframe(all_candidates,use_container_width=True,hide_index=True)
 
 st.divider()
 st.subheader("Pipeline")
