@@ -251,7 +251,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     print("\nTOP MARKET HUNT CANDIDATES")
     cols=[
         "ticker","price","stage","theme","theme_score","market_hunt_score",
-        "catalyst_score","entry_trigger","stop","effective_target","effective_rr",
+        "catalyst_score","entry_trigger","entry_model","stop","stop_basis","risk_pct","effective_target","effective_rr",
         "runway_to_next_resistance_pct","live_status","intraday_rvol",
         "live_confirmation_score","live_trade_action",
     ]
