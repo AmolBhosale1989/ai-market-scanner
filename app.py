@@ -47,6 +47,10 @@ all_candidates,_=load_csv("all_candidates.csv")
 events,_=load_csv("upcoming_events.csv")
 event_status,_=load_csv("event_status.csv")
 journal,_=load_csv("paper_journal.csv")
+performance,_=load_csv("performance_summary.csv")
+performance_by_setup,_=load_csv("performance_by_setup.csv")
+calibration,_=load_csv("probability_calibration.csv")
+monitor_health,_=load_csv("monitor_health.csv")
 
 if not scan_meta.empty:
     stamp=str(scan_meta.iloc[0].get("generated_at_utc",""))
@@ -67,6 +71,33 @@ if not health.empty:
     c[3].metric("Analyzable",f"{float(r.get('analyzable_coverage',0))*100:.1f}%")
 else:
     st.warning("Scan health data is not available yet.")
+
+if not monitor_health.empty:
+    mh=monitor_health.iloc[0]
+    st.caption(
+        f"Live monitor health: {mh.get('status','?')} · monitored {int(mh.get('monitored_candidates',0))} · "
+        f"alerts {int(mh.get('alerts_generated',0))} · Telegram configured {bool(mh.get('telegram_configured',False))}"
+    )
+
+if not performance.empty:
+    st.subheader("📊 Forward Validation")
+    p=performance.iloc[0]
+    c=st.columns(5)
+    c[0].metric("Signals",int(p.get("signals",0)))
+    c[1].metric("Closed",int(p.get("closed_signals",0)))
+    c[2].metric("Win rate",f"{float(p.get('win_rate_pct',0) or 0):.1f}%")
+    c[3].metric("Avg R",f"{float(p.get('avg_r_multiple',0) or 0):.2f}")
+    c[4].metric("Target hit",f"{float(p.get('target_hit_rate_pct',0) or 0):.1f}%")
+    if not performance_by_setup.empty:
+        with st.expander("Performance by setup / regime / theme"):
+            st.dataframe(performance_by_setup,use_container_width=True,hide_index=True)
+
+if not calibration.empty:
+    st.subheader("🎯 Probability Calibration")
+    usable=calibration[calibration["calibration_status"].eq("USABLE")] if "calibration_status" in calibration.columns else pd.DataFrame()
+    if usable.empty:
+        st.info("Calibration is collecting forward samples. Probabilities remain provisional until each score bucket has enough closed trades.")
+    st.dataframe(calibration,use_container_width=True,hide_index=True)
 
 if not live.empty:
     st.subheader("⚡ Live Monitor")
