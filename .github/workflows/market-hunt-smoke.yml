@@ -37,6 +37,41 @@ jobs:
       - name: Run intraday monitor smoke
         run: python -m scanner.intraday --limit 5
 
+      - name: Run live/journal self-checks
+        shell: bash
+        run: |
+          python - <<'PY'
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          import pandas as pd
+          from scanner.live import _market_state
+          from scanner.intraday import _derive_state, _update_paper_journal, JOURNAL_FILE
+          from scanner.config import OUTPUT_DIR
+
+          NY=ZoneInfo("America/New_York")
+          assert _market_state(datetime(2026,9,12,10,0,tzinfo=NY))=="MARKET CLOSED"
+
+          row={
+              "live_status":"LIVE","live_price":105.0,"stop":98.0,"effective_target":110.0,
+              "negative_catalyst_risk":False,"live_trigger_reached":True,"live_above_vwap":True,
+              "intraday_rvol":1.5,"live_trade_action":"BUY / LIVE CONFIRMED",
+              "ticker":"TEST","stage":"ARMED","entry_trigger":100.0,"effective_rr":5.0,
+              "entry_model":"RESISTANCE_BREAKOUT","entry_condition":"BREAKOUT",
+              "market_regime_state":"STRONG","theme":"Semiconductors","catalyst_status":"ACTIVE",
+              "monitor_state":"LIVE_CONFIRMED",
+          }
+          assert _derive_state(pd.Series(row),"")=="LIVE_CONFIRMED"
+          j=_update_paper_journal(pd.DataFrame([row]),"2026-09-12T10:00:00-04:00")
+          assert len(j)>=1 and "TEST" in set(j["ticker"].astype(str))
+
+          if JOURNAL_FILE.exists():
+              JOURNAL_FILE.unlink()
+          out=OUTPUT_DIR/"paper_journal.csv"
+          if out.exists():
+              out.unlink()
+          print("Live calendar, first-state confirmation, and journal self-checks passed.")
+          PY
+
       - name: Upload scan outputs and health report
         if: always()
         uses: actions/upload-artifact@v4
