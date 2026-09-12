@@ -14,6 +14,7 @@ import requests
 from .config import OUTPUT_DIR, LIVE_ENRICH_LIMIT
 from .live import enrich_live_candidates
 from .performance import build_performance_reports, build_empirical_calibration
+from .product_feed import build_product_feed
 
 NY = ZoneInfo("America/New_York")
 STATE_DIR = Path(".state")
@@ -280,6 +281,7 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
     telegram_configured=bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip())
     sent=_send_telegram(alerts)
     _write_monitor_health(live,now,len(alerts),telegram_configured,sent)
+    build_product_feed()
 
     print("\nINTRADAY MARKET HUNT MONITOR")
     cols=["ticker","stage","previous_state","monitor_state","live_price","entry_trigger",
