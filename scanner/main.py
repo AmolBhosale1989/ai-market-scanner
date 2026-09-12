@@ -16,6 +16,7 @@ from .earnings_intel import enrich_earnings_intelligence
 from .indicators import add_indicators
 from .live import enrich_live_candidates
 from .prefilter import build_tradable_rows
+from .product_feed import build_product_feed
 from .regime import evaluate_regime
 from .stocks import analyze_dataframe
 from .themes import rank_themes, enrich_candidate_themes
@@ -285,6 +286,8 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     print(f"Saved themes: {OUTPUT_DIR/'trending_themes.csv'}")
     print(f"Saved event-first watchlist: {OUTPUT_DIR/'upcoming_events.csv'}")
     print(f"Saved scan health: {OUTPUT_DIR/'scan_health.csv'}")
+    build_product_feed()
+    print(f"Saved product feed: {OUTPUT_DIR/'product_feed.json'}")
     return shortlist
 
 if __name__=="__main__":
