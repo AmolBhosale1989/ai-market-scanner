@@ -10,24 +10,24 @@ from .data import download_history
 from .indicators import add_indicators
 
 THEMES = {
-    "Semiconductors": {"etf": "SMH", "keywords": ["semiconductor", "chip", "integrated circuit"]},
-    "AI & Robotics": {"etf": "BOTZ", "keywords": ["artificial intelligence", "robotics", "automation", "machine learning"]},
-    "Cloud Computing": {"etf": "SKYY", "keywords": ["cloud", "software infrastructure", "application software"]},
-    "Cybersecurity": {"etf": "HACK", "keywords": ["cybersecurity", "security software", "network security"]},
-    "Biotechnology": {"etf": "XBI", "keywords": ["biotechnology", "biotech"]},
-    "Genomics": {"etf": "ARKG", "keywords": ["genomic", "genetics", "gene therapy", "gene editing"]},
-    "Defense & Aerospace": {"etf": "ITA", "keywords": ["aerospace", "defense"]},
-    "Energy": {"etf": "XLE", "keywords": ["oil", "gas", "energy", "exploration", "petroleum"]},
-    "Oil Services": {"etf": "OIH", "keywords": ["oilfield", "drilling", "oil & gas equipment", "oil services"]},
-    "Uranium & Nuclear": {"etf": "URA", "keywords": ["uranium", "nuclear"]},
-    "Copper & Mining": {"etf": "COPX", "keywords": ["copper", "metal mining", "diversified metals"]},
-    "Gold Miners": {"etf": "GDX", "keywords": ["gold", "precious metals"]},
-    "Clean Energy": {"etf": "ICLN", "keywords": ["solar", "renewable", "clean energy", "wind"]},
-    "Infrastructure": {"etf": "PAVE", "keywords": ["infrastructure", "engineering", "construction", "industrial machinery"]},
-    "Homebuilders": {"etf": "XHB", "keywords": ["residential construction", "homebuilding", "building products"]},
-    "Regional Banks": {"etf": "KRE", "keywords": ["regional bank", "banks regional"]},
-    "Fintech": {"etf": "FINX", "keywords": ["financial technology", "fintech", "payment"]},
-    "Cannabis": {"etf": "MSOS", "keywords": ["cannabis", "marijuana"]},
+    "Semiconductors": {"etf":"SMH","industries":["semiconductors","semiconductor equipment"],"keywords":["semiconductor","chip","integrated circuit"]},
+    "AI & Robotics": {"etf":"BOTZ","industries":["specialty industrial machinery","computer hardware"],"keywords":["artificial intelligence","robotics","automation","machine learning"]},
+    "Cloud Computing": {"etf":"SKYY","industries":["software - infrastructure","software - application","information technology services"],"keywords":["cloud computing","cloud platform","saas"]},
+    "Cybersecurity": {"etf":"HACK","industries":["software - infrastructure","software - application"],"keywords":["cybersecurity","security software","network security"]},
+    "Biotechnology": {"etf":"XBI","industries":["biotechnology"],"keywords":["biotechnology","biotech"]},
+    "Genomics": {"etf":"ARKG","industries":["biotechnology","diagnostics & research"],"keywords":["genomic","genetics","gene therapy","gene editing"]},
+    "Defense & Aerospace": {"etf":"ITA","industries":["aerospace & defense"],"keywords":["aerospace","defense"]},
+    "Energy": {"etf":"XLE","industries":["oil & gas e&p","oil & gas integrated","oil & gas midstream","oil & gas refining & marketing"],"keywords":["oil","gas","energy","exploration","petroleum"]},
+    "Oil Services": {"etf":"OIH","industries":["oil & gas equipment & services","oil & gas drilling"],"keywords":["oilfield","drilling","oil services"]},
+    "Uranium & Nuclear": {"etf":"URA","industries":["uranium"],"keywords":["uranium","nuclear"]},
+    "Copper & Mining": {"etf":"COPX","industries":["copper","other industrial metals & mining"],"keywords":["copper","metal mining","diversified metals"]},
+    "Gold Miners": {"etf":"GDX","industries":["gold"],"keywords":["gold mining","gold miner","precious metals"]},
+    "Clean Energy": {"etf":"ICLN","industries":["solar","utilities - renewable"],"keywords":["solar","renewable","clean energy","wind"]},
+    "Infrastructure": {"etf":"PAVE","industries":["engineering & construction","specialty industrial machinery"],"keywords":["infrastructure","engineering","construction"]},
+    "Homebuilders": {"etf":"XHB","industries":["residential construction","building products & equipment"],"keywords":["homebuilding","homebuilder","residential construction"]},
+    "Regional Banks": {"etf":"KRE","industries":["banks - regional"],"keywords":["regional bank"]},
+    "Fintech": {"etf":"FINX","industries":["financial data & stock exchanges","credit services"],"keywords":["financial technology","fintech","digital payments"]},
+    "Cannabis": {"etf":"MSOS","industries":["drug manufacturers - specialty & generic"],"keywords":["cannabis","marijuana"]},
 }
 
 def _ret(d: pd.DataFrame, n: int):
@@ -50,46 +50,24 @@ def rank_themes():
             if len(raw)<70:
                 continue
             d=add_indicators(raw)
-            r5=_ret(d,5)
-            r20=_ret(d,20)
-            r60=_ret(d,60)
+            r5=_ret(d,5); r20=_ret(d,20); r60=_ret(d,60)
             last=d.iloc[-1]
-
-            rel5=r5-spy5
-            rel20=r20-spy20
-            rel60=r60-spy60
+            rel5=r5-spy5; rel20=r20-spy20; rel60=r60-spy60
             trend=0
-            if last["Close"]>last["EMA20"]:
-                trend+=8
-            if last["EMA20"]>last["EMA50"]:
-                trend+=8
-            if last["EMA50"]>last["EMA200"]:
-                trend+=8
+            if last["Close"]>last["EMA20"]: trend+=8
+            if last["EMA20"]>last["EMA50"]: trend+=8
+            if last["EMA50"]>last["EMA200"]: trend+=8
 
-            # Weight recent momentum most, while requiring some persistence.
-            score=50 + rel5*3.0 + rel20*1.5 + rel60*0.35 + trend
-            score=max(0,min(100,score))
-
-            if score>=75 and rel20>0:
-                state="LEADING"
-            elif score>=60 and rel20>0:
-                state="STRONG"
-            elif score>=50:
-                state="NEUTRAL"
-            else:
-                state="WEAK"
+            score=max(0,min(100,50+rel5*3.0+rel20*1.5+rel60*0.35+trend))
+            if score>=75 and rel20>0: state="LEADING"
+            elif score>=60 and rel20>0: state="STRONG"
+            elif score>=50: state="NEUTRAL"
+            else: state="WEAK"
 
             rows.append({
-                "theme":theme,
-                "etf":etf,
-                "theme_score":round(score,1),
-                "theme_state":state,
-                "ret5_pct":round(r5,2),
-                "ret20_pct":round(r20,2),
-                "ret60_pct":round(r60,2),
-                "rel5_vs_spy":round(rel5,2),
-                "rel20_vs_spy":round(rel20,2),
-                "rel60_vs_spy":round(rel60,2),
+                "theme":theme,"etf":etf,"theme_score":round(score,1),"theme_state":state,
+                "ret5_pct":round(r5,2),"ret20_pct":round(r20,2),"ret60_pct":round(r60,2),
+                "rel5_vs_spy":round(rel5,2),"rel20_vs_spy":round(rel20,2),"rel60_vs_spy":round(rel60,2),
             })
         except Exception as e:
             print(f"Theme {theme}/{etf}: {e}")
@@ -101,39 +79,51 @@ def rank_themes():
         out.to_csv(OUTPUT_DIR/"trending_themes.csv",index=False)
     return out
 
-def _profile_text(info):
-    return " ".join([
-        str(info.get("sector") or ""),
-        str(info.get("industry") or ""),
-        str(info.get("longBusinessSummary") or ""),
-    ]).lower()
+def _theme_row(theme, theme_table):
+    row=theme_table[theme_table["theme"].eq(theme)]
+    if row.empty:
+        return None
+    r=row.iloc[0]
+    return {"theme":theme,"score":float(r["theme_score"]),"state":str(r["theme_state"]),"etf":str(r["etf"])}
 
-def _match_theme(text: str, theme_table: pd.DataFrame):
-    best=None
+def _match_theme(info: dict, theme_table: pd.DataFrame):
+    sector=str(info.get("sector") or "").strip().lower()
+    industry=str(info.get("industry") or "").strip().lower()
+    summary=str(info.get("longBusinessSummary") or "").strip().lower()
+
+    # High-confidence match: Yahoo industry directly maps to a theme.
+    direct=[]
     for theme,meta in THEMES.items():
-        if not any(k in text for k in meta["keywords"]):
-            continue
-        row=theme_table[theme_table["theme"].eq(theme)]
-        if row.empty:
-            continue
-        r=row.iloc[0]
-        candidate={
-            "theme":theme,
-            "score":float(r["theme_score"]),
-            "state":str(r["theme_state"]),
-            "etf":str(r["etf"]),
-        }
-        if best is None or candidate["score"]>best["score"]:
-            best=candidate
-    return best
+        for phrase in meta.get("industries",[]):
+            if phrase and phrase in industry:
+                row=_theme_row(theme,theme_table)
+                if row:
+                    direct.append({**row,"confidence":0.95,"source":"INDUSTRY","reason":f"{industry} -> {phrase}"})
+                    break
+    if direct:
+        return max(direct,key=lambda x:x["score"])
+
+    # Medium confidence: sector + a specific keyword in industry or summary.
+    medium=[]
+    combined=f"{industry} {summary}"
+    for theme,meta in THEMES.items():
+        matches=[k for k in meta.get("keywords",[]) if k in combined]
+        if matches:
+            row=_theme_row(theme,theme_table)
+            if row:
+                # Generic keywords in a long summary are not enough to drive a trade veto.
+                confidence=0.75 if any(k in industry for k in matches) else 0.55
+                source="INDUSTRY_KEYWORD" if confidence>=0.7 else "SUMMARY_KEYWORD"
+                medium.append({**row,"confidence":confidence,"source":source,"reason":matches[0]})
+    if medium:
+        return max(medium,key=lambda x:(x["confidence"],x["score"]))
+    return None
 
 def enrich_candidate_themes(df: pd.DataFrame, theme_table: pd.DataFrame, limit: int=THEME_PROFILE_LIMIT):
     out=df.copy()
-    out["theme"]="UNCLASSIFIED"
-    out["theme_etf"]=""
-    out["theme_score"]=0.0
-    out["theme_state"]="NONE"
-    out["theme_bonus"]=0.0
+    out["theme"]="UNCLASSIFIED"; out["theme_etf"]=""; out["theme_score"]=0.0
+    out["theme_state"]="NONE"; out["theme_bonus"]=0.0
+    out["theme_match_confidence"]=0.0; out["theme_match_source"]="NONE"; out["theme_match_reason"]=""
 
     if out.empty or theme_table.empty:
         return out
@@ -151,19 +141,24 @@ def enrich_candidate_themes(df: pd.DataFrame, theme_table: pd.DataFrame, limit: 
                 info=obj.info
             if not isinstance(info,dict):
                 continue
-            text=_profile_text(info)
-            matched=_match_theme(text,theme_table)
+            matched=_match_theme(info,theme_table)
             if not matched:
                 continue
 
-            score=matched["score"]
-            # Theme can help ranking, but never become a mandatory trade gate.
-            bonus=max(0.0,min(THEME_BONUS_MAX,(score-50)/50*THEME_BONUS_MAX))
+            score=matched["score"]; confidence=float(matched["confidence"])
+            # Only medium/high-confidence classification earns a ranking bonus.
+            bonus=0.0
+            if confidence>=0.70:
+                bonus=max(0.0,min(THEME_BONUS_MAX,(score-50)/50*THEME_BONUS_MAX))*confidence
+
             out.at[idx,"theme"]=matched["theme"]
             out.at[idx,"theme_etf"]=matched["etf"]
             out.at[idx,"theme_score"]=round(score,1)
             out.at[idx,"theme_state"]=matched["state"]
             out.at[idx,"theme_bonus"]=round(bonus,2)
+            out.at[idx,"theme_match_confidence"]=round(confidence,2)
+            out.at[idx,"theme_match_source"]=matched["source"]
+            out.at[idx,"theme_match_reason"]=matched["reason"]
         except Exception:
             pass
         time.sleep(0.03)
