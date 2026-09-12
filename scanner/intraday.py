@@ -119,12 +119,15 @@ def _update_paper_journal(live: pd.DataFrame, now: str):
         journal.at[idx,"theme"]=row.get("theme","")
         journal.at[idx,"catalyst_status"]=row.get("catalyst_status","")
 
-        if new_state=="TRIGGERED" and not str(journal.at[idx,"triggered_at_et"] or ""):
+        triggered_existing=journal.at[idx,"triggered_at_et"]
+        confirmed_existing=journal.at[idx,"live_confirmed_at_et"]
+        closed_existing=journal.at[idx,"closed_at_et"]
+        if new_state=="TRIGGERED" and (pd.isna(triggered_existing) or not str(triggered_existing).strip()):
             journal.at[idx,"triggered_at_et"]=now
-        if new_state=="LIVE_CONFIRMED" and not str(journal.at[idx,"live_confirmed_at_et"] or ""):
+        if new_state=="LIVE_CONFIRMED" and (pd.isna(confirmed_existing) or not str(confirmed_existing).strip()):
             journal.at[idx,"live_confirmed_at_et"]=now
         if new_state in {"TARGET_HIT","FAILED_BREAKOUT","INVALIDATED"}:
-            if not str(journal.at[idx,"closed_at_et"] or ""):
+            if pd.isna(closed_existing) or not str(closed_existing).strip():
                 journal.at[idx,"closed_at_et"]=now
             journal.at[idx,"outcome"]=new_state
             if math.isfinite(price) and math.isfinite(entry) and entry>0:
