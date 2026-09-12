@@ -63,6 +63,10 @@ files = {
     "events":"upcoming_events.csv", "event_status":"event_status.csv", "journal":"paper_journal.csv",
     "performance":"performance_summary.csv", "performance_setup":"performance_by_setup.csv",
     "calibration":"probability_calibration.csv", "monitor":"monitor_health.csv", "gate":"validation_gate.csv",
+    "legendary":"legendary_setups.csv", "legendary_consensus":"legendary_consensus.csv",
+    "trader_minervini":"trader_minervini.csv", "trader_oneil":"trader_oneil.csv",
+    "trader_weinstein":"trader_weinstein.csv", "trader_darvas":"trader_darvas.csv",
+    "trader_livermore":"trader_livermore.csv", "trader_qullamaggie":"trader_qullamaggie.csv",
 }
 data, sources = {}, {}
 for key, filename in files.items():
@@ -88,8 +92,8 @@ m3.metric("Tradable", f'{int(number(h.get("tradable_symbols"))):,}')
 m4.metric("Analyzable", f'{number(h.get("analyzable_coverage"))*100:.1f}%')
 m5.metric("Live alerts", f'{int(number(mh.get("alerts_generated"))):,}')
 
-overview, opportunities, live_tab, event_tab, validation, system = st.tabs(
-    ["Overview", "Opportunities", "Live monitor", "Events", "Validation", "System"]
+overview, opportunities, legendary_tab, live_tab, event_tab, validation, system = st.tabs(
+    ["Overview", "Opportunities", "Legendary setups", "Live monitor", "Events", "Validation", "System"]
 )
 
 with overview:
@@ -165,6 +169,47 @@ with opportunities:
     with st.expander("All deep-scanned candidates"):
         candidates=data["candidates"]
         st.dataframe(candidates,hide_index=True,use_container_width=True) if not candidates.empty else st.write("Not available.")
+
+
+with legendary_tab:
+    st.subheader("Legendary trader setup agents")
+    st.markdown('<div class="section-note">Independent screening agents translate publicly described trading principles into objective research filters. They are approximations for scanning/backtesting, not exact reproductions of any trader\'s discretionary process.</div>', unsafe_allow_html=True)
+
+    consensus = data["legendary_consensus"]
+    if not consensus.empty:
+        st.subheader("Multi-agent consensus")
+        st.markdown('<div class="section-note">Stocks detected by multiple trader agents are ranked first. Agreement is a research signal, not a trade recommendation.</div>', unsafe_allow_html=True)
+        st.dataframe(consensus.head(50), hide_index=True, use_container_width=True)
+    else:
+        st.info("Legendary-agent consensus will appear after the next completed full scan.")
+
+    trader_views = [
+        ("Mark Minervini", "Trend Template / VCP", "trader_minervini"),
+        ("William O'Neil", "CAN SLIM-style Breakout", "trader_oneil"),
+        ("Stan Weinstein", "Stage 2 Breakout", "trader_weinstein"),
+        ("Nicolas Darvas", "Darvas Box Breakout", "trader_darvas"),
+        ("Jesse Livermore", "Pivot / Line of Least Resistance", "trader_livermore"),
+        ("Kristjan Kullamägi", "Momentum Breakout / EP-style", "trader_qullamaggie"),
+    ]
+    for trader_name, setup_name, key in trader_views:
+        frame = data[key]
+        with st.expander(f"{trader_name} · {setup_name}", expanded=False):
+            if frame.empty:
+                st.write("No current matches.")
+            else:
+                preferred = ["ticker","company_name","price","setup_match","legendary_score","stage","theme",
+                             "market_hunt_score","rs20_vs_spy","atr_pct","adr20_pct","entry_trigger","entry_model",
+                             "stop","effective_target","effective_rr","runway_to_next_resistance_pct",
+                             "catalyst_status","intraday_rvol","setup_reason"]
+                st.dataframe(frame[columns(frame, preferred)], hide_index=True, use_container_width=True)
+                st.download_button(
+                    f"Download {trader_name} list",
+                    frame.to_csv(index=False),
+                    f"{key}.csv",
+                    "text/csv",
+                    key=f"download_{key}",
+                    use_container_width=True,
+                )
 
 with live_tab:
     live, transitions, journal = data["live"], data["transitions"], data["journal"]
