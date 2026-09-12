@@ -254,6 +254,7 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
         build_performance_reports()
         build_empirical_calibration()
         _write_monitor_health(pd.DataFrame(),now,0,bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip()),False)
+        _write_recommendations(pd.DataFrame())
         build_product_feed()
         return watch
 
