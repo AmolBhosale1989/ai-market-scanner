@@ -162,6 +162,7 @@ def _parse_alpha_vantage_calendar(body: str, tradable_df: pd.DataFrame, now=None
             ("estimate","eps_estimate"),
             ("fiscalDateEnding","fiscal_date_ending"),
             ("currency","earnings_currency"),
+            ("timeOfTheDay","earnings_report_time"),
         ]:
             if src in df.columns and pd.notna(r.get(src)):
                 row[dst]=r.get(src)
@@ -277,7 +278,7 @@ def build_event_watchlist(tradable_df: pd.DataFrame):
     event_columns=[
         "ticker","company_name","event_type","event_date_utc","days_to_event",
         "event_priority","event_source","avg_dollar_volume20","event_headline",
-        "event_provider","eps_estimate","fiscal_date_ending","earnings_currency"
+        "event_provider","eps_estimate","fiscal_date_ending","earnings_currency","earnings_report_time"
     ]
     out=pd.DataFrame(rows)
     if out.empty:
