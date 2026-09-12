@@ -32,6 +32,7 @@ def _empty_live(status="NOT CHECKED"):
         "live_above_or_high": False,
         "intraday_rvol": math.nan,
         "live_trigger_reached": False,
+        "live_retest_touched": False,
         "live_confirmation_score": 0,
         "live_trade_action": "NO LIVE SIGNAL",
     }
@@ -119,7 +120,8 @@ def _intraday_rvol(d: pd.DataFrame, session_date, current_session: pd.DataFrame)
     return current_volume/baseline if baseline>0 else math.nan
 
 def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, catalyst_score: float,
-                           rr_to_8pct: float, runway_pct: float, negative_catalyst_risk: bool):
+                           rr_to_8pct: float, runway_pct: float, negative_catalyst_risk: bool,
+                           entry_condition: str = "BREAKOUT"):
     result=_empty_live()
     now_et=datetime.now(NY)
     state=_market_state(now_et)
@@ -177,12 +179,23 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
 
     above_vwap=math.isfinite(vwap) and price>vwap
     above_or=or_complete and math.isfinite(or_high) and price>or_high
-    trigger_reached=math.isfinite(entry_trigger) and price>=entry_trigger
+    retest_touched=bool(
+        entry_condition=="TOUCH_AND_RECLAIM"
+        and math.isfinite(entry_trigger)
+        and float(latest_session["Low"].min())<=entry_trigger
+    )
+    if entry_condition=="TOUCH_AND_RECLAIM":
+        trigger_reached=retest_touched and price>=entry_trigger
+    else:
+        trigger_reached=math.isfinite(entry_trigger) and price>=entry_trigger
 
     score=0
     if above_vwap:
         score+=25
-    if above_or:
+    if entry_condition=="TOUCH_AND_RECLAIM":
+        if retest_touched:
+            score+=25
+    elif above_or:
         score+=25
     if trigger_reached:
         score+=25
@@ -194,7 +207,10 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
     catalyst_bonus=(not negative_catalyst_risk) and catalyst_score>=30
     rr_ok=math.isfinite(rr_to_8pct) and rr_to_8pct>=MIN_EFFECTIVE_RR
     runway_ok=math.isfinite(runway_pct) and runway_pct>=MIN_RUNWAY_PCT
-    live_conditions=above_vwap and above_or and trigger_reached and math.isfinite(rvol) and rvol>=LIVE_MIN_INTRADAY_RVOL
+    if entry_condition=="TOUCH_AND_RECLAIM":
+        live_conditions=above_vwap and retest_touched and trigger_reached and math.isfinite(rvol) and rvol>=LIVE_MIN_INTRADAY_RVOL
+    else:
+        live_conditions=above_vwap and above_or and trigger_reached and math.isfinite(rvol) and rvol>=LIVE_MIN_INTRADAY_RVOL
 
     if status!="LIVE":
         live_action="WAIT / MARKET NOT LIVE"
@@ -220,6 +236,7 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
         "live_above_or_high":bool(above_or),
         "intraday_rvol":round(rvol,2) if math.isfinite(rvol) else math.nan,
         "live_trigger_reached":bool(trigger_reached),
+        "live_retest_touched":bool(retest_touched),
         "live_confirmation_score":int(score),
         "live_trade_action":live_action,
     })
@@ -251,6 +268,7 @@ def enrich_live_candidates(df: pd.DataFrame, limit: int = LIVE_ENRICH_LIMIT):
                 rr_to_8pct=float(pd.to_numeric(pd.Series([row.get("effective_rr",row.get("rr_to_8pct",math.nan))]),errors="coerce").iloc[0]),
                 runway_pct=float(pd.to_numeric(pd.Series([row.get("runway_to_next_resistance_pct",math.nan)]),errors="coerce").iloc[0]),
                 negative_catalyst_risk=bool(row.get("negative_catalyst_risk",False)),
+                entry_condition=str(row.get("entry_condition","BREAKOUT")),
             )
             for k,v in live.items():
                 out.at[idx,k]=v
