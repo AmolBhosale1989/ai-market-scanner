@@ -75,3 +75,19 @@ A retest candidate is considered only when:
 Retest entries use a TOUCH_AND_RECLAIM condition. Historical testing requires the future daily bar to trade through the retest entry price; live confirmation requires the intraday session to touch the retest zone and then recover above the entry while also holding VWAP with sufficient intraday RVOL.
 
 The breakout path remains the fallback when the retest is not structurally valid or does not materially improve asymmetry.
+
+
+## Retest quality filter
+Pullback/retest entries are now much more selective. A retest requires both:
+- rising EMA20 over the last five sessions
+- 5-day volume at or below the 20-day average
+
+It must also satisfy at least four of six additional confirmations:
+- constructive 5-day return
+- tight 10-day range
+- higher-low structure
+- bullish daily close in the upper part of the candle
+- RSI in a healthy 48-68 zone
+- repeated support respect near the retest reference
+
+The scanner records retest quality score, EMA20 slope, support-touch count, higher-low state and bullish-close state so the historical calibration can measure whether these filters reduce stop-outs.
