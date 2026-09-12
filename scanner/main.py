@@ -48,10 +48,10 @@ def _final_decision(row):
         if score>=CATALYST_ACTIVE_SCORE:
             return "BUY / CONFIRMED + CATALYST"
         return "BUY / CONFIRMED"
-    if row["stage"]=="ARMED" and technical=="WAIT FOR TRIGGER":
+    if row["stage"]=="ARMED" and technical in {"WAIT FOR TRIGGER","WAIT FOR RETEST"}:
         if score>=CATALYST_ACTIVE_SCORE:
-            return "WAIT FOR TRIGGER + CATALYST"
-        return "WAIT FOR TRIGGER"
+            return f"{technical} + CATALYST"
+        return technical
     if row["stage"] in {"FORMING","DISCOVER"} and score>=CATALYST_STRONG_SCORE:
         return "WATCHLIST + CATALYST"
     return technical
