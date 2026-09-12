@@ -52,7 +52,8 @@ if out.exists():
     view=df[df["stage"].isin(selected)] if selected else df
     priority=["ticker","company_name","price","stage","theme","theme_state","theme_score",
               "market_hunt_score","final_decision","catalyst_score","catalyst_status",
-              "entry_trigger","stop","target_5","target_8","target_10","rr_to_8pct",
+              "entry_trigger","entry_model","entry_buffer_pct","stop","stop_basis","stop_anchor","risk_pct",
+              "effective_target","effective_rr","target_5","target_8","target_10","rr_to_8pct",
               "runway_to_next_resistance_pct","pattern"]
     cols=[c for c in priority if c in view.columns]+[c for c in view.columns if c not in priority]
     st.dataframe(view[cols],use_container_width=True,hide_index=True)
