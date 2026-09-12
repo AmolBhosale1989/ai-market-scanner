@@ -1,0 +1,20 @@
+{
+  "generated_at_utc": "2026-09-12T15:03:43.708362+00:00",
+  "gate_status": "PAPER_VALIDATION",
+  "ready_for_real_money": false,
+  "closed_signals": 0,
+  "min_closed_signals": 30,
+  "win_rate_pct": 0.0,
+  "min_win_rate_pct": 45.0,
+  "avg_r_multiple": 0.0,
+  "min_avg_r_multiple": 0.25,
+  "profit_factor_r": 0.0,
+  "min_profit_factor_r": 1.2,
+  "usable_calibration_buckets": 0,
+  "min_usable_calibration_buckets": 1,
+  "monitor_status": "UNAVAILABLE",
+  "failed_checks": "sample_size,win_rate,expectancy,profit_factor,calibration,monitor_healthy",
+  "live_test_max_risk_per_trade_pct": 0.5,
+  "live_test_max_open_positions": 2,
+  "live_test_broker_orders_enabled": false
+}
