@@ -44,6 +44,7 @@ themes,_=load_csv("trending_themes.csv")
 df,_=load_csv("latest_scan.csv")
 tradable,_=load_csv("tradable_universe.csv")
 all_candidates,_=load_csv("all_candidates.csv")
+events,_=load_csv("upcoming_events.csv")
 
 if not scan_meta.empty:
     stamp=str(scan_meta.iloc[0].get("generated_at_utc",""))
@@ -75,6 +76,14 @@ if not live.empty:
 if not transitions.empty:
     with st.expander("State transition history"):
         st.dataframe(transitions.tail(100).iloc[::-1],use_container_width=True,hide_index=True)
+
+if not events.empty:
+    st.subheader("📅 Upcoming Events")
+    event_cols=["ticker","company_name","event_type","event_date_utc","days_to_event","event_priority",
+                "pre_event_setup_state","price","technical_score","entry_trigger","entry_model",
+                "stop","effective_target","effective_rr","market_regime_state","avg_dollar_volume20"]
+    st.dataframe(events[[c for c in event_cols if c in events.columns]].head(100),
+                 use_container_width=True,hide_index=True)
 
 if not themes.empty:
     st.subheader("🔥 Trending Themes")
