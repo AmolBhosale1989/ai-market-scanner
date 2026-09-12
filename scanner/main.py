@@ -14,19 +14,20 @@ from .data import download_history, download_batch
 from .indicators import add_indicators
 from .live import enrich_live_candidates
 from .prefilter import build_tradable_rows
+from .regime import evaluate_regime
 from .stocks import analyze_dataframe
 from .themes import rank_themes, enrich_candidate_themes
 from .universe import load_or_build_universe
 
-def _benchmark_return20():
-    df=download_history(BENCHMARK,"3mo","1d")
-    if len(df)<25:
+def _benchmark_context():
+    df=download_history(BENCHMARK,"6mo","1d")
+    if len(df)<70:
         raise RuntimeError("Benchmark data unavailable or incomplete for SPY.")
     d=add_indicators(df)
     value=float(d.iloc[-1]["RET20"])
     if not math.isfinite(value):
         raise RuntimeError("Benchmark RET20 is invalid for SPY.")
-    return value
+    return value,evaluate_regime(df)
 
 def _representative_sample(universe: pd.DataFrame, limit: int) -> pd.DataFrame:
     if limit<=0 or limit>=len(universe):
@@ -138,7 +139,8 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     company_names=dict(zip(universe["ticker"].astype(str),universe["name"].fillna("").astype(str)))
 
     # PASS 2: expensive one-year technical analysis only for tradable stocks.
-    bench20=_benchmark_return20()
+    bench20,market_regime=_benchmark_context()
+    print(f"MARKET REGIME: {market_regime['regime_state']} score={market_regime['regime_score']}")
     rows=[]
     fetched=set()
     analyzable=set()
@@ -154,7 +156,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
             try:
                 if hist is not None and len(hist)>=220:
                     analyzable.add(ticker)
-                result=analyze_dataframe(ticker,hist,benchmark_return20=bench20)
+                result=analyze_dataframe(ticker,hist,benchmark_return20=bench20,market_regime=market_regime)
                 if not result:
                     continue
                 # Defensive re-check in case liquidity changed between passes.
@@ -218,6 +220,12 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
 
     print(f"Tagging up to {THEME_PROFILE_LIMIT} top candidates with leading themes...")
     df=enrich_candidate_themes(df,theme_table,limit=THEME_PROFILE_LIMIT)
+    df["sector_regime_ok"]=~df["theme_state"].eq("WEAK")
+    retest_mask=df["entry_model"].eq("PULLBACK_RETEST") & df["theme_state"].eq("WEAK")
+    if retest_mask.any():
+        df.loc[retest_mask,"stage"]="FORMING"
+        df.loc[retest_mask,"decision"]="WATCHLIST"
+        df.loc[retest_mask,"pattern"]=df.loc[retest_mask,"pattern"].astype(str)+", weak sector/theme regime"
 
     print(f"Enriching up to {CATALYST_ENRICH_LIMIT} top technical candidates with catalyst/news data...")
     df=enrich_candidates(df,limit=CATALYST_ENRICH_LIMIT)
@@ -251,7 +259,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     print("\nTOP MARKET HUNT CANDIDATES")
     cols=[
         "ticker","price","stage","theme","theme_score","market_hunt_score",
-        "catalyst_score","entry_trigger","entry_model","stop","stop_basis","risk_pct","effective_target","effective_rr",
+        "catalyst_score","market_regime_state","market_regime_score","theme_state","sector_regime_ok","entry_trigger","entry_model","stop","stop_basis","risk_pct","effective_target","effective_rr",
         "runway_to_next_resistance_pct","live_status","intraday_rvol",
         "live_confirmation_score","live_trade_action",
     ]
