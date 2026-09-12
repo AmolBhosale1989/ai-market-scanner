@@ -96,7 +96,7 @@ if not event_status.empty:
 
 if not events.empty:
     st.subheader("📅 Upcoming Events")
-    event_cols=["ticker","company_name","event_type","event_date_utc","days_to_event","event_priority",
+    event_cols=["ticker","company_name","event_type","event_date_utc","earnings_report_time","days_to_event","event_priority",
                 "pre_event_decision","event_opportunity_score","pre_earnings_intel_score",
                 "eps_estimate","forward_eps_estimate","forward_eps_analyst_count",
                 "estimate_revision_score","eps_revision_7d_pct","eps_revision_30d_pct","eps_revision_60d_pct",
