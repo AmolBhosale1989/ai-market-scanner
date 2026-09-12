@@ -36,16 +36,24 @@ def _calendar_earnings(ticker: str):
     except Exception:
         pass
 
-    if not dates:
-        try:
-            ed=obj.get_earnings_dates(limit=6)
-            if isinstance(ed,pd.DataFrame) and len(ed):
-                for idx in ed.index:
-                    ts=_to_utc(idx)
-                    if ts is not None:
-                        dates.append(ts)
-        except Exception:
-            pass
+    # Always query the earnings-date history/calendar as a second source.
+    # Yahoo's compact calendar can contain stale/past dates, so treating any
+    # calendar response as authoritative can incorrectly suppress future events.
+    try:
+        ed=obj.get_earnings_dates(limit=12)
+        if isinstance(ed,pd.DataFrame) and len(ed):
+            for idx in ed.index:
+                ts=_to_utc(idx)
+                if ts is not None:
+                    dates.append(ts)
+    except Exception:
+        pass
+
+    # De-duplicate after combining both Yahoo sources.
+    unique={}
+    for ts in dates:
+        unique[ts.isoformat()]=ts
+    dates=list(unique.values())
 
     future=[]
     for ts in dates:
