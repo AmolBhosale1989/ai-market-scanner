@@ -1,2 +1,2 @@
 provider,configured,status,event_count,detail,checked_at_utc
-ALPHA_VANTAGE,False,KEY_MISSING,0,Add GitHub Actions secret ALPHA_VANTAGE_API_KEY to enable earnings calendar.,2026-09-12T09:46:52.769231+00:00
+ALPHA_VANTAGE,True,NO_UPCOMING_EARNINGS,0,Provider connected; no matching liquid earnings events were returned inside the 7-day window.,2026-09-12T09:59:20.322579+00:00
