@@ -105,6 +105,64 @@ def _to_utc(value):
         return None
 
 
+def _parse_alpha_vantage_calendar(body: str, tradable_df: pd.DataFrame, now=None):
+    """Parse Alpha Vantage earnings-calendar CSV into Market Hunt event rows."""
+    if tradable_df is None or tradable_df.empty or not str(body or "").strip():
+        return []
+    now=now or pd.Timestamp.now(tz="UTC")
+    body=str(body).strip()
+    if body.startswith("{"):
+        return []
+
+    try:
+        df=pd.read_csv(StringIO(body))
+    except Exception:
+        return []
+    if df.empty:
+        return []
+
+    symbol_col=next((x for x in ["symbol","Symbol","ticker","Ticker"] if x in df.columns),None)
+    date_col=next((x for x in ["reportDate","report_date","date","Date"] if x in df.columns),None)
+    if symbol_col is None or date_col is None:
+        return []
+
+    rows=[]
+    for _,r in df.iterrows():
+        ticker=str(r.get(symbol_col,"")).strip().upper().replace(".","-")
+        if ticker not in symbols:
+            continue
+        ts=_to_utc(r.get(date_col))
+        if ts is None:
+            continue
+        delta=(ts-now).total_seconds()/86400
+        if not (-0.25 <= delta <= EVENT_LOOKAHEAD_DAYS):
+            continue
+        priority="HIGH" if delta<=3 else ("MEDIUM" if delta<=5 else "WATCH")
+        row={
+            "ticker":ticker,
+            "event_type":"EARNINGS",
+            "event_date_utc":ts.isoformat(),
+            "days_to_event":round(delta,2),
+            "event_priority":priority,
+            "event_source":"ALPHA_VANTAGE",
+            "company_name":name_map.get(ticker,""),
+            "avg_dollar_volume20":round(float(adv_map.get(ticker,0)),0),
+        }
+        for src,dst in [
+            ("estimate","eps_estimate"),
+            ("fiscalDateEnding","fiscal_date_ending"),
+            ("currency","earnings_currency"),
+        ]:
+            if src in df.columns and pd.notna(r.get(src)):
+                row[dst]=r.get(src)
+        rows.append(row)
+
+    dedup={}
+    for row in rows:
+        dedup[(row["ticker"],row["event_date_utc"])]=row
+    return list(dedup.values())
+
+
 def _alpha_vantage_earnings_events(tradable_df: pd.DataFrame):
     """Fetch the broad earnings calendar once from Alpha Vantage, then intersect with our liquid universe."""
     if tradable_df is None or tradable_df.empty:
@@ -153,56 +211,14 @@ def _alpha_vantage_earnings_events(tradable_df: pd.DataFrame):
             print(f"Alpha Vantage earnings calendar unavailable: {message}")
             return []
 
-        df=pd.read_csv(StringIO(body))
     except Exception as e:
         print(f"Alpha Vantage earnings calendar unavailable: {type(e).__name__}: {e}")
         return []
 
-    if df.empty:
-        return []
-
-    symbol_col=next((c for c in ["symbol","Symbol","ticker","Ticker"] if c in df.columns),None)
-    date_col=next((c for c in ["reportDate","report_date","date","Date"] if c in df.columns),None)
-    if symbol_col is None or date_col is None:
-        print(f"Alpha Vantage earnings calendar schema unexpected: {list(df.columns)}")
-        return []
-
-    rows=[]
-    for _,r in df.iterrows():
-        ticker=str(r.get(symbol_col,"")).strip().upper().replace(".","-")
-        if ticker not in symbols:
-            continue
-        ts=_to_utc(r.get(date_col))
-        if ts is None:
-            continue
-        delta=(ts-now).total_seconds()/86400
-        if not (-0.25 <= delta <= EVENT_LOOKAHEAD_DAYS):
-            continue
-
-        priority="HIGH" if delta<=3 else ("MEDIUM" if delta<=5 else "WATCH")
-        row={
-            "ticker":ticker,
-            "event_type":"EARNINGS",
-            "event_date_utc":ts.isoformat(),
-            "days_to_event":round(delta,2),
-            "event_priority":priority,
-            "event_source":"ALPHA_VANTAGE",
-            "company_name":name_map.get(ticker,""),
-            "avg_dollar_volume20":round(float(adv_map.get(ticker,0)),0),
-        }
-        for src,dst in [
-            ("estimate","eps_estimate"),
-            ("fiscalDateEnding","fiscal_date_ending"),
-            ("currency","earnings_currency"),
-        ]:
-            if src in df.columns and pd.notna(r.get(src)):
-                row[dst]=r.get(src)
-        rows.append(row)
-
-    dedup={}
-    for row in rows:
-        dedup[(row["ticker"],row["event_date_utc"])]=row
-    return list(dedup.values())
+    rows=_parse_alpha_vantage_calendar(body,tradable_df,now=now)
+    if not rows and body and not body.startswith("{"):
+        print("Alpha Vantage earnings calendar returned no matching liquid events in the next 7 days.")
+    return rows
 
 def build_event_watchlist(tradable_df: pd.DataFrame):
     if tradable_df is None or tradable_df.empty:
