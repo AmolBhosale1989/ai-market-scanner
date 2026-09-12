@@ -37,6 +37,26 @@ jobs:
       - name: Run intraday monitor smoke
         run: python -m scanner.intraday --limit 5
 
+      - name: Run event-calendar self-check
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pandas as pd
+          import yfinance as yf
+          from scanner.events import _global_earnings_events
+
+          cal=yf.Calendars()
+          df=cal.get_earnings_calendar(limit=20,filter_most_active=False)
+          assert df is not None and len(df)>0, "Yahoo global earnings calendar returned no rows"
+          x=df.reset_index()
+          sym_col=next(k for k in ["Symbol","symbol","ticker","Ticker"] if k in x.columns)
+          ticker=str(x.iloc[0][sym_col]).strip().upper().replace(".","-")
+          u=pd.DataFrame([{"ticker":ticker,"name":"Calendar self-check","avg_dollar_volume20":100000000,"tradable":True}])
+          rows=_global_earnings_events(u)
+          assert rows, f"Global earnings intersection failed for {ticker}"
+          print("Global event-calendar self-check passed:",rows[0]["ticker"],rows[0]["event_date_utc"])
+          PY
+
       - name: Run live/journal self-checks
         shell: bash
         run: |
