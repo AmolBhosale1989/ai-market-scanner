@@ -60,3 +60,18 @@ Safety constraints prevent artificial R/R inflation:
 - resistance-capped effective target and minimum 2.5 effective R/R remain unchanged
 
 The backtest records entry model, stop basis and risk percentage so this model can be calibrated empirically.
+
+
+## Pullback/retest entry model
+Market Hunt can now choose between a standard resistance breakout and a pullback/retest entry.
+
+A retest candidate is considered only when:
+- the technical stage is FORMING or ARMED
+- price is above EMA20 and EMA20 is above EMA50
+- a real support reference (EMA20, 5-day swing low, or daily support) is roughly 0.5% to 4% below price
+- the retest improves effective R/R by at least 0.35 versus the breakout plan
+- modeled risk remains between roughly 0.6% and 4.5%
+
+Retest entries use a TOUCH_AND_RECLAIM condition. Historical testing requires the future daily bar to trade through the retest entry price; live confirmation requires the intraday session to touch the retest zone and then recover above the entry while also holding VWAP with sufficient intraday RVOL.
+
+The breakout path remains the fallback when the retest is not structurally valid or does not materially improve asymmetry.
