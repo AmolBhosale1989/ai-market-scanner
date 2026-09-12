@@ -221,10 +221,22 @@ def _alpha_vantage_earnings_events(tradable_df: pd.DataFrame):
         print("Alpha Vantage earnings calendar returned no matching liquid events in the next 7 days.")
     return rows
 
+def _write_event_status(status: str, count: int, detail: str=""):
+    pd.DataFrame([{
+        "provider":"ALPHA_VANTAGE",
+        "configured":bool(os.getenv("ALPHA_VANTAGE_API_KEY","").strip()),
+        "status":status,
+        "event_count":int(count),
+        "detail":detail,
+        "checked_at_utc":pd.Timestamp.now(tz="UTC").isoformat(),
+    }]).to_csv(OUTPUT_DIR/"event_status.csv",index=False)
+
+
 def build_event_watchlist(tradable_df: pd.DataFrame):
     if tradable_df is None or tradable_df.empty:
-        out=pd.DataFrame()
+        out=pd.DataFrame(columns=["ticker","company_name","event_type","event_date_utc","days_to_event","event_priority","event_source"])
         out.to_csv(OUTPUT_DIR/"upcoming_events.csv",index=False)
+        _write_event_status("NO_UNIVERSE",0,"Tradable universe was empty.")
         return out
 
     u=tradable_df.copy()
@@ -276,6 +288,14 @@ def build_event_watchlist(tradable_df: pd.DataFrame):
         out=out.sort_values(["_priority","days_to_event","avg_dollar_volume20"],ascending=[False,True,False])
         out=out.drop(columns=["_priority"]).reset_index(drop=True)
     out.to_csv(OUTPUT_DIR/"upcoming_events.csv",index=False)
+    configured=bool(os.getenv("ALPHA_VANTAGE_API_KEY","").strip())
+    earnings_count=int((out["event_type"].eq("EARNINGS")).sum()) if "event_type" in out.columns else 0
+    if not configured:
+        _write_event_status("KEY_MISSING",len(out),"Add GitHub Actions secret ALPHA_VANTAGE_API_KEY to enable earnings calendar.")
+    elif earnings_count==0:
+        _write_event_status("NO_UPCOMING_EARNINGS",len(out),"Provider connected; no matching liquid earnings events were returned inside the 7-day window.")
+    else:
+        _write_event_status("OK",len(out),f"{earnings_count} earnings events plus any explicit-date news events.")
     return out
 
 def merge_technical_context(events: pd.DataFrame, candidates: pd.DataFrame):
