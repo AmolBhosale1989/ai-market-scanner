@@ -60,6 +60,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
         print(f"Representative sample: {len(universe):,} of {full_count:,} symbols")
 
     tickers=universe["ticker"].dropna().astype(str).tolist()
+    company_names=dict(zip(universe["ticker"].astype(str),universe["name"].fillna("").astype(str)))
     expected=len(tickers)
     print(f"Universe used: {expected:,} symbols")
     if expected==0:
@@ -75,7 +76,6 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
         batch=tickers[start:start+BATCH_SIZE]
         print(f"Batch {bi}/{total_batches}: {batch[0]} ... {batch[-1]}")
         histories=download_batch(batch,period="1y",interval="1d")
-
         fetched.update(histories.keys())
 
         for ticker,hist in histories.items():
@@ -89,6 +89,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
                     continue
                 if result["avg_dollar_volume"]<MIN_AVG_DOLLAR_VOLUME:
                     continue
+                result["company_name"]=company_names.get(ticker,"")
                 rows.append(result)
             except Exception as e:
                 print(f"{ticker}: {e}")
@@ -160,9 +161,10 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
 
     print("\nTOP MARKET HUNT CANDIDATES")
     cols=[
-        "ticker","price","stage","final_score","catalyst_score","catalyst_status",
-        "catalyst_type","earnings_days","entry_trigger","stop","target_8",
-        "rr_to_8pct","runway_to_next_resistance_pct","final_decision",
+        "ticker","company_name","price","stage","final_score","catalyst_score",
+        "catalyst_status","catalyst_relevance","catalyst_type","earnings_days",
+        "entry_trigger","stop","target_8","rr_to_8pct",
+        "runway_to_next_resistance_pct","final_decision",
     ]
     print(shortlist[cols].to_string(index=False))
     print(f"\nSaved shortlist: {out}")
