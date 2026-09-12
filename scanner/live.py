@@ -15,6 +15,7 @@ from .config import (
     LIVE_MIN_INTRADAY_RVOL,
     OPENING_RANGE_MINUTES,
     MIN_RUNWAY_PCT,
+    MIN_EFFECTIVE_RR,
 )
 
 NY = ZoneInfo("America/New_York")
