@@ -3,10 +3,93 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import math
+import re
 import pandas as pd
 import yfinance as yf
 
-from .config import EVENT_SCAN_LIMIT, EVENT_LOOKAHEAD_DAYS, EVENT_MAX_WORKERS, OUTPUT_DIR
+from .config import EVENT_SCAN_LIMIT, EVENT_LOOKAHEAD_DAYS, EVENT_MAX_WORKERS, EVENT_NEWS_SCAN_LIMIT, OUTPUT_DIR
+from .catalysts import _extract_news_item, _news_relevance
+
+
+EVENT_PATTERNS = [
+    ("FDA_PDUFA", ["pdufa","fda decision","fda action date","regulatory decision"]),
+    ("INVESTOR_DAY", ["investor day","analyst day","capital markets day"]),
+    ("CONFERENCE", ["conference","fireside chat","to present","presentation"]),
+    ("PRODUCT_LAUNCH", ["product launch","launch event","will launch","unveils"]),
+    ("CLINICAL_DATA", ["clinical data","trial data","study results","topline data"]),
+    ("CONTRACT_AWARD", ["contract award","award announcement","contract decision"]),
+]
+
+_MONTH_RE = r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+
+def _explicit_event_date(title: str):
+    """Parse an explicit month/day date from a headline; no vague 'next week' guesses."""
+    now=pd.Timestamp.now(tz="UTC")
+    m=re.search(rf"\b{_MONTH_RE}\s+(\d{{1,2}})(?:st|nd|rd|th)?\b",title,re.I)
+    if not m:
+        m=re.search(rf"\b(\d{{1,2}})\s+{_MONTH_RE}\b",title,re.I)
+        if m:
+            day=int(m.group(1)); month=m.group(2)
+        else:
+            return None
+    else:
+        month=m.group(1); day=int(m.group(2))
+    try:
+        ts=pd.Timestamp(f"{month} {day} {now.year}",tz="UTC")
+        if ts < now-pd.Timedelta(days=1):
+            ts=pd.Timestamp(f"{month} {day} {now.year+1}",tz="UTC")
+        return ts
+    except Exception:
+        return None
+
+def _news_forward_event(ticker: str, company_name: str):
+    obj=yf.Ticker(ticker)
+    try:
+        try:
+            raw=obj.get_news(count=12)
+        except TypeError:
+            raw=obj.news
+    except Exception:
+        return None
+
+    now=pd.Timestamp.now(tz="UTC")
+    candidates=[]
+    for item in raw or []:
+        parsed=_extract_news_item(item)
+        if not parsed:
+            continue
+        relevant,_=_news_relevance(ticker,company_name,parsed)
+        if not relevant:
+            continue
+        title=parsed["title"]
+        lower=title.lower()
+        event_type=None
+        for kind,phrases in EVENT_PATTERNS:
+            if any(p in lower for p in phrases):
+                event_type=kind
+                break
+        if not event_type:
+            continue
+        ts=_explicit_event_date(title)
+        if ts is None:
+            continue
+        delta=(ts-now).total_seconds()/86400
+        if not (0 <= delta <= EVENT_LOOKAHEAD_DAYS):
+            continue
+        priority="HIGH" if delta<=3 else ("MEDIUM" if delta<=5 else "WATCH")
+        candidates.append({
+            "ticker":ticker,
+            "event_type":event_type,
+            "event_date_utc":ts.isoformat(),
+            "days_to_event":round(delta,2),
+            "event_priority":priority,
+            "event_source":"ANNOUNCED_NEWS",
+            "event_headline":title[:220],
+            "event_provider":parsed.get("provider","")[:80],
+        })
+    if not candidates:
+        return None
+    return min(candidates,key=lambda x:x["days_to_event"])
 
 def _to_utc(value):
     try:
@@ -100,6 +183,25 @@ def build_event_watchlist(tradable_df: pd.DataFrame):
     rows=[]
     with ThreadPoolExecutor(max_workers=EVENT_MAX_WORKERS) as ex:
         futures={ex.submit(_calendar_earnings,str(t)):str(t) for t in u["ticker"].astype(str)}
+        for fut in as_completed(futures):
+            ticker=futures[fut]
+            try:
+                row=fut.result()
+                if row:
+                    row["company_name"]=name_map.get(ticker,"")
+                    row["avg_dollar_volume20"]=round(float(adv_map.get(ticker,0)),0)
+                    rows.append(row)
+            except Exception:
+                continue
+
+    # Conservative non-earnings layer: only announced future events with an
+    # explicit calendar date in the headline are accepted.
+    news_subset=u.head(EVENT_NEWS_SCAN_LIMIT)
+    with ThreadPoolExecutor(max_workers=EVENT_MAX_WORKERS) as ex:
+        futures={
+            ex.submit(_news_forward_event,str(t),name_map.get(str(t),"")):str(t)
+            for t in news_subset["ticker"].astype(str)
+        }
         for fut in as_completed(futures):
             ticker=futures[fut]
             try:
