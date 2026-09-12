@@ -279,6 +279,15 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     all_out=OUTPUT_DIR/"all_candidates.csv"
     df.sort_values(["market_hunt_score","avg_dollar_volume"],ascending=[False,False]).to_csv(all_out,index=False)
 
+    recommended=df[
+        df["live_trade_action"].astype(str).str.startswith("BUY / LIVE CONFIRMED")
+        & df["final_decision"].astype(str).str.startswith("BUY / CONFIRMED + CATALYST")
+    ].copy()
+    recommended=recommended.sort_values(
+        ["market_hunt_score","avg_dollar_volume"],ascending=[False,False]
+    ).head(top_n)
+    recommended.to_csv(OUTPUT_DIR/"recommended_trades.csv",index=False)
+
     shortlist=df[df["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
     shortlist=shortlist.sort_values(
         ["stage_rank","market_hunt_score","effective_rr"],ascending=[False,False,False]
@@ -287,6 +296,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
 
     out=OUTPUT_DIR/"latest_scan.csv"
     shortlist.to_csv(out,index=False)
+    shortlist.to_csv(OUTPUT_DIR/"watchlist.csv",index=False)
     _write_health(**health)
 
     print("\nTOP MARKET HUNT CANDIDATES")
@@ -298,7 +308,9 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     ]
     print(shortlist[cols].to_string(index=False))
     print(f"\nSaved tradable universe: {OUTPUT_DIR/'tradable_universe.csv'}")
-    print(f"Saved shortlist: {out}")
+    print(f"Saved live-confirmed recommendations: {OUTPUT_DIR/'recommended_trades.csv'}")
+    print(f"Saved research watchlist: {OUTPUT_DIR/'watchlist.csv'}")
+    print(f"Saved monitor input shortlist: {out}")
     print(f"Saved all technical candidates: {all_out}")
     print(f"Saved themes: {OUTPUT_DIR/'trending_themes.csv'}")
     print(f"Saved event-first watchlist: {OUTPUT_DIR/'upcoming_events.csv'}")
