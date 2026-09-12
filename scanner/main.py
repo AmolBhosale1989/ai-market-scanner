@@ -3,7 +3,11 @@ import math
 import numpy as np
 import pandas as pd
 
-from .config import OUTPUT_DIR, MIN_PRICE, MIN_AVG_DOLLAR_VOLUME, TOP_N, BATCH_SIZE, BENCHMARK
+from .config import (
+    OUTPUT_DIR, MIN_PRICE, MIN_AVG_DOLLAR_VOLUME, TOP_N, BATCH_SIZE, BENCHMARK,
+    CATALYST_ENRICH_LIMIT, CATALYST_STRONG_SCORE, CATALYST_ACTIVE_SCORE,
+)
+from .catalysts import enrich_candidates
 from .data import download_history, download_batch
 from .indicators import add_indicators
 from .stocks import analyze_dataframe
@@ -22,6 +26,28 @@ def _representative_sample(universe: pd.DataFrame, limit: int) -> pd.DataFrame:
         return universe.copy()
     idx = np.linspace(0, len(universe) - 1, num=limit, dtype=int)
     return universe.iloc[idx].reset_index(drop=True)
+
+def _final_decision(row):
+    technical = row["decision"]
+    score = float(row.get("catalyst_score", 0) or 0)
+    negative = bool(row.get("negative_catalyst_risk", False))
+
+    if negative and row["stage"] in {"CONFIRMED", "ARMED"}:
+        return "NO TRADE / NEGATIVE CATALYST"
+
+    if row["stage"] == "CONFIRMED" and technical == "BUY / CONFIRMED":
+        if score >= CATALYST_ACTIVE_SCORE:
+            return "BUY / CONFIRMED + CATALYST"
+        return "WAIT / NO FRESH CATALYST"
+
+    if row["stage"] == "ARMED" and technical == "WAIT FOR TRIGGER":
+        if score >= CATALYST_ACTIVE_SCORE:
+            return "WAIT FOR TRIGGER + CATALYST"
+        return "WAIT FOR TRIGGER"
+
+    if row["stage"] in {"FORMING", "DISCOVER"} and score >= CATALYST_STRONG_SCORE:
+        return "WATCHLIST + CATALYST"
+    return technical
 
 def run(refresh_universe: bool = False, limit: int | None = None, top_n: int = TOP_N):
     universe = load_or_build_universe(force_refresh=refresh_universe).sort_values("ticker").reset_index(drop=True)
@@ -66,12 +92,21 @@ def run(refresh_universe: bool = False, limit: int | None = None, top_n: int = T
         - df["risk_score"] * 0.15
     ).round(1)
 
+    print(f"Enriching up to {CATALYST_ENRICH_LIMIT} top technical candidates with catalyst/news data...")
+    df = enrich_candidates(df, limit=CATALYST_ENRICH_LIMIT)
+    df["final_score"] = (
+        df["rank_score"]
+        + df["catalyst_score"].fillna(0).clip(0, 100) * 0.20
+        - df["negative_catalyst_risk"].fillna(False).astype(int) * 15
+    ).round(1)
+    df["final_decision"] = df.apply(_final_decision, axis=1)
+
     all_out = OUTPUT_DIR / "all_candidates.csv"
-    df.sort_values(["rank_score", "avg_dollar_volume"], ascending=[False, False]).to_csv(all_out, index=False)
+    df.sort_values(["final_score", "avg_dollar_volume"], ascending=[False, False]).to_csv(all_out, index=False)
 
     shortlist = df[df["stage"].isin(["CONFIRMED", "ARMED", "FORMING", "DISCOVER"])].copy()
     shortlist = shortlist.sort_values(
-        ["stage_rank", "rank_score", "rr_to_8pct"], ascending=[False, False, False]
+        ["stage_rank", "final_score", "rr_to_8pct"], ascending=[False, False, False]
     ).head(top_n)
     shortlist = shortlist.drop(columns=["stage_rank"], errors="ignore")
 
@@ -79,8 +114,11 @@ def run(refresh_universe: bool = False, limit: int | None = None, top_n: int = T
     shortlist.to_csv(out, index=False)
 
     print("\nTOP MARKET HUNT CANDIDATES")
-    cols = ["ticker", "price", "stage", "pattern", "rank_score", "rs20_vs_spy", "rvol",
-            "entry_trigger", "stop", "target_8", "rr_to_8pct", "runway_to_next_resistance_pct", "decision"]
+    cols = [
+        "ticker", "price", "stage", "final_score", "catalyst_score", "catalyst_status",
+        "catalyst_type", "earnings_days", "entry_trigger", "stop", "target_8",
+        "rr_to_8pct", "runway_to_next_resistance_pct", "final_decision",
+    ]
     print(shortlist[cols].to_string(index=False))
     print(f"\nSaved shortlist: {out}")
     print(f"Saved all liquid candidates: {all_out}")

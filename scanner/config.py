@@ -15,5 +15,11 @@ TOP_N = 20
 BATCH_SIZE = 100
 BENCHMARK = "SPY"
 
+CATALYST_ENRICH_LIMIT = 60
+CATALYST_LOOKBACK_HOURS = 72
+CATALYST_LOOKAHEAD_DAYS = 7
+CATALYST_STRONG_SCORE = 45
+CATALYST_ACTIVE_SCORE = 30
+
 NASDAQ_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
 OTHER_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
