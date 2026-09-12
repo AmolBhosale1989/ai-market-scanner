@@ -36,9 +36,14 @@ jobs:
           from fastapi.testclient import TestClient
           from commercial.api import app
           from commercial.entitlements import entitlements_for
+          from commercial.data_provider import current_market_data_readiness
+          from commercial.billing import SubscriptionState, effective_plan
 
           assert entitlements_for("FREE")["api_access"] is False
           assert entitlements_for("API")["api_access"] is True
+          assert current_market_data_readiness().commercial_ready is False
+          assert effective_plan(SubscriptionState("PRO","active"))=="PRO"
+          assert effective_plan(SubscriptionState("PRO","cancelled"))=="FREE"
 
           c=TestClient(app)
           h=c.get("/health")
