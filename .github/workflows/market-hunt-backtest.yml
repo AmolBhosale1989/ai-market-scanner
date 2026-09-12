@@ -11,6 +11,10 @@ on:
       - '.github/workflows/market-hunt-backtest.yml'
   workflow_dispatch:
 
+concurrency:
+  group: market-hunt-backtest
+  cancel-in-progress: true
+
 jobs:
   calibration:
     runs-on: ubuntu-latest
