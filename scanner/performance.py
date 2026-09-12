@@ -135,3 +135,13 @@ def build_empirical_calibration(journal: pd.DataFrame | None=None, min_samples: 
     out=pd.DataFrame(rows,columns=cols)
     out.to_csv(OUTPUT_DIR/"probability_calibration.csv",index=False)
     return out
+
+
+if __name__=="__main__":
+    summary,grouped=build_performance_reports()
+    calibration=build_empirical_calibration()
+    if not summary.empty:
+        print("\nFORWARD PERFORMANCE")
+        print(summary.to_string(index=False))
+    print(f"Grouped performance rows: {len(grouped)}")
+    print(f"Calibration rows: {len(calibration)}")
