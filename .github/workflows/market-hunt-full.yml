@@ -32,6 +32,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Run full U.S. universe scan with tradability and health gates
+        env:
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
         run: python -m scanner.main --refresh-universe --top 50
       - name: Save latest base scan for intraday monitor
         if: success()
