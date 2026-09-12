@@ -1,44 +1,44 @@
 # Market Hunt V3 — U.S. Opportunity Scanner
 
-Market Hunt V3 uses a broad exchange-listed master universe only as the discovery perimeter, then filters to a liquid tradable universe before expensive analysis.
+Market Hunt V3 uses a broad exchange-listed master universe as the discovery perimeter, filters to a liquid tradable universe, ranks themes, finds early technical structures and monitors actionable names intraday.
 
-Core pipeline:
-5,000+ master symbols -> fast price/liquidity gate -> tradable universe -> theme momentum -> pre-move technical structure -> D/W/M support/resistance -> runway/R:R -> optional catalyst/news -> ARMED/CONFIRMED -> 15-minute intraday state monitor.
+## Trade-quality engine
+The scanner now uses resistance-capped effective risk/reward:
+- mechanical +8% target is still shown for reference
+- the actionable target is `min(+8% target, nearest higher weekly/monthly resistance)`
+- `effective_rr` is calculated from that realistic target and the technical stop
+- ARMED/CONFIRMED requires clean runway and effective R/R >= 2.5 by default
 
-Tradability defaults:
-- price >= $5
-- 20-day average share volume >= 500,000
-- 20-day average dollar volume >= $20 million
+This prevents a setup from qualifying merely because a theoretical +8% target looks attractive when major resistance is closer.
 
-Intraday state engine:
-- ARMED
-- TRIGGERED
-- LIVE_CONFIRMED
-- FAILED_BREAKOUT
-- INVALIDATED
+## Catalyst freshness
+Catalyst relevance and freshness are separate:
+- <=24h: full weight
+- 24–72h: 80% keyword weight
+- 72h–7d: context only, heavily discounted
+- >7d: historical context, zero current-news contribution
 
-Positive catalysts and leading themes are bonuses, not mandatory trade gates. Fresh negative catalyst risk remains a veto. The live monitor uses 5-minute data, VWAP, the completed 30-minute opening range, technical trigger state and time-normalized intraday RVOL.
+ACTIVE/STRONG catalyst status now requires genuinely fresh relevant news or a near-term earnings event. Historical headlines can remain visible but cannot create an active catalyst tag. Positive catalysts remain optional; a fresh material negative catalyst remains a risk veto.
 
-Automation:
-- full base scan on weekdays before the U.S. session
-- intraday monitor every 15 minutes across the U.S. market-time window
-- persistent state using GitHub Actions cache
-- intraday artifacts and GitHub job-summary alerts
-- optional Telegram alerts when TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID repository secrets are configured
+## Historical backtest framework
+Run:
+`python -m scanner.backtest`
 
-Dashboard:
-The Streamlit dashboard shows scan health, tradable-universe size, trending themes, live monitor state, transition history and ranked opportunities. render.yaml is included for Render deployment.
+Default behavior:
+- uses the most liquid names from `outputs/tradable_universe.csv`
+- performs walk-forward historical signal generation
+- only evaluates historically ARMED/CONFIRMED setups meeting today's runway/effective-R:R rules
+- checks whether the trigger was reached over the next 7 sessions
+- evaluates stop, resistance-capped target or time exit
+- uses a conservative stop-first assumption if stop and target are both touched on the same daily bar
 
-Main outputs:
-outputs/tradable_universe.csv
-outputs/trending_themes.csv
-outputs/latest_scan.csv
-outputs/all_candidates.csv
-outputs/scan_health.csv
-outputs/intraday_live.csv
-outputs/state_transitions.csv
-outputs/live_alerts.txt
+Outputs:
+- `outputs/backtest_trades.csv`
+- `outputs/backtest_summary.csv`
 
-Yahoo Finance remains a free prototype source and can throttle or omit data. Health gates are used so incomplete scans are not presented as valid.
+The backtest is a validation framework, not proof of future performance. Daily OHLC cannot establish exact intraday ordering, slippage or fill quality.
+
+## Current pipeline
+5,000+ master symbols -> fast tradability gate -> tradable universe -> theme momentum -> pre-move structure -> D/W/M support/resistance -> resistance-capped effective R/R -> optional fresh catalyst -> ARMED/CONFIRMED -> 15-minute live VWAP/ORB/RVOL state monitor.
 
 Research and decision support only. No guaranteed returns and no automatic trade execution.

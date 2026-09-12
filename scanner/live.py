@@ -191,7 +191,7 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
     live_action="NO LIVE SIGNAL"
     technical_ok=stage in {"ARMED","CONFIRMED"}
     catalyst_bonus=(not negative_catalyst_risk) and catalyst_score>=30
-    rr_ok=math.isfinite(rr_to_8pct) and rr_to_8pct>=2.0
+    rr_ok=math.isfinite(rr_to_8pct) and rr_to_8pct>=MIN_EFFECTIVE_RR
     runway_ok=math.isfinite(runway_pct) and runway_pct>=MIN_RUNWAY_PCT
     live_conditions=above_vwap and above_or and trigger_reached and math.isfinite(rvol) and rvol>=LIVE_MIN_INTRADAY_RVOL
 
@@ -247,7 +247,7 @@ def enrich_live_candidates(df: pd.DataFrame, limit: int = LIVE_ENRICH_LIMIT):
                 entry_trigger=float(row.get("entry_trigger",math.nan)),
                 stage=str(row.get("stage","")),
                 catalyst_score=float(pd.to_numeric(pd.Series([row.get("catalyst_score",0)]),errors="coerce").fillna(0).iloc[0]),
-                rr_to_8pct=float(pd.to_numeric(pd.Series([row.get("rr_to_8pct",math.nan)]),errors="coerce").iloc[0]),
+                rr_to_8pct=float(pd.to_numeric(pd.Series([row.get("effective_rr",row.get("rr_to_8pct",math.nan))]),errors="coerce").iloc[0]),
                 runway_pct=float(pd.to_numeric(pd.Series([row.get("runway_to_next_resistance_pct",math.nan)]),errors="coerce").iloc[0]),
                 negative_catalyst_risk=bool(row.get("negative_catalyst_risk",False)),
             )

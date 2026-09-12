@@ -7,8 +7,7 @@ OUTPUT_DIR = BASE_DIR / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
 DATA_DIR.mkdir(exist_ok=True)
 
-# Tradable-universe gate. The 5k+ exchange list is only the discovery perimeter;
-# expensive technical analysis is reserved for sufficiently liquid stocks.
+# Tradable-universe gate.
 MIN_PRICE = 5.0
 MIN_AVG_SHARE_VOLUME = 500_000
 MIN_AVG_DOLLAR_VOLUME = 20_000_000
@@ -18,6 +17,7 @@ PREFILTER_AVG_WINDOW = 20
 
 MIN_HISTORY_DAYS = 220
 MIN_RUNWAY_PCT = 5.0
+MIN_EFFECTIVE_RR = 2.5
 
 TOP_N = 20
 BATCH_SIZE = 75
@@ -36,6 +36,7 @@ CATALYST_LOOKBACK_HOURS = 72
 CATALYST_LOOKAHEAD_DAYS = 7
 CATALYST_STRONG_SCORE = 45
 CATALYST_ACTIVE_SCORE = 30
+CATALYST_CONTEXT_MAX_HOURS = 168
 
 # Theme/sector momentum.
 THEME_PROFILE_LIMIT = 80
@@ -47,6 +48,12 @@ LIVE_INTERVAL = "5m"
 LIVE_PERIOD = "5d"
 LIVE_MIN_INTRADAY_RVOL = 1.20
 OPENING_RANGE_MINUTES = 30
+
+# Backtesting defaults.
+BACKTEST_PERIOD = "3y"
+BACKTEST_HORIZON_DAYS = 7
+BACKTEST_MAX_TICKERS = 100
+BACKTEST_SIGNAL_STRIDE = 5
 
 NASDAQ_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
 OTHER_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"

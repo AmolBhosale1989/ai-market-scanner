@@ -240,7 +240,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
 
     shortlist=df[df["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
     shortlist=shortlist.sort_values(
-        ["stage_rank","market_hunt_score","rr_to_8pct"],ascending=[False,False,False]
+        ["stage_rank","market_hunt_score","effective_rr"],ascending=[False,False,False]
     ).head(top_n)
     shortlist=shortlist.drop(columns=["stage_rank"],errors="ignore")
 
@@ -251,7 +251,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     print("\nTOP MARKET HUNT CANDIDATES")
     cols=[
         "ticker","price","stage","theme","theme_score","market_hunt_score",
-        "catalyst_score","entry_trigger","stop","target_8","rr_to_8pct",
+        "catalyst_score","entry_trigger","stop","effective_target","effective_rr",
         "runway_to_next_resistance_pct","live_status","intraday_rvol",
         "live_confirmation_score","live_trade_action",
     ]
