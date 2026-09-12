@@ -67,6 +67,8 @@ files = {
     "trader_minervini":"trader_minervini.csv", "trader_oneil":"trader_oneil.csv",
     "trader_weinstein":"trader_weinstein.csv", "trader_darvas":"trader_darvas.csv",
     "trader_livermore":"trader_livermore.csv", "trader_qullamaggie":"trader_qullamaggie.csv",
+    "trader_druckenmiller":"trader_druckenmiller.csv", "trader_lawwaisum":"trader_lawwaisum.csv",
+    "trader_martinluk":"trader_martinluk.csv",
 }
 data, sources = {}, {}
 for key, filename in files.items():
@@ -190,6 +192,9 @@ with legendary_tab:
         ("Nicolas Darvas", "Darvas Box Breakout", "trader_darvas"),
         ("Jesse Livermore", "Pivot / Line of Least Resistance", "trader_livermore"),
         ("Kristjan Kullamägi", "Momentum Breakout / EP-style", "trader_qullamaggie"),
+        ("Stanley Druckenmiller", "Liquidity + Catalyst + Technical Confirmation", "trader_druckenmiller"),
+        ("Law Wai-Sum", "Growth Momentum + Position/Swing Hybrid", "trader_lawwaisum"),
+        ("Martin Luk", "Asymmetric 5:1 Momentum Swing", "trader_martinluk"),
     ]
     for trader_name, setup_name, key in trader_views:
         frame = data[key]
