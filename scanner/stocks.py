@@ -1,6 +1,7 @@
 import math
 import pandas as pd
 from .config import MIN_RUNWAY_PCT, MIN_EFFECTIVE_RR, MIN_HISTORY_DAYS
+from .entry_model import build_entry_stop_plan
 from .indicators import add_indicators
 from .patterns import detect_forming_setup, timeframe_levels
 
@@ -11,7 +12,7 @@ def _f(v, default=0.0):
         return default
 
 def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float = 0.0):
-    if df is None or len(df) < MIN_HISTORY_DAYS:
+    if df is None or len(df)<MIN_HISTORY_DAYS:
         return None
 
     d=add_indicators(df)
@@ -31,15 +32,13 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     technical_stage=formation["stage"]
     rs20=_f(last["RET20"])-benchmark_return20
 
-    breakout_trigger=max(price,levels["daily_resistance"]*1.002)
-    entry=price if technical_stage in {"CONFIRMED","EXTENDED"} else breakout_trigger
+    plan=build_entry_stop_plan(d,levels,technical_stage)
+    if not plan:
+        return None
 
-    ema50=_f(last["EMA50"])
-    technical_supports=[x for x in [levels["daily_support"],ema50] if 0<x<entry]
-    nearest_support=max(technical_supports) if technical_supports else entry-1.5*atr
-    stop=min(entry-0.8*atr,nearest_support-0.25*atr)
-    stop=max(0.01,stop)
-    risk=max(0.01,entry-stop)
+    entry=float(plan["entry"])
+    stop=float(plan["stop"])
+    risk=max(0.01,float(plan["risk"]))
 
     target5=entry*1.05
     target8=entry*1.08
@@ -54,7 +53,6 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     runway_pct=((next_res/entry)-1)*100 if math.isfinite(next_res) else math.nan
     runway_ok=math.isfinite(runway_pct) and runway_pct>=MIN_RUNWAY_PCT
 
-    # Real target is capped by the nearest known higher-timeframe resistance.
     effective_target=min(target8,next_res) if math.isfinite(next_res) else target8
     effective_target_pct=((effective_target/entry)-1)*100
     effective_rr=max(0.0,(effective_target-entry)/risk)
@@ -79,6 +77,7 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     elif rs20>=5: technical_score+=8
     elif rs20>=0: technical_score+=4
 
+    ema50=_f(last["EMA50"])
     rsi=_f(last["RSI14"])
     if 50<=rsi<=70: technical_score+=6
     atr_pct=atr/price*100
@@ -95,6 +94,7 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     if price<ema50: risk_score+=20
     if formation["extension_above_20d_high_pct"]>5: risk_score+=30
     if effective_rr<MIN_EFFECTIVE_RR: risk_score+=20
+    if plan["risk_pct"]>5: risk_score+=15
     if runway_blocked: risk_score+=20
     risk_score=min(100,risk_score)
 
@@ -132,7 +132,15 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
         "monthly_support":round(levels["monthly_support"],2),
         "monthly_resistance":round(levels["monthly_resistance"],2),
         "entry_trigger":round(entry,2),
+        "entry_model":plan["entry_model"],
+        "entry_buffer_pct":round(plan["entry_buffer_pct"],2),
         "stop":round(stop,2),
+        "stop_basis":plan["stop_basis"],
+        "stop_anchor":round(plan["stop_anchor"],2),
+        "stop_anchor_distance_pct":round(plan["stop_anchor_distance_pct"],2),
+        "risk_pct":round(plan["risk_pct"],2),
+        "swing5_low":round(plan["swing5_low"],2) if math.isfinite(plan["swing5_low"]) else math.nan,
+        "swing10_low":round(plan["swing10_low"],2) if math.isfinite(plan["swing10_low"]) else math.nan,
         "target_5":round(target5,2),
         "target_8":round(target8,2),
         "target_10":round(target10,2),
