@@ -36,6 +36,10 @@ def _empty_live(status="NOT CHECKED"):
         "live_trigger_reached": False,
         "live_retest_touched": False,
         "live_confirmation_score": 0,
+        "premarket_price": math.nan,
+        "premarket_gap_pct": math.nan,
+        "premarket_volume": math.nan,
+        "premarket_status": "NOT CHECKED",
         "live_trade_action": "NO LIVE SIGNAL",
     }
 
@@ -78,6 +82,13 @@ def _market_session(now_et: datetime):
 
 def _market_state(now_et: datetime):
     return _market_session(now_et)[0]
+
+def _premarket_frame(d: pd.DataFrame, session_date):
+    x=d[d.index.date==session_date].copy()
+    if x.empty:
+        return x
+    return x.between_time("04:00","09:29")
+
 
 def _session_frame(d: pd.DataFrame, session_date):
     x=d[d.index.date==session_date].copy()
@@ -148,7 +159,7 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
             auto_adjust=True,
             progress=False,
             threads=False,
-            prepost=False,
+            prepost=True,
             timeout=20,
         )
     except TypeError:
@@ -159,7 +170,7 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
             auto_adjust=True,
             progress=False,
             threads=False,
-            prepost=False,
+            prepost=True,
         )
     except Exception:
         result["live_status"]="ERROR"
@@ -172,8 +183,33 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
 
     latest_date=d.index[-1].date()
     latest_session=_session_frame(d,latest_date)
+    premarket=_premarket_frame(d,now_et.date())
+
+    premarket_price=math.nan
+    premarket_gap=math.nan
+    premarket_volume=math.nan
+    premarket_status="NO PREMARKET DATA"
+    if not premarket.empty:
+        premarket_price=float(premarket["Close"].iloc[-1])
+        premarket_volume=float(pd.to_numeric(premarket["Volume"],errors="coerce").fillna(0).sum())
+        prior_sessions=sorted({x for x in d.index.date if x < now_et.date()},reverse=True)
+        if prior_sessions:
+            prior=_session_frame(d,prior_sessions[0])
+            if not prior.empty:
+                prior_close=float(prior["Close"].iloc[-1])
+                if prior_close>0:
+                    premarket_gap=(premarket_price/prior_close-1)*100
+        premarket_status="AVAILABLE"
+
     if latest_session.empty:
-        result["live_status"]="NO REGULAR SESSION DATA"
+        result.update({
+            "live_status":"PREMARKET" if state=="PREMARKET" and not premarket.empty else "NO REGULAR SESSION DATA",
+            "premarket_price":round(premarket_price,2) if math.isfinite(premarket_price) else math.nan,
+            "premarket_gap_pct":round(premarket_gap,2) if math.isfinite(premarket_gap) else math.nan,
+            "premarket_volume":round(premarket_volume,0) if math.isfinite(premarket_volume) else math.nan,
+            "premarket_status":premarket_status,
+            "live_trade_action":"WAIT / PREMARKET" if state=="PREMARKET" else "NO LIVE SIGNAL",
+        })
         return result
 
     is_current_session=(latest_date==now_et.date())
@@ -252,6 +288,10 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
         "live_trigger_reached":bool(trigger_reached),
         "live_retest_touched":bool(retest_touched),
         "live_confirmation_score":int(score),
+        "premarket_price":round(premarket_price,2) if math.isfinite(premarket_price) else math.nan,
+        "premarket_gap_pct":round(premarket_gap,2) if math.isfinite(premarket_gap) else math.nan,
+        "premarket_volume":round(premarket_volume,0) if math.isfinite(premarket_volume) else math.nan,
+        "premarket_status":premarket_status,
         "live_trade_action":live_action,
     })
     return result
