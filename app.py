@@ -101,9 +101,10 @@ if not calibration.empty:
 
 if not live.empty:
     st.subheader("⚡ Live Monitor")
-    live_cols=["ticker","monitor_state","previous_state","state_changed","live_price","entry_trigger",
-               "stop","live_vwap","opening_range_high","intraday_rvol","live_confirmation_score",
-               "theme","catalyst_status","live_trade_action","checked_at_et"]
+    live_cols=["ticker","monitor_state","previous_state","state_changed","premarket_price","premarket_gap_pct",
+               "premarket_volume","premarket_status","live_price","entry_trigger","stop","live_vwap",
+               "opening_range_high","intraday_rvol","live_confirmation_score","theme","catalyst_status",
+               "live_trade_action","checked_at_et"]
     st.dataframe(live[[c for c in live_cols if c in live.columns]],use_container_width=True,hide_index=True)
 
 if not transitions.empty:
