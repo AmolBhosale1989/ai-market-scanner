@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
+import pandas_market_calendars as mcal
 import yfinance as yf
 
 from .config import (
@@ -19,6 +20,7 @@ from .config import (
 )
 
 NY = ZoneInfo("America/New_York")
+NYSE = mcal.get_calendar("NYSE")
 
 def _empty_live(status="NOT CHECKED"):
     return {
@@ -55,15 +57,27 @@ def _normalize_intraday(df: pd.DataFrame):
     d=d.dropna(subset=["Close"]).sort_index()
     return d
 
+def _market_session(now_et: datetime):
+    """Return exchange-aware state/open/close, including holidays and early closes."""
+    day=now_et.date()
+    try:
+        sched=NYSE.schedule(start_date=day,end_date=day)
+    except Exception:
+        sched=pd.DataFrame()
+    if sched.empty:
+        return "MARKET CLOSED",None,None
+
+    row=sched.iloc[0]
+    market_open=pd.Timestamp(row["market_open"]).tz_convert(NY).to_pydatetime()
+    market_close=pd.Timestamp(row["market_close"]).tz_convert(NY).to_pydatetime()
+    if now_et < market_open:
+        return "PREMARKET",market_open,market_close
+    if now_et <= market_close:
+        return "LIVE",market_open,market_close
+    return "MARKET CLOSED",market_open,market_close
+
 def _market_state(now_et: datetime):
-    if now_et.weekday() >= 5:
-        return "MARKET CLOSED"
-    t=now_et.time()
-    if t < dtime(9,30):
-        return "PREMARKET"
-    if t <= dtime(16,0):
-        return "LIVE"
-    return "MARKET CLOSED"
+    return _market_session(now_et)[0]
 
 def _session_frame(d: pd.DataFrame, session_date):
     x=d[d.index.date==session_date].copy()
