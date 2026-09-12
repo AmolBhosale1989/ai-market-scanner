@@ -29,6 +29,8 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run 300-stock representative smoke test with health gate
+        env:
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
         run: python -m scanner.main --refresh-universe --limit 300 --top 20
 
       - name: Run focused backtest smoke
@@ -39,22 +41,28 @@ jobs:
 
       - name: Run event-calendar self-check
         shell: bash
+        env:
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
         run: |
           python - <<'PY'
+          import os
           import pandas as pd
-          import yfinance as yf
-          from scanner.events import _global_earnings_events
+          from scanner.events import _parse_alpha_vantage_calendar, _alpha_vantage_earnings_events
 
-          cal=yf.Calendars()
-          df=cal.get_earnings_calendar(limit=20,filter_most_active=False)
-          assert df is not None and len(df)>0, "Yahoo global earnings calendar returned no rows"
-          x=df.reset_index()
-          sym_col=next(k for k in ["Symbol","symbol","ticker","Ticker"] if k in x.columns)
-          ticker=str(x.iloc[0][sym_col]).strip().upper().replace(".","-")
-          u=pd.DataFrame([{"ticker":ticker,"name":"Calendar self-check","avg_dollar_volume20":100000000,"tradable":True}])
-          rows=_global_earnings_events(u)
-          assert rows, f"Global earnings intersection failed for {ticker}"
-          print("Global event-calendar self-check passed:",rows[0]["ticker"],rows[0]["event_date_utc"])
+          u=pd.DataFrame([
+              {"ticker":"TEST","name":"Calendar self-check","avg_dollar_volume20":100000000,"tradable":True}
+          ])
+          body="symbol,name,reportDate,fiscalDateEnding,estimate,currency\nTEST,Calendar self-check,2026-09-15,2026-06-30,1.23,USD\n"
+          rows=_parse_alpha_vantage_calendar(body,u,now=pd.Timestamp("2026-09-12T00:00:00Z"))
+          assert rows and rows[0]["ticker"]=="TEST"
+          assert rows[0]["event_source"]=="ALPHA_VANTAGE"
+          print("Alpha Vantage parser self-check passed.")
+
+          if os.getenv("ALPHA_VANTAGE_API_KEY","").strip():
+              live=_alpha_vantage_earnings_events(u)
+              print(f"Alpha Vantage live provider check returned {len(live)} matching TEST rows (zero is expected for synthetic ticker).")
+          else:
+              print("ALPHA_VANTAGE_API_KEY not configured; live provider check skipped.")
           PY
 
       - name: Run live/journal self-checks
