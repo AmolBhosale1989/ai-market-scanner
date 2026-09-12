@@ -57,7 +57,7 @@ jobs:
           rm -rf /tmp/market-hunt-scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
           mkdir -p /tmp/market-hunt-scan-data/dashboard-data
-          for f in latest_scan.csv all_candidates.csv scan_health.csv trending_themes.csv tradable_universe.csv upcoming_events.csv event_status.csv; do
+          for f in latest_scan.csv all_candidates.csv scan_health.csv trending_themes.csv tradable_universe.csv upcoming_events.csv event_status.csv product_feed.json; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
