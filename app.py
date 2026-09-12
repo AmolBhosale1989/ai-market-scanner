@@ -61,7 +61,7 @@ files = {
     "picks":"latest_scan.csv", "tradable":"tradable_universe.csv", "candidates":"all_candidates.csv",
     "events":"upcoming_events.csv", "event_status":"event_status.csv", "journal":"paper_journal.csv",
     "performance":"performance_summary.csv", "performance_setup":"performance_by_setup.csv",
-    "calibration":"probability_calibration.csv", "monitor":"monitor_health.csv",
+    "calibration":"probability_calibration.csv", "monitor":"monitor_health.csv", "gate":"validation_gate.csv",
 }
 data, sources = {}, {}
 for key, filename in files.items():
@@ -170,8 +170,18 @@ with event_tab:
         st.dataframe(events[columns(events,preferred)].head(100),hide_index=True,use_container_width=True)
 
 with validation:
-    performance, setup, calibration = data["performance"], data["performance_setup"], data["calibration"]
+    performance, setup, calibration, gate = data["performance"], data["performance_setup"], data["calibration"], data["gate"]
     st.subheader("Forward validation")
+    if not gate.empty:
+        g=gate.iloc[0]
+        st.info(f'Readiness gate: {g.get("gate_status","PAPER_VALIDATION")} · closed signals {int(number(g.get("closed_signals")))}/{int(number(g.get("min_closed_signals"),30))}')
+        q1,q2,q3,q4=st.columns(4)
+        q1.metric("Paper samples",int(number(g.get("closed_signals"))))
+        q2.metric("Win rate",f'{number(g.get("win_rate_pct")):.1f}%')
+        q3.metric("Average R",f'{number(g.get("avg_r_multiple")):.2f}')
+        q4.metric("Profit factor",f'{number(g.get("profit_factor_r")):.2f}')
+        if not bool(g.get("ready_for_real_money",False)):
+            st.warning(f'Live-capital gate remains locked. Missing: {g.get("failed_checks","forward evidence")}')
     if not performance.empty:
         p=performance.iloc[0]; c1,c2,c3,c4,c5=st.columns(5)
         c1.metric("Signals",int(number(p.get("signals")))); c2.metric("Closed",int(number(p.get("closed_signals"))))

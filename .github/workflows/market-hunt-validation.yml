@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'scanner/performance.py'
+      - 'scanner/readiness.py'
       - 'scanner/intraday.py'
       - 'scanner/live.py'
       - '.github/workflows/market-hunt-validation.yml'
@@ -50,6 +51,7 @@ jobs:
             cp .state/paper_journal.csv outputs/paper_journal.csv
           fi
           python -m scanner.performance
+          python -m scanner.readiness
 
       - name: Publish validation reports
         shell: bash
@@ -61,7 +63,7 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
           mkdir -p /tmp/market-hunt-scan-data/dashboard-data
-          for f in paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv; do
+          for f in paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv validation_gate.csv validation_gate.json; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
@@ -86,4 +88,6 @@ jobs:
             outputs/performance_summary.csv
             outputs/performance_by_setup.csv
             outputs/probability_calibration.csv
+            outputs/validation_gate.csv
+            outputs/validation_gate.json
           if-no-files-found: warn
