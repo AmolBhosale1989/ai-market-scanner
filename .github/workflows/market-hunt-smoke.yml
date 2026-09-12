@@ -65,6 +65,26 @@ jobs:
               print("ALPHA_VANTAGE_API_KEY not configured; live provider check skipped.")
           PY
 
+      - name: Run earnings intelligence self-check
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pandas as pd
+          from scanner.earnings_intel import _beat_miss_stats
+
+          q=pd.DataFrame({
+              "surprisePercentage":[10.0,5.0,-2.0,8.0],
+              "reportedEPS":[1.10,1.05,0.98,1.08],
+              "estimatedEPS":[1.00,1.00,1.00,1.00],
+          })
+          m=_beat_miss_stats(q)
+          assert m["earnings_history_samples"]==4
+          assert m["beat_rate_pct"]==75.0
+          assert m["latest_surprise_pct"]==10.0
+          assert m["surprise_streak"]==2
+          print("Earnings intelligence self-check passed.")
+          PY
+
       - name: Run live/journal self-checks
         shell: bash
         run: |
