@@ -13,6 +13,7 @@ import requests
 
 from .config import OUTPUT_DIR, LIVE_ENRICH_LIMIT
 from .live import enrich_live_candidates
+from .performance import build_performance_reports, build_empirical_calibration
 
 NY = ZoneInfo("America/New_York")
 STATE_DIR = Path(".state")
@@ -74,8 +75,9 @@ def _update_paper_journal(live: pd.DataFrame, now: str):
     cols=[
         "signal_id","ticker","first_seen_et","last_seen_et","stage","entry_trigger","stop",
         "effective_target","effective_rr","entry_model","entry_condition","market_regime_state",
-        "theme","catalyst_status","paper_state","last_price","triggered_at_et",
-        "live_confirmed_at_et","closed_at_et","outcome","return_pct","r_multiple"
+        "theme","theme_score","catalyst_status","catalyst_score","technical_score","formation_score",
+        "final_score","market_hunt_score","live_confirmation_score","pattern","paper_state","last_price",
+        "triggered_at_et","live_confirmed_at_et","closed_at_et","outcome","return_pct","r_multiple"
     ]
     if JOURNAL_FILE.exists():
         try:
@@ -104,7 +106,11 @@ def _update_paper_journal(live: pd.DataFrame, now: str):
                 "stage":row.get("stage",""),"entry_trigger":entry,"stop":stop,
                 "effective_target":target,"effective_rr":rr,"entry_model":row.get("entry_model",""),
                 "entry_condition":row.get("entry_condition",""),"market_regime_state":row.get("market_regime_state",""),
-                "theme":row.get("theme",""),"catalyst_status":row.get("catalyst_status",""),
+                "theme":row.get("theme",""),"theme_score":row.get("theme_score",math.nan),
+                "catalyst_status":row.get("catalyst_status",""),"catalyst_score":row.get("catalyst_score",math.nan),
+                "technical_score":row.get("technical_score",math.nan),"formation_score":row.get("formation_score",math.nan),
+                "final_score":row.get("final_score",math.nan),"market_hunt_score":row.get("market_hunt_score",math.nan),
+                "live_confirmation_score":row.get("live_confirmation_score",math.nan),"pattern":row.get("pattern",""),
                 "paper_state":new_state,"last_price":price,"triggered_at_et":"",
                 "live_confirmed_at_et":"","closed_at_et":"","outcome":"","return_pct":math.nan,"r_multiple":math.nan,
             }
@@ -117,7 +123,15 @@ def _update_paper_journal(live: pd.DataFrame, now: str):
         journal.at[idx,"last_price"]=price
         journal.at[idx,"market_regime_state"]=row.get("market_regime_state","")
         journal.at[idx,"theme"]=row.get("theme","")
+        journal.at[idx,"theme_score"]=row.get("theme_score",journal.at[idx,"theme_score"] if "theme_score" in journal.columns else math.nan)
         journal.at[idx,"catalyst_status"]=row.get("catalyst_status","")
+        journal.at[idx,"catalyst_score"]=row.get("catalyst_score",journal.at[idx,"catalyst_score"] if "catalyst_score" in journal.columns else math.nan)
+        journal.at[idx,"technical_score"]=row.get("technical_score",journal.at[idx,"technical_score"] if "technical_score" in journal.columns else math.nan)
+        journal.at[idx,"formation_score"]=row.get("formation_score",journal.at[idx,"formation_score"] if "formation_score" in journal.columns else math.nan)
+        journal.at[idx,"final_score"]=row.get("final_score",journal.at[idx,"final_score"] if "final_score" in journal.columns else math.nan)
+        journal.at[idx,"market_hunt_score"]=row.get("market_hunt_score",journal.at[idx,"market_hunt_score"] if "market_hunt_score" in journal.columns else math.nan)
+        journal.at[idx,"live_confirmation_score"]=row.get("live_confirmation_score",journal.at[idx,"live_confirmation_score"] if "live_confirmation_score" in journal.columns else math.nan)
+        journal.at[idx,"pattern"]=row.get("pattern",journal.at[idx,"pattern"] if "pattern" in journal.columns else "")
 
         triggered_existing=journal.at[idx,"triggered_at_et"]
         confirmed_existing=journal.at[idx,"live_confirmed_at_et"]
@@ -140,6 +154,23 @@ def _update_paper_journal(live: pd.DataFrame, now: str):
     journal.to_csv(JOURNAL_FILE,index=False)
     journal.to_csv(OUTPUT_DIR/"paper_journal.csv",index=False)
     return journal
+
+def _write_monitor_health(live: pd.DataFrame, now: str, alert_count: int, telegram_configured: bool, telegram_sent: bool):
+    rows=len(live) if live is not None else 0
+    live_rows=int(live.get("live_status",pd.Series(dtype=object)).eq("LIVE").sum()) if rows else 0
+    actionable=int(live.get("monitor_state",pd.Series(dtype=object)).isin(ALERT_STATES).sum()) if rows else 0
+    status="OK" if rows>0 else "NO_ACTIVE_CANDIDATES"
+    pd.DataFrame([{
+        "status":status,
+        "checked_at_et":now,
+        "monitored_candidates":rows,
+        "live_rows":live_rows,
+        "actionable_states":actionable,
+        "alerts_generated":int(alert_count),
+        "telegram_configured":bool(telegram_configured),
+        "telegram_sent":bool(telegram_sent),
+    }]).to_csv(OUTPUT_DIR/"monitor_health.csv",index=False)
+
 
 def _send_telegram(messages):
     token=os.getenv("TELEGRAM_BOT_TOKEN","").strip()
@@ -233,10 +264,14 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
         pd.read_csv(TRANSITIONS_FILE).to_csv(OUTPUT_DIR/"state_transitions.csv",index=False)
 
     live.to_csv(OUTPUT_DIR/"intraday_live.csv",index=False)
-    _update_paper_journal(live,now)
+    journal=_update_paper_journal(live,now)
+    build_performance_reports(journal)
+    build_empirical_calibration(journal)
     alert_text="\n\n".join(alerts)
     (OUTPUT_DIR/"live_alerts.txt").write_text(alert_text)
+    telegram_configured=bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip())
     sent=_send_telegram(alerts)
+    _write_monitor_health(live,now,len(alerts),telegram_configured,sent)
 
     print("\nINTRADAY MARKET HUNT MONITOR")
     cols=["ticker","stage","previous_state","monitor_state","live_price","entry_trigger",
