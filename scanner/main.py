@@ -4,7 +4,9 @@ import numpy as np
 import pandas as pd
 
 from .config import (
-    OUTPUT_DIR, MIN_PRICE, MIN_AVG_DOLLAR_VOLUME, TOP_N, BATCH_SIZE, BENCHMARK,
+    OUTPUT_DIR, MIN_PRICE, MIN_AVG_DOLLAR_VOLUME, MIN_AVG_SHARE_VOLUME,
+    MIN_MEDIAN_DOLLAR_VOLUME, MIN_ADR20_PCT, MIN_ATR_PCT, MAX_ATR_PCT,
+    TOP_N, BATCH_SIZE, BENCHMARK,
     CATALYST_ENRICH_LIMIT, CATALYST_STRONG_SCORE, CATALYST_ACTIVE_SCORE,
     MIN_DATA_COVERAGE, MIN_ANALYZABLE_COVERAGE, LIVE_ENRICH_LIMIT,
     THEME_PROFILE_LIMIT, PREFILTER_PERIOD,
@@ -51,7 +53,7 @@ def _final_decision(row):
     if row["stage"]=="CONFIRMED" and technical=="BUY / CONFIRMED":
         if score>=CATALYST_ACTIVE_SCORE:
             return "BUY / CONFIRMED + CATALYST"
-        return "BUY / CONFIRMED"
+        return "WAIT / ACTIVE CATALYST REQUIRED"
     if row["stage"]=="ARMED" and technical in {"WAIT FOR TRIGGER","WAIT FOR RETEST"}:
         if score>=CATALYST_ACTIVE_SCORE:
             return f"{technical} + CATALYST"
@@ -131,6 +133,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
 
     tradable_df=pfdf[pfdf["tradable"]].copy()
     tradable_tickers=tradable_df["ticker"].astype(str).tolist()
+    tradability=tradable_df.set_index("ticker").to_dict(orient="index")
     tradable_count=len(tradable_tickers)
     print(
         f"TRADABLE UNIVERSE: {tradable_count:,}/{master_expected:,} "
@@ -174,6 +177,20 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
                     continue
                 if result["avg_dollar_volume"]<MIN_AVG_DOLLAR_VOLUME:
                     continue
+                if not (MIN_ATR_PCT <= float(result["atr_pct"]) <= MAX_ATR_PCT):
+                    continue
+                liquidity=tradability.get(ticker,{})
+                if float(liquidity.get("avg_share_volume20",0)) < MIN_AVG_SHARE_VOLUME:
+                    continue
+                if float(liquidity.get("median_dollar_volume20",0)) < MIN_MEDIAN_DOLLAR_VOLUME:
+                    continue
+                if float(liquidity.get("adr20_pct",0)) < MIN_ADR20_PCT:
+                    continue
+                result["avg_share_volume20"]=liquidity.get("avg_share_volume20")
+                result["median_dollar_volume20"]=liquidity.get("median_dollar_volume20")
+                result["adr20_pct"]=liquidity.get("adr20_pct")
+                result["liquidity_gate_passed"]=True
+                result["volatility_gate_passed"]=True
                 result["company_name"]=company_names.get(ticker,"")
                 rows.append(result)
             except Exception as e:
