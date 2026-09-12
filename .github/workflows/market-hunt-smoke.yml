@@ -11,7 +11,7 @@ on:
 jobs:
   smoke-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,10 +24,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run 300-stock representative smoke test
-        run: python -m scanner.main --limit 300 --top 20
+      - name: Run 300-stock representative smoke test with health gate
+        run: python -m scanner.main --refresh-universe --limit 300 --top 20
 
-      - name: Upload scan outputs
+      - name: Upload scan outputs and health report
         if: always()
         uses: actions/upload-artifact@v4
         with:

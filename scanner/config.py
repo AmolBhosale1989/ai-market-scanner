@@ -11,9 +11,18 @@ MIN_PRICE = 3.0
 MIN_AVG_DOLLAR_VOLUME = 20_000_000
 MIN_HISTORY_DAYS = 220
 MIN_RUNWAY_PCT = 5.0
+
 TOP_N = 20
-BATCH_SIZE = 100
+BATCH_SIZE = 75
 BENCHMARK = "SPY"
+
+# Data-integrity controls. A scan that does not retrieve enough market data
+# must fail instead of silently producing a misleading shortlist.
+MIN_DATA_COVERAGE = 0.75
+MIN_ANALYZABLE_COVERAGE = 0.20
+BATCH_RETRIES = 3
+RETRY_CHUNK_SIZE = 20
+RETRY_BACKOFF_SECONDS = 2.0
 
 CATALYST_ENRICH_LIMIT = 60
 CATALYST_LOOKBACK_HOURS = 72

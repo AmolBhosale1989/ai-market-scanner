@@ -3,46 +3,121 @@ from typing import Iterable
 import pandas as pd
 import yfinance as yf
 
-def download_history(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
-    df = yf.download(ticker, period=period, interval=interval, auto_adjust=True, progress=False, threads=False)
-    if df.empty:
-        return df
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = [c[0] for c in df.columns]
-    return df.dropna(how="all").copy()
+from .config import BATCH_RETRIES, RETRY_CHUNK_SIZE, RETRY_BACKOFF_SECONDS
 
-def download_batch(tickers: Iterable[str], period: str = "1y", interval: str = "1d", retries: int = 2):
-    tickers = list(dict.fromkeys(tickers))
+def _normalize_single(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+    out=df.copy()
+    if isinstance(out.columns,pd.MultiIndex):
+        # For a single ticker yfinance may return (Price, Ticker).
+        out.columns=[c[0] for c in out.columns]
+    return out.dropna(how="all").copy()
+
+def download_history(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
+    try:
+        df = yf.download(
+            ticker, period=period, interval=interval,
+            auto_adjust=True, progress=False, threads=False,
+            timeout=20,
+        )
+    except TypeError:
+        df = yf.download(
+            ticker, period=period, interval=interval,
+            auto_adjust=True, progress=False, threads=False,
+        )
+    return _normalize_single(df)
+
+def _download_once(tickers, period, interval):
     if not tickers:
         return {}
-    err = None
-    for attempt in range(retries + 1):
+    try:
+        raw = yf.download(
+            tickers=tickers,
+            period=period,
+            interval=interval,
+            auto_adjust=True,
+            progress=False,
+            group_by="ticker",
+            threads=True,
+            timeout=30,
+        )
+    except TypeError:
+        raw = yf.download(
+            tickers=tickers,
+            period=period,
+            interval=interval,
+            auto_adjust=True,
+            progress=False,
+            group_by="ticker",
+            threads=True,
+        )
+
+    if raw is None or raw.empty:
+        return {}
+
+    out={}
+    if len(tickers)==1:
+        df=_normalize_single(raw)
+        if not df.empty:
+            out[tickers[0]]=df
+        return out
+
+    for t in tickers:
         try:
-            raw = yf.download(
-                tickers=tickers, period=period, interval=interval,
-                auto_adjust=True, progress=False, group_by="ticker", threads=True,
-            )
-            if raw.empty:
-                return {}
-            out = {}
-            if len(tickers) == 1:
-                df = raw.copy()
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = [c[-1] for c in df.columns]
-                out[tickers[0]] = df.dropna(how="all")
-                return out
-            for t in tickers:
-                try:
-                    df = raw[t].copy().dropna(how="all")
-                    if not df.empty:
-                        out[t] = df
-                except Exception:
-                    continue
-            return out
-        except Exception as e:
-            err = e
-            if attempt < retries:
-                time.sleep(2 ** attempt)
-    if err:
-        print(f"Batch download failed: {err}")
-    return {}
+            if isinstance(raw.columns,pd.MultiIndex) and t in raw.columns.get_level_values(0):
+                df=raw[t].copy().dropna(how="all")
+            else:
+                continue
+            if not df.empty:
+                out[t]=df
+        except Exception:
+            continue
+    return out
+
+def download_batch(
+    tickers: Iterable[str],
+    period: str = "1y",
+    interval: str = "1d",
+    retries: int = BATCH_RETRIES,
+):
+    """
+    Download a batch and explicitly retry symbols missing from partial Yahoo
+    responses. Partial failure is common under throttling and must not be
+    mistaken for a successful batch.
+    """
+    tickers=list(dict.fromkeys(str(t) for t in tickers if t))
+    if not tickers:
+        return {}
+
+    out={}
+    remaining=tickers[:]
+
+    for attempt in range(retries+1):
+        if not remaining:
+            break
+
+        if attempt==0:
+            chunks=[remaining]
+        else:
+            chunks=[
+                remaining[i:i+RETRY_CHUNK_SIZE]
+                for i in range(0,len(remaining),RETRY_CHUNK_SIZE)
+            ]
+
+        for chunk in chunks:
+            try:
+                got=_download_once(chunk,period,interval)
+                out.update(got)
+            except Exception as e:
+                print(f"Download retry {attempt+1} failed for {len(chunk)} symbols: {e}")
+
+        remaining=[t for t in tickers if t not in out]
+        if remaining and attempt<retries:
+            sleep_for=RETRY_BACKOFF_SECONDS*(2**attempt)
+            print(f"Retrying {len(remaining)} missing symbols after {sleep_for:.0f}s...")
+            time.sleep(sleep_for)
+
+    if remaining:
+        print(f"Batch incomplete: {len(out)}/{len(tickers)} symbols returned; {len(remaining)} still missing")
+    return out

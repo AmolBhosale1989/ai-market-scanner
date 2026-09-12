@@ -24,10 +24,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run full U.S. universe scan
-        run: python -m scanner.main --top 50
+      - name: Run full U.S. universe scan with health gate
+        run: python -m scanner.main --refresh-universe --top 50
 
-      - name: Upload full scan outputs
+      - name: Upload full scan outputs and health report
         if: always()
         uses: actions/upload-artifact@v4
         with:
