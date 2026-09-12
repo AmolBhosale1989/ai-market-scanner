@@ -1,6 +1,9 @@
 import math
 import pandas as pd
-from .config import MIN_RUNWAY_PCT, MIN_EFFECTIVE_RR, MIN_HISTORY_DAYS
+from .config import (
+    MIN_RUNWAY_PCT, MIN_EFFECTIVE_RR, MIN_HISTORY_DAYS,
+    MIN_ATR_PCT, MAX_ATR_PCT,
+)
 from .entry_model import build_entry_stop_candidates
 from .indicators import add_indicators
 from .patterns import detect_forming_setup, timeframe_levels
@@ -86,6 +89,9 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     avg_dollar_volume=_f((d["Close"]*d["Volume"]).tail(20).mean())
     if price<=0 or atr<=0:
         return None
+    atr_pct=atr/price*100
+    if not (MIN_ATR_PCT <= atr_pct <= MAX_ATR_PCT):
+        return None
 
     levels=timeframe_levels(d)
     formation=detect_forming_setup(d)
@@ -130,8 +136,7 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     ema50=_f(last["EMA50"])
     rsi=_f(last["RSI14"])
     if 50<=rsi<=70: technical_score+=6
-    atr_pct=atr/price*100
-    if 2<=atr_pct<=8: technical_score+=6
+    if MIN_ATR_PCT<=atr_pct<=MAX_ATR_PCT: technical_score+=6
     if _f(last["RVOL"])>3.5: technical_score-=8
     if technical_stage=="EXTENDED": technical_score-=20
     if runway_blocked: technical_score-=12
