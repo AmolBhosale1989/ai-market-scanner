@@ -3,8 +3,11 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import math
+import os
 import re
+from io import StringIO
 import pandas as pd
+import requests
 import yfinance as yf
 
 from .config import EVENT_SCAN_LIMIT, EVENT_LOOKAHEAD_DAYS, EVENT_MAX_WORKERS, EVENT_NEWS_SCAN_LIMIT, OUTPUT_DIR
@@ -102,142 +105,104 @@ def _to_utc(value):
         return None
 
 
-def _global_earnings_events(tradable_df: pd.DataFrame):
-    """Use Yahoo's global earnings calendar, then intersect with our tradable universe."""
-    if tradable_df is None or tradable_df.empty or not hasattr(yf,"Calendars"):
+def _alpha_vantage_earnings_events(tradable_df: pd.DataFrame):
+    """Fetch the broad earnings calendar once from Alpha Vantage, then intersect with our liquid universe."""
+    if tradable_df is None or tradable_df.empty:
+        return []
+
+    api_key=os.getenv("ALPHA_VANTAGE_API_KEY","").strip()
+    if not api_key:
+        print("Alpha Vantage earnings calendar disabled: ALPHA_VANTAGE_API_KEY is not configured.")
         return []
 
     now=pd.Timestamp.now(tz="UTC")
-    end=now+pd.Timedelta(days=EVENT_LOOKAHEAD_DAYS)
     symbols=set(tradable_df["ticker"].astype(str))
-    name_map=dict(zip(tradable_df["ticker"].astype(str),tradable_df.get("name",pd.Series([""]*len(tradable_df))).astype(str)))
+    name_map=dict(zip(
+        tradable_df["ticker"].astype(str),
+        tradable_df.get("name",pd.Series([""]*len(tradable_df))).astype(str)
+    ))
     adv_map=dict(zip(
         tradable_df["ticker"].astype(str),
         pd.to_numeric(tradable_df.get("avg_dollar_volume20",0),errors="coerce").fillna(0)
     ))
 
-    rows=[]
     try:
-        cal=yf.Calendars(start=now.date(),end=end.date())
-        for offset in range(0,500,100):
+        r=requests.get(
+            "https://www.alphavantage.co/query",
+            params={
+                "function":"EARNINGS_CALENDAR",
+                "horizon":"3month",
+                "apikey":api_key,
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+        body=r.text.strip()
+        if not body:
+            print("Alpha Vantage earnings calendar returned an empty response.")
+            return []
+
+        # Alpha Vantage may return JSON for quota/auth errors even though the
+        # successful earnings-calendar response is CSV.
+        if body.startswith("{"):
             try:
-                df=cal.get_earnings_calendar(
-                    limit=100,offset=offset,filter_most_active=False,force=True
-                )
-            except TypeError:
-                df=cal.get_earnings_calendar(limit=100,offset=offset,filter_most_active=False)
-            if df is None or len(df)==0:
-                break
+                payload=r.json()
+            except Exception:
+                payload={}
+            message=payload.get("Information") or payload.get("Note") or payload.get("Error Message") or "unexpected JSON response"
+            print(f"Alpha Vantage earnings calendar unavailable: {message}")
+            return []
 
-            x=df.reset_index()
-            symbol_col=next((k for k in ["Symbol","symbol","ticker","Ticker"] if k in x.columns),None)
-            date_col=next((k for k in ["Event Start Date","startdatetime","Start Date","Earnings Date"] if k in x.columns),None)
-            if symbol_col is None or date_col is None:
-                continue
-
-            for _,r in x.iterrows():
-                ticker=str(r.get(symbol_col,"")).strip().upper().replace(".","-")
-                if ticker not in symbols:
-                    continue
-                ts=_to_utc(r.get(date_col))
-                if ts is None:
-                    continue
-                delta=(ts-now).total_seconds()/86400
-                if not (-0.25 <= delta <= EVENT_LOOKAHEAD_DAYS):
-                    continue
-                priority="HIGH" if delta<=3 else ("MEDIUM" if delta<=5 else "WATCH")
-                row={
-                    "ticker":ticker,
-                    "event_type":"EARNINGS",
-                    "event_date_utc":ts.isoformat(),
-                    "days_to_event":round(delta,2),
-                    "event_priority":priority,
-                    "event_source":"YAHOO_GLOBAL_CALENDAR",
-                    "company_name":name_map.get(ticker,str(r.get("Company","") or "")),
-                    "avg_dollar_volume20":round(float(adv_map.get(ticker,0)),0),
-                }
-                if "EPS Estimate" in x.columns and pd.notna(r.get("EPS Estimate")):
-                    row["eps_estimate"]=r.get("EPS Estimate")
-                if "Marketcap" in x.columns and pd.notna(r.get("Marketcap")):
-                    row["event_market_cap"]=r.get("Marketcap")
-                rows.append(row)
-
-            if len(df)<100:
-                break
+        df=pd.read_csv(StringIO(body))
     except Exception as e:
-        print(f"Global earnings calendar unavailable: {type(e).__name__}: {e}")
+        print(f"Alpha Vantage earnings calendar unavailable: {type(e).__name__}: {e}")
         return []
 
-    # One row per ticker/event date.
+    if df.empty:
+        return []
+
+    symbol_col=next((c for c in ["symbol","Symbol","ticker","Ticker"] if c in df.columns),None)
+    date_col=next((c for c in ["reportDate","report_date","date","Date"] if c in df.columns),None)
+    if symbol_col is None or date_col is None:
+        print(f"Alpha Vantage earnings calendar schema unexpected: {list(df.columns)}")
+        return []
+
+    rows=[]
+    for _,r in df.iterrows():
+        ticker=str(r.get(symbol_col,"")).strip().upper().replace(".","-")
+        if ticker not in symbols:
+            continue
+        ts=_to_utc(r.get(date_col))
+        if ts is None:
+            continue
+        delta=(ts-now).total_seconds()/86400
+        if not (-0.25 <= delta <= EVENT_LOOKAHEAD_DAYS):
+            continue
+
+        priority="HIGH" if delta<=3 else ("MEDIUM" if delta<=5 else "WATCH")
+        row={
+            "ticker":ticker,
+            "event_type":"EARNINGS",
+            "event_date_utc":ts.isoformat(),
+            "days_to_event":round(delta,2),
+            "event_priority":priority,
+            "event_source":"ALPHA_VANTAGE",
+            "company_name":name_map.get(ticker,""),
+            "avg_dollar_volume20":round(float(adv_map.get(ticker,0)),0),
+        }
+        for src,dst in [
+            ("estimate","eps_estimate"),
+            ("fiscalDateEnding","fiscal_date_ending"),
+            ("currency","earnings_currency"),
+        ]:
+            if src in df.columns and pd.notna(r.get(src)):
+                row[dst]=r.get(src)
+        rows.append(row)
+
     dedup={}
     for row in rows:
-        key=(row["ticker"],row["event_date_utc"])
-        dedup[key]=row
+        dedup[(row["ticker"],row["event_date_utc"])]=row
     return list(dedup.values())
-
-
-def _calendar_earnings(ticker: str):
-    obj=yf.Ticker(ticker)
-    now=pd.Timestamp.now(tz="UTC")
-    dates=[]
-
-    try:
-        cal=obj.calendar
-        if isinstance(cal,dict):
-            raw=cal.get("Earnings Date") or cal.get("EarningsDate")
-            if raw is not None:
-                raw=raw if isinstance(raw,(list,tuple)) else [raw]
-                for x in raw:
-                    ts=_to_utc(x)
-                    if ts is not None:
-                        dates.append(ts)
-    except Exception:
-        pass
-
-    # Always query the earnings-date history/calendar as a second source.
-    # Yahoo's compact calendar can contain stale/past dates, so treating any
-    # calendar response as authoritative can incorrectly suppress future events.
-    try:
-        ed=obj.get_earnings_dates(limit=12)
-        if isinstance(ed,pd.DataFrame) and len(ed):
-            for idx in ed.index:
-                ts=_to_utc(idx)
-                if ts is not None:
-                    dates.append(ts)
-    except Exception:
-        pass
-
-    # De-duplicate after combining both Yahoo sources.
-    unique={}
-    for ts in dates:
-        unique[ts.isoformat()]=ts
-    dates=list(unique.values())
-
-    future=[]
-    for ts in dates:
-        delta=(ts-now).total_seconds()/86400
-        if -0.5<=delta<=EVENT_LOOKAHEAD_DAYS:
-            future.append((delta,ts))
-
-    if not future:
-        return None
-
-    delta,ts=min(future,key=lambda x:x[0])
-    if delta<=3:
-        priority="HIGH"
-    elif delta<=5:
-        priority="MEDIUM"
-    else:
-        priority="WATCH"
-
-    return {
-        "ticker":ticker,
-        "event_type":"EARNINGS",
-        "event_date_utc":ts.isoformat(),
-        "days_to_event":round(delta,2),
-        "event_priority":priority,
-        "event_source":"Yahoo Finance",
-    }
 
 def build_event_watchlist(tradable_df: pd.DataFrame):
     if tradable_df is None or tradable_df.empty:
@@ -255,24 +220,11 @@ def build_event_watchlist(tradable_df: pd.DataFrame):
     name_map=dict(zip(u["ticker"].astype(str),u.get("name",pd.Series([""]*len(u))).astype(str)))
     adv_map=dict(zip(u["ticker"].astype(str),pd.to_numeric(u.get("avg_dollar_volume20",0),errors="coerce").fillna(0)))
 
-    # Preferred path: one global Yahoo earnings-calendar query, intersected with
-    # the liquid universe. This avoids unreliable per-ticker future-date calls.
-    rows=_global_earnings_events(u)
-
-    # Backward-compatible fallback only when the global calendar produced no rows.
-    if not rows:
-        with ThreadPoolExecutor(max_workers=EVENT_MAX_WORKERS) as ex:
-            futures={ex.submit(_calendar_earnings,str(t)):str(t) for t in u["ticker"].astype(str)}
-            for fut in as_completed(futures):
-                ticker=futures[fut]
-                try:
-                    row=fut.result()
-                    if row:
-                        row["company_name"]=name_map.get(ticker,"")
-                        row["avg_dollar_volume20"]=round(float(adv_map.get(ticker,0)),0)
-                        rows.append(row)
-                except Exception:
-                    continue
+    # Earnings are event-first and provider-first: one Alpha Vantage calendar
+    # request is intersected with the liquid universe. We intentionally do not
+    # fall back to Yahoo earnings endpoints because they have produced repeated
+    # authorization/crumb failures in GitHub Actions.
+    rows=_alpha_vantage_earnings_events(u)
 
     # Conservative non-earnings layer: only announced future events with an
     # explicit calendar date in the headline are accepted.
@@ -293,8 +245,15 @@ def build_event_watchlist(tradable_df: pd.DataFrame):
             except Exception:
                 continue
 
+    event_columns=[
+        "ticker","company_name","event_type","event_date_utc","days_to_event",
+        "event_priority","event_source","avg_dollar_volume20","event_headline",
+        "event_provider","eps_estimate","fiscal_date_ending","earnings_currency"
+    ]
     out=pd.DataFrame(rows)
-    if not out.empty:
+    if out.empty:
+        out=pd.DataFrame(columns=event_columns)
+    else:
         order={"HIGH":3,"MEDIUM":2,"WATCH":1}
         out["_priority"]=out["event_priority"].map(order).fillna(0)
         out=out.sort_values(["_priority","days_to_event","avg_dollar_volume20"],ascending=[False,True,False])
