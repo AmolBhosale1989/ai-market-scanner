@@ -11,6 +11,9 @@ on:
     - cron: '30 12 * * 1-5'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   full-scan:
     runs-on: ubuntu-latest
@@ -32,6 +35,32 @@ jobs:
         with:
           path: outputs
           key: market-hunt-base-${{ github.run_id }}
+      - name: Publish latest scan data for dashboard
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "market-hunt-bot"
+          git config user.email "market-hunt-bot@users.noreply.github.com"
+          git fetch origin scan-data:scan-data
+          rm -rf /tmp/market-hunt-scan-data
+          git worktree add /tmp/market-hunt-scan-data scan-data
+          mkdir -p /tmp/market-hunt-scan-data/dashboard-data
+          for f in latest_scan.csv all_candidates.csv scan_health.csv trending_themes.csv tradable_universe.csv; do
+            if [ -f "outputs/$f" ]; then
+              cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
+            fi
+          done
+          printf "generated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-scan-data/dashboard-data/scan_metadata.csv
+          cd /tmp/market-hunt-scan-data
+          git add dashboard-data
+          if git diff --cached --quiet; then
+            echo "Dashboard data unchanged."
+          else
+            git commit -m "Update dashboard scan data [skip ci]"
+            git push origin scan-data
+          fi
+
       - name: Upload full scan outputs and health report
         if: always()
         uses: actions/upload-artifact@v4
