@@ -1,6 +1,12 @@
 name: Market Hunt Forward Validation
 
 on:
+  push:
+    paths:
+      - 'scanner/performance.py'
+      - 'scanner/intraday.py'
+      - 'scanner/live.py'
+      - '.github/workflows/market-hunt-validation.yml'
   schedule:
     - cron: '30 22 * * 1-5'
   workflow_dispatch:
