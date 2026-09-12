@@ -1,0 +1,66 @@
+name: Market Hunt Intraday Monitor
+
+on:
+  schedule:
+    - cron: '*/15 13-20 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  intraday-monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Restore latest full-scan shortlist
+        uses: actions/cache/restore@v4
+        with:
+          path: outputs
+          key: market-hunt-base-missing-${{ github.run_id }}
+          restore-keys: |
+            market-hunt-base-
+      - name: Restore prior state history
+        uses: actions/cache/restore@v4
+        with:
+          path: .state
+          key: market-hunt-state-missing-${{ github.run_id }}
+          restore-keys: |
+            market-hunt-state-
+      - name: Run live state monitor
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m scanner.intraday --limit 20
+      - name: Save updated monitor state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .state
+          key: market-hunt-state-${{ github.run_id }}
+      - name: Add alerts to job summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## Market Hunt Intraday" >> "$GITHUB_STEP_SUMMARY"
+          if [ -s outputs/live_alerts.txt ]; then
+            echo "New actionable state transitions:" >> "$GITHUB_STEP_SUMMARY"
+            cat outputs/live_alerts.txt >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No new actionable state transitions." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload intraday monitor outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-hunt-intraday-${{ github.run_id }}
+          path: |
+            outputs/intraday_live.csv
+            outputs/state_transitions.csv
+            outputs/live_alerts.txt
+          if-no-files-found: warn

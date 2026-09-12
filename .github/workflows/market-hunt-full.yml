@@ -6,6 +6,9 @@ on:
       - 'scanner/**'
       - 'requirements.txt'
       - '.github/workflows/market-hunt-full.yml'
+      - '.github/workflows/market-hunt-intraday.yml'
+  schedule:
+    - cron: '30 12 * * 1-5'
   workflow_dispatch:
 
 jobs:
@@ -15,18 +18,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
-      - name: Run full U.S. universe scan with health gate
+      - name: Run full U.S. universe scan with tradability and health gates
         run: python -m scanner.main --refresh-universe --top 50
-
+      - name: Save latest base scan for intraday monitor
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: outputs
+          key: market-hunt-base-${{ github.run_id }}
       - name: Upload full scan outputs and health report
         if: always()
         uses: actions/upload-artifact@v4

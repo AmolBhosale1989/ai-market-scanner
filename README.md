@@ -1,53 +1,44 @@
-# Market Hunt V3 — Broad U.S. Stock Opportunity Scanner
+# Market Hunt V3 — U.S. Opportunity Scanner
 
-Market Hunt V3 keeps a broad U.S. master universe for discovery, but it no longer performs expensive deep analysis on every listed symbol.
+Market Hunt V3 uses a broad exchange-listed master universe only as the discovery perimeter, then filters to a liquid tradable universe before expensive analysis.
 
-## Two-stage universe architecture
+Core pipeline:
+5,000+ master symbols -> fast price/liquidity gate -> tradable universe -> theme momentum -> pre-move technical structure -> D/W/M support/resistance -> runway/R:R -> optional catalyst/news -> ARMED/CONFIRMED -> 15-minute intraday state monitor.
 
-### Pass 1 — Broad master universe
-The scanner starts with roughly 5,000+ U.S.-listed common stocks from Nasdaq Trader directories. It performs only a lightweight 3-month daily-data check.
-
-A stock must currently pass:
+Tradability defaults:
 - price >= $5
 - 20-day average share volume >= 500,000
 - 20-day average dollar volume >= $20 million
 
-ETFs, warrants, rights, units, preferred shares and similar non-common-stock instruments are already excluded by the universe builder.
+Intraday state engine:
+- ARMED
+- TRIGGERED
+- LIVE_CONFIRMED
+- FAILED_BREAKOUT
+- INVALIDATED
 
-### Pass 2 — Tradable universe
-Only stocks passing the first gate receive the more expensive one-year technical analysis, pattern detection, support/resistance, theme tagging, catalyst enrichment and live confirmation.
+Positive catalysts and leading themes are bonuses, not mandatory trade gates. Fresh negative catalyst risk remains a veto. The live monitor uses 5-minute data, VWAP, the completed 30-minute opening range, technical trigger state and time-normalized intraday RVOL.
 
-This keeps broad-market coverage while avoiding wasted deep scans on illiquid microcaps and other names we would not realistically trade.
+Automation:
+- full base scan on weekdays before the U.S. session
+- intraday monitor every 15 minutes across the U.S. market-time window
+- persistent state using GitHub Actions cache
+- intraday artifacts and GitHub job-summary alerts
+- optional Telegram alerts when TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID repository secrets are configured
 
-The resulting eligibility table is saved to:
-- `outputs/tradable_universe.csv`
+Dashboard:
+The Streamlit dashboard shows scan health, tradable-universe size, trending themes, live monitor state, transition history and ranked opportunities. render.yaml is included for Render deployment.
 
-## Implemented
-- Broad U.S.-listed master universe
-- Two-pass tradability filter before deep analysis
-- Data-health gate with retry logic
-- Trending-theme ranking using liquid ETF proxies and 5/20/60-day momentum vs SPY
-- Candidate theme tagging; theme strength is a bonus, not mandatory
-- EMA/RSI/MACD/ATR/RVOL/relative-strength technical engine
-- DISCOVER → FORMING → ARMED → CONFIRMED stages
-- EXTENDED/chase protection
-- Daily / weekly / monthly support and resistance
-- Entry, stop, +5/+8/+10 targets and R:R
-- Optional positive catalyst/news enrichment
-- Fresh negative catalyst risk veto
-- Live 5-minute VWAP, opening-range, trigger and intraday-RVOL confirmation
-- Streamlit dashboard and CSV outputs
+Main outputs:
+outputs/tradable_universe.csv
+outputs/trending_themes.csv
+outputs/latest_scan.csv
+outputs/all_candidates.csv
+outputs/scan_health.csv
+outputs/intraday_live.csv
+outputs/state_transitions.csv
+outputs/live_alerts.txt
 
-## Live signal rule
-A live BUY requires an ARMED/CONFIRMED setup, adequate runway/R:R and live technical confirmation. A positive catalyst and leading theme can increase confidence/ranking but are not mandatory.
+Yahoo Finance remains a free prototype source and can throttle or omit data. Health gates are used so incomplete scans are not presented as valid.
 
-## Outputs
-- `outputs/tradable_universe.csv`
-- `outputs/trending_themes.csv`
-- `outputs/latest_scan.csv`
-- `outputs/all_candidates.csv`
-- `outputs/scan_health.csv`
-
-Yahoo Finance remains a practical free prototype data source and can throttle or omit data. Health gates prevent incomplete scans from being treated as valid.
-
-This project is for research and decision support only. It does not guarantee returns or place live trades.
+Research and decision support only. No guaranteed returns and no automatic trade execution.

@@ -14,7 +14,6 @@ from .config import (
     LIVE_PERIOD,
     LIVE_MIN_INTRADAY_RVOL,
     OPENING_RANGE_MINUTES,
-    CATALYST_ACTIVE_SCORE,
     MIN_RUNWAY_PCT,
 )
 
@@ -191,7 +190,7 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
 
     live_action="NO LIVE SIGNAL"
     technical_ok=stage in {"ARMED","CONFIRMED"}
-    catalyst_ok=(not negative_catalyst_risk) and catalyst_score>=CATALYST_ACTIVE_SCORE
+    catalyst_bonus=(not negative_catalyst_risk) and catalyst_score>=30
     rr_ok=math.isfinite(rr_to_8pct) and rr_to_8pct>=2.0
     runway_ok=math.isfinite(runway_pct) and runway_pct>=MIN_RUNWAY_PCT
     live_conditions=above_vwap and above_or and trigger_reached and math.isfinite(rvol) and rvol>=LIVE_MIN_INTRADAY_RVOL
@@ -202,10 +201,8 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
         live_action="WAIT / OPENING RANGE FORMING"
     elif negative_catalyst_risk:
         live_action="NO TRADE / NEGATIVE CATALYST"
-    elif technical_ok and catalyst_ok and rr_ok and runway_ok and live_conditions:
-        live_action="BUY / LIVE CONFIRMED"
-    elif technical_ok and live_conditions and not catalyst_ok:
-        live_action="WAIT / LIVE TECHNICALS, NO ACTIVE CATALYST"
+    elif technical_ok and rr_ok and runway_ok and live_conditions:
+        live_action="BUY / LIVE CONFIRMED + CATALYST" if catalyst_bonus else "BUY / LIVE CONFIRMED"
     elif technical_ok:
         live_action="WAIT / LIVE CONFIRMATION"
     else:
