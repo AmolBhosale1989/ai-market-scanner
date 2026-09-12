@@ -6,7 +6,8 @@ import pandas as pd
 from .config import (
     OUTPUT_DIR, MIN_PRICE, MIN_AVG_DOLLAR_VOLUME, MIN_AVG_SHARE_VOLUME,
     MIN_MEDIAN_DOLLAR_VOLUME, MIN_ADR20_PCT, MIN_ATR_PCT, MAX_ATR_PCT,
-    TOP_N, BATCH_SIZE, BENCHMARK,
+    TOP_N, LEADER_WATCHLIST_LIMIT, CORE_LEADER_TICKERS,
+    BATCH_SIZE, BENCHMARK,
     CATALYST_ENRICH_LIMIT, CATALYST_STRONG_SCORE, CATALYST_ACTIVE_SCORE,
     MIN_DATA_COVERAGE, MIN_ANALYZABLE_COVERAGE, LIVE_ENRICH_LIMIT,
     THEME_PROFILE_LIMIT, PREFILTER_PERIOD,
@@ -288,10 +289,46 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     ).head(top_n)
     recommended.to_csv(OUTPUT_DIR/"recommended_trades.csv",index=False)
 
-    shortlist=df[df["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
-    shortlist=shortlist.sort_values(
+    # Keep widely followed liquid leaders visible even when they do not have an
+    # actionable setup. Failing names remain research-only with the exact gate
+    # status instead of disappearing from the product.
+    leader_order={ticker:i for i,ticker in enumerate(CORE_LEADER_TICKERS)}
+    leader_gate=pfdf[pfdf["ticker"].isin(CORE_LEADER_TICKERS)].copy()
+    leader_gate=leader_gate.rename(columns={
+        "price":"gate_price",
+        "name":"company_name_gate",
+    })
+    leader_details=df[df["ticker"].isin(CORE_LEADER_TICKERS)].copy()
+    leaders=leader_gate.merge(leader_details,on="ticker",how="left",suffixes=("_gate",""))
+    if not leaders.empty:
+        leaders["company_name"]=leaders.get("company_name",pd.Series(index=leaders.index,dtype=object)).fillna(
+            leaders.get("company_name_gate",pd.Series(index=leaders.index,dtype=object))
+        )
+        base_pass=leaders["tradable"].fillna(False).astype(bool)
+        has_deep=leaders["stage"].notna()
+        rejection=leaders.get("rejection_reason",pd.Series("",index=leaders.index)).fillna("").astype(str)
+        leaders["leader_status"]=np.where(
+            ~base_pass,
+            "NO TRADE / BASE GATE: "+rejection,
+            np.where(
+                ~has_deep,
+                "NO TRADE / DEEP VOLATILITY OR DATA GATE",
+                leaders.get("final_decision",pd.Series("WATCHLIST",index=leaders.index)).fillna("WATCHLIST"),
+            ),
+        )
+        leaders["leader_order"]=leaders["ticker"].map(leader_order).fillna(999)
+        leaders=leaders.sort_values(["leader_order","median_dollar_volume20"],ascending=[True,False])
+        leaders=leaders.head(LEADER_WATCHLIST_LIMIT).drop(columns=["leader_order"],errors="ignore")
+    leaders.to_csv(OUTPUT_DIR/"liquid_leaders.csv",index=False)
+
+    eligible=df[df["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
+    eligible=eligible.sort_values(
         ["stage_rank","market_hunt_score","effective_rr"],ascending=[False,False,False]
-    ).head(top_n)
+    )
+    leader_set=set(CORE_LEADER_TICKERS)
+    leader_candidates=eligible[eligible["ticker"].isin(leader_set)].head(min(LEADER_WATCHLIST_LIMIT,top_n))
+    emerging_candidates=eligible[~eligible["ticker"].isin(leader_set)].head(max(0,top_n-len(leader_candidates)))
+    shortlist=pd.concat([leader_candidates,emerging_candidates],ignore_index=True)
     shortlist=shortlist.drop(columns=["stage_rank"],errors="ignore")
 
     out=OUTPUT_DIR/"latest_scan.csv"
@@ -308,6 +345,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     ]
     print(shortlist[cols].to_string(index=False))
     print(f"\nSaved tradable universe: {OUTPUT_DIR/'tradable_universe.csv'}")
+    print(f"Saved liquid leader tracker: {OUTPUT_DIR/'liquid_leaders.csv'}")
     print(f"Saved live-confirmed recommendations: {OUTPUT_DIR/'recommended_trades.csv'}")
     print(f"Saved research watchlist: {OUTPUT_DIR/'watchlist.csv'}")
     print(f"Saved monitor input shortlist: {out}")
