@@ -32,6 +32,24 @@ def _num(v):
     x=pd.to_numeric(pd.Series([v]),errors="coerce").iloc[0]
     return float(x) if pd.notna(x) else math.nan
 
+def _write_recommendations(live: pd.DataFrame):
+    if live is None or live.empty:
+        out=pd.DataFrame(columns=[
+            "ticker","company_name","stage","live_price","entry_trigger","stop",
+            "effective_target","effective_rr","catalyst_status","catalyst_score",
+            "intraday_rvol","bid_ask_spread_pct","live_trade_action","monitor_state",
+        ])
+    else:
+        action=live.get("live_trade_action",pd.Series("",index=live.index)).astype(str)
+        state=live.get("monitor_state",pd.Series("",index=live.index)).astype(str)
+        out=live[action.str.startswith("BUY / LIVE CONFIRMED") & state.eq("LIVE_CONFIRMED")].copy()
+        sort_col="market_hunt_score" if "market_hunt_score" in out.columns else None
+        if sort_col:
+            out=out.sort_values(sort_col,ascending=False)
+    out.to_csv(OUTPUT_DIR/"recommended_trades.csv",index=False)
+    return out
+
+
 def _load_state():
     if not STATE_FILE.exists():
         return {}
@@ -224,6 +242,7 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
         build_performance_reports()
         build_empirical_calibration()
         _write_monitor_health(pd.DataFrame(),now,0,bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip()),False)
+        _write_recommendations(pd.DataFrame())
         build_product_feed()
         return pd.DataFrame()
 
@@ -303,6 +322,7 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
         pd.read_csv(TRANSITIONS_FILE).to_csv(OUTPUT_DIR/"state_transitions.csv",index=False)
 
     live.to_csv(OUTPUT_DIR/"intraday_live.csv",index=False)
+    recommendations=_write_recommendations(live)
     journal=_update_paper_journal(live,now)
     build_performance_reports(journal)
     build_empirical_calibration(journal)
@@ -318,6 +338,7 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
           "live_vwap","opening_range_high","intraday_rvol","live_confirmation_score","live_trade_action"]
     print(live[[c for c in cols if c in live.columns]].to_string(index=False))
     print(f"State transitions this run: {len(transitions)}")
+    print(f"Live-confirmed recommendations: {len(recommendations)}")
     if alerts:
         print("\nALERTS")
         print(alert_text)
