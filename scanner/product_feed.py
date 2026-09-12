@@ -28,6 +28,8 @@ def build_product_feed():
         "generated_at_utc":datetime.now(timezone.utc).isoformat(),
         "research_only":True,
         "market_hunt":{
+            "recommendations":_records("recommended_trades.csv",20),
+            "watchlist":_records("watchlist.csv",50),
             "opportunities":_records("latest_scan.csv",50),
             "upcoming_events":_records("upcoming_events.csv",100),
             "themes":_records("trending_themes.csv",20),
