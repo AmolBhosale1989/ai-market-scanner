@@ -78,7 +78,8 @@ def _update_paper_journal(live: pd.DataFrame, now: str):
         "effective_target","effective_rr","entry_model","entry_condition","market_regime_state",
         "theme","theme_score","catalyst_status","catalyst_score","technical_score","formation_score",
         "final_score","market_hunt_score","live_confirmation_score","pattern","paper_state","last_price",
-        "triggered_at_et","live_confirmed_at_et","closed_at_et","outcome","return_pct","r_multiple"
+        "triggered_at_et","live_confirmed_at_et","closed_at_et","outcome","return_pct","r_multiple",
+        "max_price_seen","min_price_seen","mfe_pct","mae_pct","hit_5pct","hit_8pct","hit_10pct"
     ]
     if JOURNAL_FILE.exists():
         try:
@@ -114,6 +115,8 @@ def _update_paper_journal(live: pd.DataFrame, now: str):
                 "live_confirmation_score":row.get("live_confirmation_score",math.nan),"pattern":row.get("pattern",""),
                 "paper_state":new_state,"last_price":price,"triggered_at_et":"",
                 "live_confirmed_at_et":"","closed_at_et":"","outcome":"","return_pct":math.nan,"r_multiple":math.nan,
+                "max_price_seen":math.nan,"min_price_seen":math.nan,"mfe_pct":math.nan,"mae_pct":math.nan,
+                "hit_5pct":False,"hit_8pct":False,"hit_10pct":False,
             }
             journal=pd.concat([journal,pd.DataFrame([new_row])],ignore_index=True)
             idx=journal.index[-1]
@@ -133,6 +136,31 @@ def _update_paper_journal(live: pd.DataFrame, now: str):
         journal.at[idx,"market_hunt_score"]=row.get("market_hunt_score",journal.at[idx,"market_hunt_score"] if "market_hunt_score" in journal.columns else math.nan)
         journal.at[idx,"live_confirmation_score"]=row.get("live_confirmation_score",journal.at[idx,"live_confirmation_score"] if "live_confirmation_score" in journal.columns else math.nan)
         journal.at[idx,"pattern"]=row.get("pattern",journal.at[idx,"pattern"] if "pattern" in journal.columns else "")
+
+        session_high=_num(row.get("session_high"))
+        session_low=_num(row.get("session_low"))
+        prior_max=_num(journal.at[idx,"max_price_seen"]) if "max_price_seen" in journal.columns else math.nan
+        prior_min=_num(journal.at[idx,"min_price_seen"]) if "min_price_seen" in journal.columns else math.nan
+        if math.isfinite(session_high):
+            max_seen=max(session_high,prior_max) if math.isfinite(prior_max) else session_high
+            journal.at[idx,"max_price_seen"]=round(max_seen,2)
+        else:
+            max_seen=prior_max
+        if math.isfinite(session_low):
+            min_seen=min(session_low,prior_min) if math.isfinite(prior_min) else session_low
+            journal.at[idx,"min_price_seen"]=round(min_seen,2)
+        else:
+            min_seen=prior_min
+
+        if math.isfinite(entry) and entry>0:
+            if math.isfinite(max_seen):
+                mfe=(max_seen/entry-1)*100
+                journal.at[idx,"mfe_pct"]=round(mfe,2)
+                journal.at[idx,"hit_5pct"]=bool(_truthy(journal.at[idx,"hit_5pct"]) or mfe>=5)
+                journal.at[idx,"hit_8pct"]=bool(_truthy(journal.at[idx,"hit_8pct"]) or mfe>=8)
+                journal.at[idx,"hit_10pct"]=bool(_truthy(journal.at[idx,"hit_10pct"]) or mfe>=10)
+            if math.isfinite(min_seen):
+                journal.at[idx,"mae_pct"]=round((min_seen/entry-1)*100,2)
 
         triggered_existing=journal.at[idx,"triggered_at_et"]
         confirmed_existing=journal.at[idx,"live_confirmed_at_et"]
