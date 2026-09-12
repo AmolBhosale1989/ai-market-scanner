@@ -101,6 +101,81 @@ def _to_utc(value):
     except Exception:
         return None
 
+
+def _global_earnings_events(tradable_df: pd.DataFrame):
+    """Use Yahoo's global earnings calendar, then intersect with our tradable universe."""
+    if tradable_df is None or tradable_df.empty or not hasattr(yf,"Calendars"):
+        return []
+
+    now=pd.Timestamp.now(tz="UTC")
+    end=now+pd.Timedelta(days=EVENT_LOOKAHEAD_DAYS)
+    symbols=set(tradable_df["ticker"].astype(str))
+    name_map=dict(zip(tradable_df["ticker"].astype(str),tradable_df.get("name",pd.Series([""]*len(tradable_df))).astype(str)))
+    adv_map=dict(zip(
+        tradable_df["ticker"].astype(str),
+        pd.to_numeric(tradable_df.get("avg_dollar_volume20",0),errors="coerce").fillna(0)
+    ))
+
+    rows=[]
+    try:
+        cal=yf.Calendars(start=now.date(),end=end.date())
+        for offset in range(0,500,100):
+            try:
+                df=cal.get_earnings_calendar(
+                    limit=100,offset=offset,filter_most_active=False,force=True
+                )
+            except TypeError:
+                df=cal.get_earnings_calendar(limit=100,offset=offset,filter_most_active=False)
+            if df is None or len(df)==0:
+                break
+
+            x=df.reset_index()
+            symbol_col=next((k for k in ["Symbol","symbol","ticker","Ticker"] if k in x.columns),None)
+            date_col=next((k for k in ["Event Start Date","startdatetime","Start Date","Earnings Date"] if k in x.columns),None)
+            if symbol_col is None or date_col is None:
+                continue
+
+            for _,r in x.iterrows():
+                ticker=str(r.get(symbol_col,"")).strip().upper().replace(".","-")
+                if ticker not in symbols:
+                    continue
+                ts=_to_utc(r.get(date_col))
+                if ts is None:
+                    continue
+                delta=(ts-now).total_seconds()/86400
+                if not (-0.25 <= delta <= EVENT_LOOKAHEAD_DAYS):
+                    continue
+                priority="HIGH" if delta<=3 else ("MEDIUM" if delta<=5 else "WATCH")
+                row={
+                    "ticker":ticker,
+                    "event_type":"EARNINGS",
+                    "event_date_utc":ts.isoformat(),
+                    "days_to_event":round(delta,2),
+                    "event_priority":priority,
+                    "event_source":"YAHOO_GLOBAL_CALENDAR",
+                    "company_name":name_map.get(ticker,str(r.get("Company","") or "")),
+                    "avg_dollar_volume20":round(float(adv_map.get(ticker,0)),0),
+                }
+                if "EPS Estimate" in x.columns and pd.notna(r.get("EPS Estimate")):
+                    row["eps_estimate"]=r.get("EPS Estimate")
+                if "Marketcap" in x.columns and pd.notna(r.get("Marketcap")):
+                    row["event_market_cap"]=r.get("Marketcap")
+                rows.append(row)
+
+            if len(df)<100:
+                break
+    except Exception as e:
+        print(f"Global earnings calendar unavailable: {type(e).__name__}: {e}")
+        return []
+
+    # One row per ticker/event date.
+    dedup={}
+    for row in rows:
+        key=(row["ticker"],row["event_date_utc"])
+        dedup[key]=row
+    return list(dedup.values())
+
+
 def _calendar_earnings(ticker: str):
     obj=yf.Ticker(ticker)
     now=pd.Timestamp.now(tz="UTC")
@@ -180,19 +255,24 @@ def build_event_watchlist(tradable_df: pd.DataFrame):
     name_map=dict(zip(u["ticker"].astype(str),u.get("name",pd.Series([""]*len(u))).astype(str)))
     adv_map=dict(zip(u["ticker"].astype(str),pd.to_numeric(u.get("avg_dollar_volume20",0),errors="coerce").fillna(0)))
 
-    rows=[]
-    with ThreadPoolExecutor(max_workers=EVENT_MAX_WORKERS) as ex:
-        futures={ex.submit(_calendar_earnings,str(t)):str(t) for t in u["ticker"].astype(str)}
-        for fut in as_completed(futures):
-            ticker=futures[fut]
-            try:
-                row=fut.result()
-                if row:
-                    row["company_name"]=name_map.get(ticker,"")
-                    row["avg_dollar_volume20"]=round(float(adv_map.get(ticker,0)),0)
-                    rows.append(row)
-            except Exception:
-                continue
+    # Preferred path: one global Yahoo earnings-calendar query, intersected with
+    # the liquid universe. This avoids unreliable per-ticker future-date calls.
+    rows=_global_earnings_events(u)
+
+    # Backward-compatible fallback only when the global calendar produced no rows.
+    if not rows:
+        with ThreadPoolExecutor(max_workers=EVENT_MAX_WORKERS) as ex:
+            futures={ex.submit(_calendar_earnings,str(t)):str(t) for t in u["ticker"].astype(str)}
+            for fut in as_completed(futures):
+                ticker=futures[fut]
+                try:
+                    row=fut.result()
+                    if row:
+                        row["company_name"]=name_map.get(ticker,"")
+                        row["avg_dollar_volume20"]=round(float(adv_map.get(ticker,0)),0)
+                        rows.append(row)
+                except Exception:
+                    continue
 
     # Conservative non-earnings layer: only announced future events with an
     # explicit calendar date in the headline are accepted.
