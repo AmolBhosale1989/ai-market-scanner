@@ -2,6 +2,17 @@
 
 Market Hunt V3 uses a broad exchange-listed master universe as the discovery perimeter, filters to a liquid tradable universe, ranks themes, finds early technical structures and monitors actionable names intraday.
 
+## Hard trade-quality gates
+A stock is excluded from the tradable universe unless it meets all baseline requirements:
+- price at least $5
+- 20-day average share volume at least 1,000,000
+- 20-day average dollar volume at least $20 million
+- 20-day median dollar volume at least $25 million
+- 20-day average daily range at least 2%
+- ATR between 2% and 8%
+
+A live recommendation additionally requires an active catalyst, intraday RVOL at least 1.20, bid/ask spread no wider than 0.50%, at least 5% resistance runway, effective R/R at least 2.5, and full live VWAP/opening-range or retest confirmation. FORMING, DISCOVER and waiting setups are published only as a research watchlist—not recommendations.
+
 ## Trade-quality engine
 The scanner now uses resistance-capped effective risk/reward:
 - mechanical +8% target is still shown for reference
@@ -18,7 +29,7 @@ Catalyst relevance and freshness are separate:
 - 72h–7d: context only, heavily discounted
 - >7d: historical context, zero current-news contribution
 
-ACTIVE/STRONG catalyst status now requires genuinely fresh relevant news or a near-term earnings event. Historical headlines can remain visible but cannot create an active catalyst tag. Positive catalysts remain optional; a fresh material negative catalyst remains a risk veto.
+ACTIVE/STRONG catalyst status now requires genuinely fresh relevant news or a near-term earnings event. Historical headlines can remain visible but cannot create an active catalyst tag. Positive catalysts may remain visible for research ranking, but an active catalyst is mandatory for a live recommendation; a fresh material negative catalyst remains a risk veto.
 
 ## Historical backtest framework
 Run:
