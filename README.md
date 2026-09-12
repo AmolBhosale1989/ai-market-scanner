@@ -21,7 +21,7 @@ Market Hunt V3 scans a broad U.S. stock universe for early technical setups, val
 - Streamlit dashboard and CSV exports
 
 ## Live signal rule
-A live BUY can only be produced when the U.S. regular session is live and the candidate is already ARMED/CONFIRMED. The prototype requires the price above VWAP, above the completed opening-range high, at/above the technical trigger, intraday RVOL >= 1.20, sufficient runway/R:R, and no negative catalyst. It also requires an active catalyst score.
+A live BUY can only be produced when the U.S. regular session is live and the candidate is already ARMED/CONFIRMED. The prototype requires the price above VWAP, above the completed opening-range high, at/above the technical trigger, intraday RVOL >= 1.20, sufficient runway/R:R, and no fresh negative catalyst risk. A positive catalyst is optional: it adds confidence and a +CATALYST label, but is not required for BUY.
 
 When the market is closed, premarket, or intraday data is stale, the scanner returns WAIT rather than a live BUY.
 

@@ -44,7 +44,7 @@ def _final_decision(row):
     if row["stage"]=="CONFIRMED" and technical=="BUY / CONFIRMED":
         if score>=CATALYST_ACTIVE_SCORE:
             return "BUY / CONFIRMED + CATALYST"
-        return "WAIT / NO FRESH CATALYST"
+        return "BUY / CONFIRMED"
     if row["stage"]=="ARMED" and technical=="WAIT FOR TRIGGER":
         if score>=CATALYST_ACTIVE_SCORE:
             return "WAIT FOR TRIGGER + CATALYST"
