@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import pandas as pd
 
-def _finite(v):
+def _finite(v, default=math.nan):
     try:
         x=float(v)
         return x if math.isfinite(x) else math.nan
