@@ -91,3 +91,11 @@ It must also satisfy at least four of six additional confirmations:
 - repeated support respect near the retest reference
 
 The scanner records retest quality score, EMA20 slope, support-touch count, higher-low state and bullish-close state so the historical calibration can measure whether these filters reduce stop-outs.
+
+
+## Market and sector regime filter
+Pullback/retest entries now consider the broader market regime. SPY is scored from price versus EMA20, EMA20 versus EMA50, EMA20 slope, and 5/20-day momentum. Retest entries are disabled in a WEAK market regime; breakout entries remain available if the stock itself is strong enough.
+
+After theme/sector enrichment, a classified retest is also downgraded when its matched theme is WEAK. Unclassified stocks are not rejected solely for lacking a theme tag.
+
+Historical calibration uses the SPY regime as it existed at each signal date, avoiding use of today's market state in past trades. The live scanner applies both current SPY regime and current theme/sector state.
