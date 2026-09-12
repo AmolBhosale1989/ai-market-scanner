@@ -1,44 +1,53 @@
 # Market Hunt V3 — Broad U.S. Stock Opportunity Scanner
 
-Market Hunt V3 scans a broad U.S. stock universe for early technical setups, ranks trending themes, validates optional catalysts/news, and applies live intraday confirmation to advanced candidates.
+Market Hunt V3 keeps a broad U.S. master universe for discovery, but it no longer performs expensive deep analysis on every listed symbol.
+
+## Two-stage universe architecture
+
+### Pass 1 — Broad master universe
+The scanner starts with roughly 5,000+ U.S.-listed common stocks from Nasdaq Trader directories. It performs only a lightweight 3-month daily-data check.
+
+A stock must currently pass:
+- price >= $5
+- 20-day average share volume >= 500,000
+- 20-day average dollar volume >= $20 million
+
+ETFs, warrants, rights, units, preferred shares and similar non-common-stock instruments are already excluded by the universe builder.
+
+### Pass 2 — Tradable universe
+Only stocks passing the first gate receive the more expensive one-year technical analysis, pattern detection, support/resistance, theme tagging, catalyst enrichment and live confirmation.
+
+This keeps broad-market coverage while avoiding wasted deep scans on illiquid microcaps and other names we would not realistically trade.
+
+The resulting eligibility table is saved to:
+- `outputs/tradable_universe.csv`
 
 ## Implemented
-- Broad U.S.-listed universe from Nasdaq Trader directories
-- Data-health gate with retry logic and scan coverage report
+- Broad U.S.-listed master universe
+- Two-pass tradability filter before deep analysis
+- Data-health gate with retry logic
 - Trending-theme ranking using liquid ETF proxies and 5/20/60-day momentum vs SPY
-- Candidate theme tagging using company sector/industry/business profile
-- Theme momentum is an additive ranking bonus, never a mandatory trade filter
-- Daily technical engine: EMA20/50/200, SMA200, RSI, ATR, MACD, RVOL, relative strength
-- Early formation stages: DISCOVER → FORMING → ARMED → CONFIRMED, with EXTENDED rejection
+- Candidate theme tagging; theme strength is a bonus, not mandatory
+- EMA/RSI/MACD/ATR/RVOL/relative-strength technical engine
+- DISCOVER → FORMING → ARMED → CONFIRMED stages
+- EXTENDED/chase protection
 - Daily / weekly / monthly support and resistance
-- Minimum 5% clean runway before ARMED / CONFIRMED
-- Entry trigger, stop, +5 / +8 / +10 targets and R:R
-- Verified catalyst/news enrichment with ticker/company relevance validation
-- Positive catalyst is optional; fresh negative catalyst remains a risk veto
-- Upcoming-earnings detection
-- Live confirmation using 5-minute VWAP, 30-minute opening range, trigger state and time-normalized intraday RVOL
-- Streamlit dashboard and CSV exports
-
-## Trending themes
-The scanner currently tracks themes including semiconductors, AI/robotics, cloud, cybersecurity, biotech, genomics, defense/aerospace, energy, oil services, uranium/nuclear, copper/mining, gold miners, clean energy, infrastructure, homebuilders, regional banks, fintech and cannabis.
-
-Each theme gets a momentum score based primarily on relative performance versus SPY across 5, 20 and 60 trading days plus ETF trend structure. Output is saved to:
-- `outputs/trending_themes.csv`
-
-Theme strength can improve ranking, but a stock can still qualify without a leading-theme tag if its technical structure, runway, R:R and live confirmation are strong.
+- Entry, stop, +5/+8/+10 targets and R:R
+- Optional positive catalyst/news enrichment
+- Fresh negative catalyst risk veto
+- Live 5-minute VWAP, opening-range, trigger and intraday-RVOL confirmation
+- Streamlit dashboard and CSV outputs
 
 ## Live signal rule
-A live BUY can only be produced when the U.S. regular session is live and the candidate is already ARMED/CONFIRMED. The prototype requires price above VWAP, above the completed opening-range high, at/above the technical trigger, intraday RVOL >= 1.20, sufficient runway/R:R, and no fresh negative catalyst risk. A positive catalyst is optional.
+A live BUY requires an ARMED/CONFIRMED setup, adequate runway/R:R and live technical confirmation. A positive catalyst and leading theme can increase confidence/ranking but are not mandatory.
 
 ## Outputs
+- `outputs/tradable_universe.csv`
 - `outputs/trending_themes.csv`
 - `outputs/latest_scan.csv`
 - `outputs/all_candidates.csv`
 - `outputs/scan_health.csv`
 
-## Still to add
-Deeper earnings-estimate/revision models, FDA/PDUFA and conference calendars, options flow, social sentiment, alerts, database, and paper-trade journal.
-
-Yahoo Finance remains a practical free prototype source and can throttle or omit data. The health gate prevents low-coverage scans from being presented as valid.
+Yahoo Finance remains a practical free prototype data source and can throttle or omit data. Health gates prevent incomplete scans from being treated as valid.
 
 This project is for research and decision support only. It does not guarantee returns or place live trades.

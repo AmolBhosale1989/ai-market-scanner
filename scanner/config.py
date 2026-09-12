@@ -7,8 +7,15 @@ OUTPUT_DIR = BASE_DIR / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
 DATA_DIR.mkdir(exist_ok=True)
 
-MIN_PRICE = 3.0
+# Tradable-universe gate. The 5k+ exchange list is only the discovery perimeter;
+# expensive technical analysis is reserved for sufficiently liquid stocks.
+MIN_PRICE = 5.0
+MIN_AVG_SHARE_VOLUME = 500_000
 MIN_AVG_DOLLAR_VOLUME = 20_000_000
+PREFILTER_PERIOD = "3mo"
+PREFILTER_MIN_BARS = 40
+PREFILTER_AVG_WINDOW = 20
+
 MIN_HISTORY_DAYS = 220
 MIN_RUNWAY_PCT = 5.0
 
@@ -18,7 +25,7 @@ BENCHMARK = "SPY"
 
 # Data-integrity controls.
 MIN_DATA_COVERAGE = 0.75
-MIN_ANALYZABLE_COVERAGE = 0.20
+MIN_ANALYZABLE_COVERAGE = 0.80
 BATCH_RETRIES = 3
 RETRY_CHUNK_SIZE = 20
 RETRY_BACKOFF_SECONDS = 2.0
@@ -30,8 +37,7 @@ CATALYST_LOOKAHEAD_DAYS = 7
 CATALYST_STRONG_SCORE = 45
 CATALYST_ACTIVE_SCORE = 30
 
-# Theme/sector momentum. Theme strength is an additive ranking bonus, not a
-# hard requirement for a trade.
+# Theme/sector momentum.
 THEME_PROFILE_LIMIT = 80
 THEME_BONUS_MAX = 6.0
 
