@@ -1,7 +1,7 @@
 import math
 import pandas as pd
 from .config import MIN_RUNWAY_PCT, MIN_EFFECTIVE_RR, MIN_HISTORY_DAYS
-from .entry_model import build_entry_stop_plan
+from .entry_model import build_entry_stop_candidates
 from .indicators import add_indicators
 from .patterns import detect_forming_setup, timeframe_levels
 
@@ -10,6 +10,64 @@ def _f(v, default=0.0):
         return float(v) if pd.notna(v) else default
     except Exception:
         return default
+
+def _plan_metrics(plan, levels):
+    entry=float(plan["entry"])
+    stop=float(plan["stop"])
+    risk=max(0.01,entry-stop)
+
+    target5=entry*1.05
+    target8=entry*1.08
+    target10=entry*1.10
+    rr8=(target8-entry)/risk
+
+    higher_res=[
+        x for x in [levels["weekly_resistance"],levels["monthly_resistance"]]
+        if math.isfinite(_f(x,math.nan)) and x>entry
+    ]
+    next_res=min(higher_res) if higher_res else math.nan
+    runway_pct=((next_res/entry)-1)*100 if math.isfinite(next_res) else math.nan
+    runway_ok=math.isfinite(runway_pct) and runway_pct>=MIN_RUNWAY_PCT
+
+    effective_target=min(target8,next_res) if math.isfinite(next_res) else target8
+    effective_target_pct=((effective_target/entry)-1)*100
+    effective_rr=max(0.0,(effective_target-entry)/risk)
+
+    return {
+        **plan,
+        "target5":target5,
+        "target8":target8,
+        "target10":target10,
+        "rr8":rr8,
+        "next_res":next_res,
+        "runway_pct":runway_pct,
+        "runway_ok":runway_ok,
+        "effective_target":effective_target,
+        "effective_target_pct":effective_target_pct,
+        "effective_rr":effective_rr,
+    }
+
+def _choose_plan(plans, levels):
+    evaluated=[_plan_metrics(p,levels) for p in plans]
+    if not evaluated:
+        return None
+
+    breakout=next((x for x in evaluated if x["entry_condition"]=="BREAKOUT"),evaluated[0])
+    retests=[x for x in evaluated if x["entry_condition"]=="TOUCH_AND_RECLAIM"]
+
+    # Retest is preferred only when it materially improves asymmetry without
+    # becoming an unrealistically tight or distant order.
+    eligible=[
+        x for x in retests
+        if x["risk_pct"]<=4.5
+        and x["risk_pct"]>=0.6
+        and math.isfinite(x["effective_rr"])
+        and x["effective_rr"]>=breakout["effective_rr"]+0.35
+        and x["retest_distance_pct"]<=4.0
+    ]
+    if eligible:
+        return max(eligible,key=lambda x:x["effective_rr"])
+    return breakout
 
 def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float = 0.0):
     if df is None or len(df)<MIN_HISTORY_DAYS:
@@ -32,30 +90,16 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     technical_stage=formation["stage"]
     rs20=_f(last["RET20"])-benchmark_return20
 
-    plan=build_entry_stop_plan(d,levels,technical_stage)
+    candidates=build_entry_stop_candidates(d,levels,technical_stage)
+    plan=_choose_plan(candidates,levels)
     if not plan:
         return None
 
     entry=float(plan["entry"])
     stop=float(plan["stop"])
-    risk=max(0.01,float(plan["risk"]))
-
-    target5=entry*1.05
-    target8=entry*1.08
-    target10=entry*1.10
-    rr8=(target8-entry)/risk
-
-    higher_res=[
-        x for x in [levels["weekly_resistance"],levels["monthly_resistance"]]
-        if math.isfinite(_f(x,math.nan)) and x>entry
-    ]
-    next_res=min(higher_res) if higher_res else math.nan
-    runway_pct=((next_res/entry)-1)*100 if math.isfinite(next_res) else math.nan
-    runway_ok=math.isfinite(runway_pct) and runway_pct>=MIN_RUNWAY_PCT
-
-    effective_target=min(target8,next_res) if math.isfinite(next_res) else target8
-    effective_target_pct=((effective_target/entry)-1)*100
-    effective_rr=max(0.0,(effective_target-entry)/risk)
+    effective_rr=float(plan["effective_rr"])
+    runway_pct=float(plan["runway_pct"]) if math.isfinite(plan["runway_pct"]) else math.nan
+    runway_ok=bool(plan["runway_ok"])
     effective_rr_ok=effective_rr>=MIN_EFFECTIVE_RR
 
     stage=technical_stage
@@ -86,6 +130,7 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     if technical_stage=="EXTENDED": technical_score-=20
     if runway_blocked: technical_score-=12
     if rr_blocked: technical_score-=12
+    if plan["entry_model"]=="PULLBACK_RETEST": technical_score+=3
     technical_score=max(0,min(100,round(technical_score,1)))
 
     risk_score=0
@@ -101,7 +146,7 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     if stage=="CONFIRMED" and effective_rr_ok and risk_score<=40 and runway_ok:
         decision="BUY / CONFIRMED"
     elif stage=="ARMED" and effective_rr_ok and runway_ok:
-        decision="WAIT FOR TRIGGER"
+        decision="WAIT FOR RETEST" if plan["entry_condition"]=="TOUCH_AND_RECLAIM" else "WAIT FOR TRIGGER"
     elif stage in {"FORMING","DISCOVER"}:
         decision="WATCHLIST"
     else:
@@ -133,7 +178,10 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
         "monthly_resistance":round(levels["monthly_resistance"],2),
         "entry_trigger":round(entry,2),
         "entry_model":plan["entry_model"],
+        "entry_condition":plan["entry_condition"],
         "entry_buffer_pct":round(plan["entry_buffer_pct"],2),
+        "retest_reference":round(plan["retest_reference"],2) if math.isfinite(plan["retest_reference"]) else math.nan,
+        "retest_distance_pct":round(plan["retest_distance_pct"],2) if math.isfinite(plan["retest_distance_pct"]) else math.nan,
         "stop":round(stop,2),
         "stop_basis":plan["stop_basis"],
         "stop_anchor":round(plan["stop_anchor"],2),
@@ -141,16 +189,16 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
         "risk_pct":round(plan["risk_pct"],2),
         "swing5_low":round(plan["swing5_low"],2) if math.isfinite(plan["swing5_low"]) else math.nan,
         "swing10_low":round(plan["swing10_low"],2) if math.isfinite(plan["swing10_low"]) else math.nan,
-        "target_5":round(target5,2),
-        "target_8":round(target8,2),
-        "target_10":round(target10,2),
-        "rr_to_8pct":round(rr8,2),
-        "next_higher_resistance":round(next_res,2) if math.isfinite(next_res) else math.nan,
+        "target_5":round(plan["target5"],2),
+        "target_8":round(plan["target8"],2),
+        "target_10":round(plan["target10"],2),
+        "rr_to_8pct":round(plan["rr8"],2),
+        "next_higher_resistance":round(plan["next_res"],2) if math.isfinite(plan["next_res"]) else math.nan,
         "runway_to_next_resistance_pct":round(runway_pct,2) if math.isfinite(runway_pct) else math.nan,
         "runway_ok":runway_ok,
         "min_runway_required_pct":MIN_RUNWAY_PCT,
-        "effective_target":round(effective_target,2),
-        "effective_target_pct":round(effective_target_pct,2),
+        "effective_target":round(plan["effective_target"],2),
+        "effective_target_pct":round(plan["effective_target_pct"],2),
         "effective_rr":round(effective_rr,2),
         "effective_rr_ok":effective_rr_ok,
         "min_effective_rr_required":MIN_EFFECTIVE_RR,
