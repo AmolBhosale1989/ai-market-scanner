@@ -228,7 +228,7 @@ with legendary_tab:
             if frame.empty:
                 st.write("No current matches.")
             else:
-                preferred = ["ticker","company_name","price","setup_match","legendary_score","stage","theme",
+                preferred = ["ticker","company_name","price","momentum_grade","setup_match","legendary_score","stage","theme",
                              "market_hunt_score","rs20_vs_spy","atr_pct","adr20_pct","entry_trigger","entry_model",
                              "stop","effective_target","effective_rr","runway_to_next_resistance_pct",
                              "catalyst_status","intraday_rvol","setup_reason"]
