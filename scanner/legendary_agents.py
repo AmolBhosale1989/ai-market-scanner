@@ -74,6 +74,7 @@ def _base(df: pd.DataFrame) -> pd.DataFrame:
     out["_entry"] = _text(out, "entry_model")
     out["_theme"] = _text(out, "theme_state")
     out["_regime"] = _text(out, "market_regime_state")
+    out["_rsi"] = _num(out, "rsi14", 50)
     out["_adv"] = _num(out, "avg_dollar_volume")
     out["_beta"] = _num(out, "beta", np.nan)
     out["_top500_liquid"] = out["_adv"].rank(method="first", ascending=False).le(500)
@@ -94,7 +95,7 @@ def _quality_gate(d: pd.DataFrame) -> pd.Series:
 def _finalize(d: pd.DataFrame, agent: TraderAgent, score: pd.Series, matched: pd.Series, why: pd.Series) -> pd.DataFrame:
     cols = [
         "ticker", "company_name", "price", "stage", "theme", "market_hunt_score",
-        "technical_score", "formation_score", "rs20_vs_spy", "atr_pct", "adr20_pct",
+        "technical_score", "formation_score", "rs20_vs_spy", "rsi14", "atr_pct", "adr20_pct",
         "entry_trigger", "entry_model", "stop", "effective_target", "effective_rr",
         "runway_to_next_resistance_pct", "catalyst_status", "catalyst_score",
         "intraday_rvol", "pattern",
@@ -106,6 +107,13 @@ def _finalize(d: pd.DataFrame, agent: TraderAgent, score: pd.Series, matched: pd
     out["legendary_score"] = score.loc[matched].round(1).clip(0, 100)
     out["setup_match"] = np.where(out["legendary_score"].ge(75), "STRONG", "WATCH")
     out["setup_reason"] = why.loc[matched]
+    if "rsi14" in out.columns:
+        rsi = pd.to_numeric(out["rsi14"], errors="coerce").fillna(50)
+        out["rsi_state"] = np.select(
+            [rsi.between(55, 72), rsi.between(72, 80), rsi.lt(45)],
+            ["MOMENTUM SWEET SPOT", "STRONG / EXTENDED WATCH", "WEAK MOMENTUM"],
+            default="NEUTRAL / RESET",
+        )
     return out.sort_values(["legendary_score", "market_hunt_score" if "market_hunt_score" in out else "legendary_score"], ascending=False)
 
 
@@ -275,6 +283,10 @@ def _top500swing(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
         + d["_rs"].clip(-15, 30) * 0.55
         + d["_cat"].clip(0, 100) * 0.08
         + d["_adr"].clip(0, 8) * 1.8
+        + np.where(d["_rsi"].between(55, 72), 8,
+          np.where(d["_rsi"].between(48, 55), 4,
+          np.where(d["_rsi"].between(72, 78), 3,
+          np.where(d["_rsi"].lt(45), -6, 0))))
         + np.where(d["_rr"].ge(2.5), 10, np.where(d["_rr"].ge(1.5), 6, np.where(d["_rr"].ge(1.0), 2, -4)))
         + np.where(d["_runway"].ge(8), 8, np.where(d["_runway"].ge(4), 5, np.where(d["_runway"].ge(2), 2, -4)))
         + np.where(d["_stage"].eq("CONFIRMED"), 10, 0)
@@ -316,6 +328,10 @@ def _highmomentumbeta(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
         + d["_tech"] * 0.18
         + d["_form"] * 0.10
         + d["_cat"].clip(0, 100) * 0.12
+        + np.where(d["_rsi"].between(55, 75), 10,
+          np.where(d["_rsi"].between(48, 55), 5,
+          np.where(d["_rsi"].between(75, 82), 2,
+          np.where(d["_rsi"].lt(45), -8, 0))))
         + np.where(true_beta_ok, 10, 0)
         + np.where(d["_rr"].ge(2.5), 8, np.where(d["_rr"].ge(1.5), 5, np.where(d["_rr"].ge(1.0), 2, -3)))
         + np.where(d["_runway"].ge(8), 7, np.where(d["_runway"].ge(4), 4, np.where(d["_runway"].ge(2), 1, -3)))
@@ -340,6 +356,7 @@ def _highmomentumbeta(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
         & pd.to_numeric(out.get("runway_to_next_resistance_pct"), errors="coerce").fillna(0).ge(5.0)
         & pd.to_numeric(out.get("technical_score"), errors="coerce").fillna(0).ge(60)
         & pd.to_numeric(out.get("rs20_vs_spy"), errors="coerce").fillna(0).ge(8)
+        & pd.to_numeric(out.get("rsi14"), errors="coerce").fillna(50).between(52, 78)
     )
     weak = (
         out["legendary_score"].lt(60)
