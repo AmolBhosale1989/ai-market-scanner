@@ -98,7 +98,7 @@ def _prefilter_universe(universe: pd.DataFrame):
     pfdf.to_csv(OUTPUT_DIR/"tradable_universe.csv",index=False)
     return pfdf,coverage,len(fetched)
 
-def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
+def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, deep_limit: int|None=None):
     universe=load_or_build_universe(force_refresh=refresh_universe).sort_values("ticker").reset_index(drop=True)
     full_count=len(universe)
     if limit:
@@ -134,9 +134,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
         raise RuntimeError("SCAN ABORTED: tradability prefilter returned no usable rows.")
 
     tradable_df=pfdf[pfdf["tradable"]].copy()
-    tradable_tickers=tradable_df["ticker"].astype(str).tolist()
-    tradability=tradable_df.set_index("ticker").to_dict(orient="index")
-    tradable_count=len(tradable_tickers)
+    tradable_count=len(tradable_df)
     print(
         f"TRADABLE UNIVERSE: {tradable_count:,}/{master_expected:,} "
         f"({tradable_count/master_expected:.1%}) passed price/liquidity gate"
@@ -144,6 +142,37 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
 
     print("Building event-first earnings watchlist for the most liquid stocks...")
     event_watchlist=build_event_watchlist(tradable_df)
+
+    # Daily fast mode: preserve broad-market discovery by prefiltering the full
+    # universe, then spend the expensive 1-year analysis budget on the strongest
+    # liquid/momentum candidates. Core leaders and near-term event names are
+    # force-included so they never disappear solely because of ranking.
+    deep_df=tradable_df.copy()
+    if deep_limit and deep_limit > 0 and len(deep_df) > deep_limit:
+        adv_rank=deep_df["avg_dollar_volume20"].rank(pct=True)
+        adr_rank=deep_df["adr20_pct"].rank(pct=True)
+        ret_rank=pd.to_numeric(deep_df.get("ret20_pct",0),errors="coerce").fillna(0).rank(pct=True)
+        explosive_rank=pd.to_numeric(deep_df.get("max_up_day_30d_pct",0),errors="coerce").fillna(0).rank(pct=True)
+        deep_df["deep_priority_score"]=(
+            adv_rank*0.35 + adr_rank*0.25 + ret_rank*0.25 + explosive_rank*0.15
+        )
+        forced=set(CORE_LEADER_TICKERS)
+        if event_watchlist is not None and not event_watchlist.empty and "ticker" in event_watchlist:
+            forced.update(event_watchlist["ticker"].dropna().astype(str).tolist())
+        forced_df=deep_df[deep_df["ticker"].astype(str).isin(forced)]
+        ranked_df=deep_df[~deep_df["ticker"].astype(str).isin(forced)].sort_values(
+            ["deep_priority_score","avg_dollar_volume20"],ascending=[False,False]
+        )
+        room=max(0,deep_limit-len(forced_df))
+        deep_df=pd.concat([forced_df,ranked_df.head(room)],ignore_index=True).drop_duplicates("ticker")
+        print(
+            f"FAST DEEP-SCAN MODE: {len(deep_df):,}/{tradable_count:,} tradable names "
+            f"selected after full-universe prefilter; forced core/event names={len(forced_df):,}"
+        )
+
+    tradable_tickers=deep_df["ticker"].astype(str).tolist()
+    tradability=tradable_df.set_index("ticker").to_dict(orient="index")
+    deep_expected=len(tradable_tickers)
     if not event_watchlist.empty:
         print("\nUPCOMING EVENT-FIRST WATCHLIST")
         event_cols=[c for c in ["ticker","company_name","event_type","days_to_event","event_priority","avg_dollar_volume20"] if c in event_watchlist.columns]
@@ -159,7 +188,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     rows=[]
     fetched=set()
     analyzable=set()
-    total_batches=math.ceil(tradable_count/BATCH_SIZE)
+    total_batches=math.ceil(deep_expected/BATCH_SIZE)
 
     for bi,start in enumerate(range(0,tradable_count,BATCH_SIZE),1):
         batch=tradable_tickers[start:start+BATCH_SIZE]
@@ -198,12 +227,12 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
             except Exception as e:
                 print(f"{ticker}: {e}")
 
-    deep_data_coverage=len(fetched)/tradable_count
-    analyzable_coverage=len(analyzable)/tradable_count
+    deep_data_coverage=len(fetched)/deep_expected
+    analyzable_coverage=len(analyzable)/deep_expected
     print(
         f"DATA HEALTH: prefilter {prefilter_fetched:,}/{master_expected:,} "
-        f"({prefilter_coverage:.1%}); deep fetched {len(fetched):,}/{tradable_count:,} "
-        f"({deep_data_coverage:.1%}); analyzable {len(analyzable):,}/{tradable_count:,} "
+        f"({prefilter_coverage:.1%}); deep fetched {len(fetched):,}/{deep_expected:,} "
+        f"({deep_data_coverage:.1%}); analyzable {len(analyzable):,}/{deep_expected:,} "
         f"({analyzable_coverage:.1%}); technical rows {len(rows):,}"
     )
 
@@ -214,6 +243,9 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
         "prefilter_data_coverage":round(prefilter_coverage,4),
         "tradable_symbols":tradable_count,
         "tradable_pct_of_master":round(tradable_count/master_expected,4),
+        "deep_scan_symbols":deep_expected,
+        "deep_scan_pct_of_tradable":round(deep_expected/tradable_count,4) if tradable_count else 0,
+        "deep_scan_limit":deep_limit or 0,
         "deep_fetched_symbols":len(fetched),
         "deep_data_coverage":round(deep_data_coverage,4),
         "analyzable_symbols":len(analyzable),
@@ -375,5 +407,6 @@ if __name__=="__main__":
     p.add_argument("--refresh-universe",action="store_true")
     p.add_argument("--limit",type=int,default=None)
     p.add_argument("--top",type=int,default=TOP_N)
+    p.add_argument("--deep-limit",type=int,default=None,help="Limit expensive 1y analysis after full-universe prefilter; 0/omitted scans all tradable names")
     args=p.parse_args()
-    run(refresh_universe=args.refresh_universe,limit=args.limit,top_n=args.top)
+    run(refresh_universe=args.refresh_universe,limit=args.limit,top_n=args.top,deep_limit=args.deep_limit)
