@@ -310,6 +310,13 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     live_bonus=np.where(df["live_status"].eq("LIVE"),live_score*0.10,0)
     df["market_hunt_score"]=(df["final_score"].fillna(-100)+live_bonus).round(1)
 
+    # Universal explosive-capability gate used by recommendations, watchlists
+    # and every strategy agent: at least one +10% close-to-close day in the
+    # previous 30 trading sessions.
+    max_up30=pd.to_numeric(df.get("max_up_day_30d_pct",0),errors="coerce").fillna(0)
+    explosive30=df.get("explosive_move_30d",pd.Series(False,index=df.index)).fillna(False).astype(bool)
+    df["universal_10pct_gate"]=(explosive30 | max_up30.ge(10.0))
+
     print("Running legendary trader setup agents...")
     legendary=run_legendary_agents(df, OUTPUT_DIR, top_n=max(25, top_n))
     if not legendary.empty:
@@ -320,7 +327,8 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     df.sort_values(["market_hunt_score","avg_dollar_volume"],ascending=[False,False]).to_csv(all_out,index=False)
 
     recommended=df[
-        df["live_trade_action"].astype(str).str.startswith("BUY / LIVE CONFIRMED")
+        df["universal_10pct_gate"]
+        & df["live_trade_action"].astype(str).str.startswith("BUY / LIVE CONFIRMED")
         & df["final_decision"].astype(str).str.startswith("BUY / CONFIRMED + CATALYST")
     ].copy()
     recommended=recommended.sort_values(
@@ -350,13 +358,21 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
         base_pass=leaders["tradable"].fillna(False).astype(bool)
         has_deep=leaders["stage"].notna()
         rejection=leaders.get("rejection_reason",pd.Series("",index=leaders.index)).fillna("").astype(str)
+        leader_max_up=pd.to_numeric(leaders.get("max_up_day_30d_pct",0),errors="coerce").fillna(0)
+        leader_explosive=leaders.get("explosive_move_30d",pd.Series(False,index=leaders.index)).fillna(False).astype(bool)
+        leader_10pct_gate=leader_explosive | leader_max_up.ge(10.0)
+        leaders["universal_10pct_gate"]=leader_10pct_gate
         leaders["leader_status"]=np.where(
             ~base_pass,
             "NO TRADE / BASE GATE: "+rejection,
             np.where(
                 ~has_deep,
                 "NO TRADE / DEEP VOLATILITY OR DATA GATE",
-                leaders.get("final_decision",pd.Series("WATCHLIST",index=leaders.index)).fillna("WATCHLIST"),
+                np.where(
+                    ~leader_10pct_gate,
+                    "TRACK ONLY / NO +10% DAY IN LAST 30",
+                    leaders.get("final_decision",pd.Series("WATCHLIST",index=leaders.index)).fillna("WATCHLIST"),
+                ),
             ),
         )
         leaders["leader_order"]=leaders["ticker"].map(leader_order).fillna(999)
@@ -364,7 +380,10 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
         leaders=leaders.head(LEADER_WATCHLIST_LIMIT).drop(columns=["leader_order"],errors="ignore")
     leaders.to_csv(OUTPUT_DIR/"liquid_leaders.csv",index=False)
 
-    eligible=df[df["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
+    eligible=df[
+        df["universal_10pct_gate"]
+        & df["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])
+    ].copy()
     eligible=eligible.sort_values(
         ["stage_rank","market_hunt_score","effective_rr"],ascending=[False,False,False]
     )
