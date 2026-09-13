@@ -334,8 +334,8 @@ with live_tab:
     st.markdown('<div class="section-note">VWAP, opening range and RVOL update research states; no broker orders are placed.</div>', unsafe_allow_html=True)
     if not live.empty:
         preferred=["ticker","monitor_state","previous_state","state_changed","premarket_price","premarket_gap_pct","premarket_volume",
-                   "premarket_status","live_price","entry_trigger","stop","live_vwap","opening_range_high","intraday_rvol",
-                   "live_confirmation_score","theme","catalyst_status","live_trade_action","checked_at_et"]
+                   "premarket_status","live_price","entry_trigger","stop","live_vwap","live_above_vwap","opening_range_high","intraday_rvol",
+                   "volume_vs_9ma","opening_30m_rvol","opening_volume_spike_2x","live_confirmation_score","theme","catalyst_status","live_trade_action","checked_at_et"]
         st.dataframe(live[columns(live,preferred)],hide_index=True,use_container_width=True)
     else: st.info("Live monitor output is not available yet.")
     with st.expander("State transition history"):
