@@ -18,6 +18,12 @@ from ..config import OUTPUT_DIR
 from ..live import NY, _market_state
 from .adapters import LiveMarketAdapter
 from .alerting import AlertRouter
+from .catalysts import (
+    CatalystAdapter,
+    apply_catalyst_evidence,
+    events_frame,
+    load_recent_catalyst_events,
+)
 from .engine import MomentumEngine
 from .health import CycleMetric, HealthRecorder, age_seconds, parse_utc
 from .outcomes import SignalOutcomeLedger
@@ -67,6 +73,7 @@ class ContinuousMomentumWorker:
         output_dir: Path = OUTPUT_DIR,
         runtime_state_file: Path | None = None,
         outcome_ledger: SignalOutcomeLedger | None = None,
+        catalyst_adapter: CatalystAdapter | None = None,
     ):
         self.source = source
         self.adapter = adapter
@@ -77,6 +84,7 @@ class ContinuousMomentumWorker:
         self.output_dir = Path(output_dir)
         self.runtime_state_file = Path(runtime_state_file) if runtime_state_file else None
         self.outcome_ledger = outcome_ledger
+        self.catalyst_adapter = catalyst_adapter
         self.stop_requested = threading.Event()
         runtime_state = self._load_runtime_state()
         self.cycle_index = int(runtime_state.get("cycle_index", 0))
@@ -162,6 +170,23 @@ class ContinuousMomentumWorker:
             )
             candidates = len(shortlist)
             batch = select_poll_batch(shortlist, self.cycle_index, self.settings)
+            if self.catalyst_adapter is not None:
+                catalyst_result = self.catalyst_adapter.poll(batch)
+                new_catalysts = self.engine.store.append_events(catalyst_result.events)
+                retained_events = load_recent_catalyst_events(self.engine.store.event_file)
+                active_catalysts = events_frame(retained_events)
+                batch = apply_catalyst_evidence(batch, active_catalysts)
+                self.output_dir.mkdir(parents=True, exist_ok=True)
+                active_catalysts.to_csv(self.output_dir / "v4_catalyst_events.csv", index=False)
+                catalyst_result.health["retained_active_events"] = len(active_catalysts)
+                (self.output_dir / "v4_catalyst_health.json").write_text(
+                    json.dumps(catalyst_result.health, indent=2, sort_keys=True, allow_nan=False)
+                )
+                catalyst_status = catalyst_result.health.get("status", "UNKNOWN")
+                detail = (
+                    f"{detail}; catalysts={len(catalyst_result.events)} "
+                    f"new={new_catalysts} status={catalyst_status}"
+                ).strip("; ")
             poll = self.adapter.poll(batch)
             polled, received = poll.requested, poll.received
             provider_errors, provider_duration = poll.errors, poll.duration_ms

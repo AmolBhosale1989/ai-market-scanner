@@ -6,6 +6,12 @@ from pathlib import Path
 from .config import OUTPUT_DIR
 from .v4.adapters import YahooPollingAdapter
 from .v4.alerting import AlertRouter, FileAlertSink, TelegramAlertSink
+from .v4.catalysts import (
+    CompositeCatalystAdapter,
+    LocalEventCalendarAdapter,
+    SecFilingAdapter,
+    YahooNewsCatalystAdapter,
+)
 from .v4.engine import MomentumEngine
 from .v4.health import HealthRecorder
 from .v4.outcomes import SignalOutcomeLedger
@@ -28,6 +34,19 @@ def build_worker(args) -> ContinuousMomentumWorker:
     telegram = TelegramAlertSink.from_environment() if args.telegram_alerts else None
     if telegram is not None:
         sinks.append(telegram)
+    catalyst_adapter = None
+    if args.catalysts:
+        catalyst_adapter = CompositeCatalystAdapter([
+            SecFilingAdapter(
+                cache_file=state_dir / "sec_ticker_map.json",
+                max_workers=args.catalyst_workers,
+            ),
+            YahooNewsCatalystAdapter(
+                max_workers=args.catalyst_workers,
+                max_tickers=args.news_limit,
+            ),
+            LocalEventCalendarAdapter(output_dir / "upcoming_events.csv"),
+        ])
     return ContinuousMomentumWorker(
         source=source,
         adapter=YahooPollingAdapter(max_workers=args.max_workers),
@@ -46,6 +65,7 @@ def build_worker(args) -> ContinuousMomentumWorker:
             mirror_csv=output_dir / "v4_outcomes.csv",
             summary_csv=output_dir / "v4_outcome_summary.csv",
         ),
+        catalyst_adapter=catalyst_adapter,
         settings=WorkerSettings(
             hot_limit=args.hot_limit,
             warm_limit=args.warm_limit,
@@ -62,7 +82,7 @@ def build_worker(args) -> ContinuousMomentumWorker:
 
 
 def parser() -> argparse.ArgumentParser:
-    value = argparse.ArgumentParser(description="Market Hunt V4.1 continuous shadow worker")
+    value = argparse.ArgumentParser(description="Market Hunt V4 continuous shadow worker")
     value.add_argument("--once", action="store_true")
     value.add_argument("--max-cycles", type=int, default=None)
     value.add_argument("--candidate-source", choices=["remote", "local"], default="remote")
@@ -79,6 +99,13 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--market-interval", type=int, default=60)
     value.add_argument("--off-hours-interval", type=int, default=900)
     value.add_argument("--max-workers", type=int, default=8)
+    value.add_argument(
+        "--catalysts",
+        action="store_true",
+        help="Enable audit-only SEC filing and fresh-news catalyst ingestion.",
+    )
+    value.add_argument("--catalyst-workers", type=int, default=4)
+    value.add_argument("--news-limit", type=int, default=20)
     value.add_argument(
         "--telegram-alerts",
         action="store_true",

@@ -81,12 +81,18 @@ def _extract_news_item(item):
     provider=str(provider or item.get("publisher") or "").strip() if isinstance(item,dict) else ""
     published=(src.get("pubDate") or src.get("publicationDate") or src.get("displayTime")
                or (item.get("providerPublishTime") if isinstance(item,dict) else None))
+    canonical=src.get("canonicalUrl") or src.get("clickThroughUrl") or src.get("url")
+    if isinstance(canonical,dict):
+        canonical=canonical.get("url")
+    if not canonical and isinstance(item,dict):
+        canonical=item.get("link") or item.get("url")
     if not title: return None
     return {
         "title":title,
         "provider":provider,
         "published":_to_utc_datetime(published),
         "related_tickers":_extract_related_tickers(item,src),
+        "url":str(canonical or "").strip(),
     }
 
 def _company_aliases(company_name):

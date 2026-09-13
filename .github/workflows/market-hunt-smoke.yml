@@ -34,6 +34,22 @@ jobs:
 
       - name: Run deterministic unit tests
         run: python -m pytest -q
+      - name: Check bounded SEC catalyst access
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tempfile
+          import pandas as pd
+          from scanner.v4.catalysts import SecFilingAdapter
+
+          with tempfile.TemporaryDirectory() as root:
+              adapter = SecFilingAdapter(Path(root) / "ticker-map.json", max_workers=2)
+              _, health = adapter.poll(pd.DataFrame({"ticker": ["AXTI", "CRDO", "INTC"]}))
+              assert health["resolved"] == 3, health
+              assert health["errors"] == 0, health
+              print(health)
+          PY
 
       - name: Run 300-stock representative smoke test with health gate
         env:

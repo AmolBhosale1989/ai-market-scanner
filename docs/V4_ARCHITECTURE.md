@@ -1,6 +1,6 @@
 # Market Hunt V4 Architecture
 
-Status: **V4.1 continuous-monitoring implementation / shadow mode**. V3 remains
+Status: **V4.3 catalyst-intelligence implementation / shadow mode**. V3 remains
 the production path until the validation gates below pass. V4 never enables
 broker execution.
 
@@ -32,10 +32,10 @@ flowchart TD
 | --- | --- | --- |
 | Discovery | Full-universe quality gates, themes, structures and 10% capability | Reuses proven V3 |
 | Candidate routing | HOT/WARM tiers with a bounded live-data budget | Implemented |
-| Event ingestion | Normalize bars, quotes, catalysts, options and tape | Contract plus parallel Yahoo polling adapter implemented |
+| Event ingestion | Normalize bars, quotes, catalysts, options and tape | Candidate, price, SEC, news and earnings-calendar adapters implemented |
 | Live momentum | Deterministic WATCH → ARMED → TRIGGERED → CONFIRMED lifecycle | Continuous shadow worker implemented |
 | State/event storage | Idempotent append-only events plus current signal state | File shadow adapter implemented |
-| Catalyst intelligence | SEC/news classification and magnitude | Existing batch logic; streaming adapter planned |
+| Catalyst intelligence | SEC/news classification and magnitude | V4.3 bounded polling and conservative veto layer implemented |
 | Outcome intelligence | MFE, MAE, +5/+10/+15%, R-multiple and failure reason | V4.2 event ledger and daily resolver implemented |
 | Calibration | Walk-forward probabilities by setup and regime | Existing baseline; leakage-safe V4 model planned |
 | Delivery | Mobile dashboard and actionable alerts | Deduplicated audit/Telegram alert router implemented |
@@ -72,7 +72,7 @@ options flow, microstructure, state transitions and outcomes.
 | 4.0 | Contracts, shortlist tiers, state engine, shadow store | Unit tests and replay determinism |
 | 4.1 | Continuous live adapter and alert router | Implemented in shadow; ≥95% market-hours uptime and p95 event-lag evidence still required |
 | 4.2 | Outcome ledger and replayable backtester | Implemented in shadow; sample accumulation and calibration still required |
-| 4.3 | SEC/news event adapters | Source timestamps, deduplication and false-positive review |
+| 4.3 | SEC/news event adapters | Implemented in shadow; false-positive evidence must accumulate before alerts |
 | 4.4 | Options/microstructure adapters | Provider/licensing approved; missing-data behavior tested |
 | 4.5 | Calibrated ranking model | Adequate out-of-sample signals and improvement over frozen baseline |
 | 4.6 | Production cutover | Shadow agreement, alert precision and rollback drill pass |
@@ -122,11 +122,11 @@ must be revisited before commercial scaling.
 ```bash
 python -m scanner.v4_live --hot-limit 20 --warm-limit 80 --fetch-limit 20
 
-# One V4.1 cycle
-python -m scanner.v4_worker --once
+# One V4.3 cycle with audit-only catalyst ingestion
+python -m scanner.v4_worker --once --catalysts
 
-# Continuous V4.1 shadow worker
-python -m scanner.v4_worker
+# Continuous V4.3 shadow worker with catalyst ingestion
+python -m scanner.v4_worker --catalysts
 ```
 
 The worker writes snapshots, transitions, alert audit records, per-cycle
@@ -157,3 +157,34 @@ from contaminating each other.
 Event replay runs twice from an empty state and compares checksums. A mismatch
 fails validation. The weekday outcome workflow runs after the U.S. after-hours
 window and publishes the accumulated outcome ledger and summary.
+
+## V4.3 catalyst intelligence
+
+V4.3 polls only the bounded HOT/current-WARM batch. It combines:
+
+- the free SEC EDGAR company submissions API for recent material filings;
+- fresh, ticker-verified Yahoo Finance headlines already available to V3; and
+- the existing broad event-first calendar for earnings inside 72 hours.
+
+Every accepted catalyst becomes a normalized, replayable event with a stable
+source identifier, source timestamp when available, ingestion timestamp,
+provider, classification reason, confidence, materiality and source URL. Stable
+event IDs make repeated workflow runs idempotent. Events remain active for 72
+hours in the durable event store, so a temporary provider outage cannot silently
+erase a previously detected negative veto.
+
+SEC access declares a configurable `SEC_USER_AGENT`, caches the ticker-to-CIK
+map for 24 hours and limits request starts to eight per second, below the SEC's
+published ten-request-per-second fair-access ceiling. No API key or paid feed is
+required.
+
+Automatic negative vetoes are intentionally narrow: explicit bankruptcy,
+delisting, non-reliance/restatement, material impairment/restructuring, late
+periodic reports and prospectus offerings. Registration statements, leadership
+changes and generic 8-K disclosures require review and do not automatically
+become bearish. Mixed headlines give explicit negative phrases precedence.
+
+The shadow worker writes `v4_catalyst_events.csv` and
+`v4_catalyst_health.json`. Catalyst alerts and broker actions remain disabled;
+V4.3 changes candidate state only when retained high-confidence negative
+evidence sets the existing risk veto.

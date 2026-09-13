@@ -101,6 +101,7 @@ def test_cli_defaults_to_audit_only_even_when_telegram_secrets_exist(monkeypatch
     ])
     worker = build_worker(args)
     assert [sink.name for sink in worker.alerts.sinks] == ["audit-file"]
+    assert worker.catalyst_adapter is None
     assert worker.health.cycles_file.parent == tmp_path / "state"
     assert worker.health.mirror_cycles_file.parent == tmp_path / "output"
 
