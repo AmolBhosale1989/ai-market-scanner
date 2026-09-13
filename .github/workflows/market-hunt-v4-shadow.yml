@@ -33,8 +33,8 @@ jobs:
           key: market-hunt-v4-state-missing-${{ github.run_id }}
           restore-keys: |
             market-hunt-v4-state-
-      - name: Run V4 shadow engine
-        run: python -m scanner.v4_live --hot-limit 20 --warm-limit 80 --fetch-limit 20
+      - name: Run one V4.1 shadow worker cycle
+        run: python -m scanner.v4_worker --once --candidate-source local --hot-limit 5 --warm-limit 10 --warm-batch-size 2 --max-workers 5
       - name: Save V4 shadow state
         if: always()
         uses: actions/cache/save@v4
@@ -50,6 +50,10 @@ jobs:
             outputs/v4_monitor_shortlist.csv
             outputs/v4_live_snapshot.csv
             outputs/v4_transitions.csv
+            outputs/v4_alerts.ndjson
+            outputs/v4_worker_cycles.csv
+            outputs/v4_worker_health.json
             .state/v4/v4_events.ndjson
             .state/v4/v4_signal_state.json
+            .state/v4/v4_alert_dispatch.json
           if-no-files-found: warn

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any, Iterable, Mapping
 
 from .contracts import CandidateState, EventType, MarketEvent
@@ -16,6 +17,12 @@ class Transition:
     current_state: str
     event_id: str
     observed_at_utc: str
+    live_price: float | None = None
+    entry_trigger: float | None = None
+    stop: float | None = None
+    effective_target: float | None = None
+    intraday_rvol: float | None = None
+    market_hunt_score: float | None = None
 
     def to_dict(self) -> dict[str, str]:
         return self.__dict__.copy()
@@ -26,6 +33,14 @@ class MomentumEngine:
 
     def __init__(self, store: FileEventStore):
         self.store = store
+
+    @staticmethod
+    def _number(value: Any) -> float | None:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if math.isfinite(number) else None
 
     def process(self, event: MarketEvent) -> Transition | None:
         self.store.append_events([event])
@@ -58,6 +73,12 @@ class MomentumEngine:
             current_state=current.value,
             event_id=event.event_id,
             observed_at_utc=event.observed_at_utc,
+            live_price=self._number(event.payload.get("live_price")),
+            entry_trigger=self._number(event.payload.get("entry_trigger")),
+            stop=self._number(event.payload.get("stop")),
+            effective_target=self._number(event.payload.get("effective_target")),
+            intraday_rvol=self._number(event.payload.get("intraday_rvol")),
+            market_hunt_score=self._number(event.payload.get("market_hunt_score")),
         )
         transition_event = MarketEvent(
             event_type=EventType.SIGNAL_TRANSITION,

@@ -28,6 +28,7 @@ def _empty_live(status="NOT CHECKED"):
     return {
         "live_status": status,
         "live_session_date": "",
+        "live_bar_at_et": "",
         "live_price": math.nan,
         "session_high": math.nan,
         "session_low": math.nan,
@@ -362,6 +363,7 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
     result.update({
         "live_status":status,
         "live_session_date":str(latest_date),
+        "live_bar_at_et":latest_session.index[-1].isoformat(),
         "live_price":round(price,2),
         "session_high":round(session_high,2),
         "session_low":round(session_low,2),
