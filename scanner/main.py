@@ -281,7 +281,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N):
     print("Running legendary trader setup agents...")
     legendary=run_legendary_agents(df, OUTPUT_DIR, top_n=max(25, top_n))
     if not legendary.empty:
-        print(f"Legendary trader agents identified {len(legendary):,} setup matches across {legendary[\"trader\"].nunique()} agents.")
+        agent_count = legendary["trader"].nunique()\n        print(f"Legendary trader agents identified {len(legendary):,} setup matches across {agent_count} agents.")
 
     all_out=OUTPUT_DIR/"all_candidates.csv"
     df.sort_values(["market_hunt_score","avg_dollar_volume"],ascending=[False,False]).to_csv(all_out,index=False)
