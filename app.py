@@ -245,6 +245,50 @@ with overview:
                      hide_index=True,use_container_width=True)
 
 with opportunities:
+    candidates = add_opportunity_context(data["candidates"])
+    st.subheader("Broad ranked opportunities")
+    st.markdown('<div class="section-note">This is generated from the full deep-scanned U.S. candidate universe—not a preset ticker list. It includes liquid FORMING, DISCOVER, ARMED and CONFIRMED setups ranked by Market Hunt score.</div>', unsafe_allow_html=True)
+
+    if candidates.empty:
+        st.info("Broad candidate scan is not available yet.")
+    else:
+        broad = candidates.copy()
+        if "liquidity_gate_passed" in broad.columns:
+            broad = broad[broad["liquidity_gate_passed"].astype(str).str.lower().isin(["true","1","yes"])]
+        if "volatility_gate_passed" in broad.columns:
+            broad = broad[broad["volatility_gate_passed"].astype(str).str.lower().isin(["true","1","yes"])]
+        if "stage" in broad.columns:
+            broad = broad[broad["stage"].astype(str).isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])]
+        if "market_hunt_score" in broad.columns:
+            broad["market_hunt_score"] = pd.to_numeric(broad["market_hunt_score"], errors="coerce")
+            broad = broad.sort_values("market_hunt_score", ascending=False)
+
+        q1, q2, q3 = st.columns([2,1,1])
+        with q1:
+            broad_query = st.text_input("Search broad opportunities", placeholder="Ticker or company…", key="broad_opportunity_search")
+        with q2:
+            broad_stages = sorted(broad["stage"].dropna().astype(str).unique()) if "stage" in broad else []
+            broad_selected = st.multiselect("Setup stage", broad_stages, default=broad_stages, key="broad_stage_filter")
+        with q3:
+            broad_limit = st.selectbox("Show top", [25,50,100,200], index=2, key="broad_limit")
+
+        broad_view = broad.copy()
+        if broad_query:
+            mask = broad_view.astype(str).apply(lambda col: col.str.contains(broad_query,case=False,na=False)).any(axis=1)
+            broad_view = broad_view[mask]
+        if broad_selected and "stage" in broad_view:
+            broad_view = broad_view[broad_view["stage"].astype(str).isin(broad_selected)]
+
+        broad_cols = ["ticker","company_name","price","stage","market_hunt_score","technical_score","formation_score",
+                      "rs20_vs_spy","rsi14","rsi_state","volume_vs_20ma","swing_volume_state","atr_pct","adr20_pct",
+                      "avg_dollar_volume","catalyst_status","catalyst_score","entry_trigger","entry_model","stop",
+                      "effective_target","effective_rr","runway_to_next_resistance_pct","pattern"]
+        st.caption(f"Showing {min(len(broad_view), int(broad_limit))} of {len(broad_view):,} matching broad-market candidates")
+        st.dataframe(broad_view.head(int(broad_limit))[columns(broad_view,broad_cols)], hide_index=True, use_container_width=True)
+        st.download_button("Download broad opportunities", broad_view.to_csv(index=False),
+                           "market_hunt_broad_opportunities.csv", "text/csv", use_container_width=True,
+                           key="download_broad_opportunities")
+
     leaders = add_opportunity_context(data["leaders"])
     st.subheader("Liquid market leaders")
     st.markdown('<div class="section-note">Widely followed stocks remain visible even without a trade setup. Gate failures are shown explicitly and never promoted to BUY.</div>', unsafe_allow_html=True)
