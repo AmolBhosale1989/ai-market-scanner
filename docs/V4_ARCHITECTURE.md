@@ -1,6 +1,6 @@
 # Market Hunt V4 Architecture
 
-Status: **V4.5 calibrated-ranking implementation / shadow mode**. V3 remains
+Status: **V4.6 controlled-cutover implementation / shadow mode**. V3 remains
 the production path until the validation gates below pass. V4 never enables
 broker execution.
 
@@ -75,7 +75,7 @@ options flow, microstructure, state transitions and outcomes.
 | 4.3 | SEC/news event adapters | Implemented in shadow; false-positive evidence must accumulate before alerts |
 | 4.4 | Options/microstructure adapters | Shadow implementation complete; missing-data behavior tested. Production promotion still requires provider/licensing approval |
 | 4.5 | Calibrated ranking model | Shadow implementation complete; promotion requires adequate samples and non-degrading out-of-sample Brier calibration for +5/+10/+15% targets |
-| 4.6 | Production cutover | Shadow agreement, alert precision and rollback drill pass |
+| 4.6 | Production cutover | Controller implemented; manual activation only after shadow agreement, alert precision, uptime/lag and rollback drill gates pass |
 
 ## Operational targets
 
@@ -265,3 +265,41 @@ The daily outcome workflow writes:
 V4.5 does not replace the existing production ranking yet and cannot change a
 trade state or place an order. That cutover is reserved for V4.6 after shadow
 agreement and alert-precision gates pass.
+
+
+## V4.6 controlled production cutover
+
+V4.6 adds a fail-closed controller between the validated V4.5 ranking model and
+the V4 live worker. The default state is always `V3_PRIMARY_V4_SHADOW`.
+
+The cutover evaluator checks all of the following before declaring a model
+eligible for manual activation:
+
+- V4.5 model status is `VALIDATED_SHADOW`;
+- top-ranked V3 and V4.5 candidate sets have at least 60% top-20 overlap;
+- at least 30 resolved actionable signals exist;
+- at least 55% of resolved actionable signals achieved +5% forward evidence;
+- market-hours uptime is at least 95%;
+- p95 event lag is no worse than 120 seconds;
+- an isolated promote/rollback drill restores the exact original state checksum.
+
+The evaluator writes `v4_6_cutover_evaluation.json`. Scheduled workflows may
+evaluate and publish this evidence, but they never activate V4.5 automatically.
+
+Manual commands:
+
+```bash
+# Evaluate only; never changes the active ranking
+python -m scanner.v4_cutover --evaluate
+
+# Activate only if every gate passes
+python -m scanner.v4_cutover --activate
+
+# Immediate rollback to V3-primary shadow mode
+python -m scanner.v4_cutover --rollback "reason"
+```
+
+When activated, the worker loads the exact model version recorded in the
+cutover state. Missing model files, version mismatch, invalid model status, or
+corrupt state all fail closed to V3-primary shadow routing. Broker execution
+remains disabled.
