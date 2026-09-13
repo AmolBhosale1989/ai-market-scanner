@@ -71,6 +71,8 @@ files = {
     "trader_livermore":"trader_livermore.csv", "trader_qullamaggie":"trader_qullamaggie.csv",
     "trader_druckenmiller":"trader_druckenmiller.csv", "trader_lawwaisum":"trader_lawwaisum.csv",
     "trader_martinluk":"trader_martinluk.csv",
+    "trader_top500swing":"trader_top500swing.csv",
+    "trader_highmomentumbeta":"trader_highmomentumbeta.csv",
 }
 data, sources = {}, {}
 for key, filename in files.items():
@@ -89,6 +91,7 @@ if data["legendary"].empty and not data["candidates"].empty:
             "trader_minervini", "trader_oneil", "trader_weinstein",
             "trader_darvas", "trader_livermore", "trader_qullamaggie",
             "trader_druckenmiller", "trader_lawwaisum", "trader_martinluk",
+            "trader_top500swing", "trader_highmomentumbeta",
         ]
         for key in legendary_keys:
             data[key], sources[key] = load_csv(files[key])
@@ -216,6 +219,8 @@ with legendary_tab:
         ("Stanley Druckenmiller", "Liquidity + Catalyst + Technical Confirmation", "trader_druckenmiller"),
         ("Law Wai-Sum", "Growth Momentum + Position/Swing Hybrid", "trader_lawwaisum"),
         ("Martin Luk", "Asymmetric 5:1 Momentum Swing", "trader_martinluk"),
+        ("Top-500 Swing Agent", "2–7 Day Liquid Swing Ideas", "trader_top500swing"),
+        ("High Momentum / High Beta Agent", "Fast-Mover Momentum + Beta/Volatility", "trader_highmomentumbeta"),
     ]
     for trader_name, setup_name, key in trader_views:
         frame = data[key]
