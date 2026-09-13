@@ -11,6 +11,7 @@ from scanner.v4.catalysts import (
     classify_sec_filing,
     events_frame,
     load_recent_catalyst_events,
+    parse_sec_search,
     parse_sec_submissions,
     parse_sec_ticker_map,
 )
@@ -97,6 +98,41 @@ def test_stale_sec_filings_are_excluded():
     payload = sec_payload(["424B5"], [""])
     payload["filings"]["recent"]["acceptanceDateTime"] = ["2026-09-10T10:00:00Z"]
     assert parse_sec_submissions("AXTI", "0001051627", payload, now=NOW) == []
+
+
+def test_sec_full_text_search_fallback_preserves_items_and_event_identity():
+    payload = {"hits": {"hits": [{"_source": {
+        "form": "8-K", "adsh": "0001759414-26-000001",
+        "file_date": "2026-09-14", "period_ending": "2026-09-13",
+        "items": ["3.01", "9.01"],
+    }}]}}
+    events = parse_sec_search("CRDO", "0001759414", payload, now=NOW)
+    assert len(events) == 1
+    assert events[0].payload["provider"] == "SEC_EDGAR_SEARCH"
+    assert events[0].payload["negative_veto"] is True
+    assert events[0].payload["classification_reason"] == "DELISTING_OR_LISTING_FAILURE"
+    repeated = parse_sec_search("CRDO", "0001759414", payload, now=NOW + timedelta(minutes=5))
+    assert repeated[0].event_id == events[0].event_id
+
+
+def test_sec_adapter_uses_official_search_when_submissions_endpoint_is_blocked(tmp_path, monkeypatch):
+    from scanner.v4.catalysts import SecFilingAdapter
+
+    adapter = SecFilingAdapter(tmp_path / "ticker-map.json", max_workers=1, max_retries=0)
+    monkeypatch.setattr(adapter, "_ticker_map", lambda _now: {"CRDO": "0001759414"})
+
+    def get_json(url):
+        if "submissions" in url:
+            raise RuntimeError("shared runner denied")
+        assert "efts.sec.gov/LATEST/search-index" in url
+        return {"hits": {"hits": []}}
+
+    monkeypatch.setattr(adapter, "_get_json", get_json)
+    events, health = adapter.poll(pd.DataFrame({"ticker": ["CRDO"]}), now=NOW)
+    assert events == []
+    assert health["errors"] == 0
+    assert health["submissions_errors"] == 1
+    assert health["search_fallbacks"] == 1
 
 
 def test_empty_catalyst_export_keeps_a_readable_schema():

@@ -162,7 +162,8 @@ window and publishes the accumulated outcome ledger and summary.
 
 V4.3 polls only the bounded HOT/current-WARM batch. It combines:
 
-- the free SEC EDGAR company submissions API for recent material filings;
+- the free SEC EDGAR company submissions API for recent material filings, with
+  the official EDGAR full-text search API as a per-company fallback;
 - fresh, ticker-verified Yahoo Finance headlines already available to V3; and
 - the existing broad event-first calendar for earnings inside 72 hours.
 
@@ -178,8 +179,10 @@ map for 24 hours and limits request starts to eight per second, below the SEC's
 published ten-request-per-second fair-access ceiling. No API key or paid feed is
 required. If SEC blocks the shared GitHub Actions IP from downloading the ticker
 map, the adapter uses the daily-updated `sec-cik-mapper` GitHub mirror only for
-ticker-to-CIK resolution; company submissions still come directly from the
-official SEC API, and the chosen map source is recorded in health evidence.
+ticker-to-CIK resolution. If the submissions host is blocked, the adapter falls
+back to the SEC's official full-text search host, which preserves accession,
+form and 8-K item evidence. Health records both fallback use and final provider
+errors; an empty but successful search is distinct from a failed request.
 
 Automatic negative vetoes are intentionally narrow: explicit bankruptcy,
 delisting, non-reliance/restatement, material impairment/restructuring, late

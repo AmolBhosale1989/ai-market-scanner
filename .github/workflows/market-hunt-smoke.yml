@@ -34,7 +34,7 @@ jobs:
 
       - name: Run deterministic unit tests
         run: python -m pytest -q
-      - name: Check bounded SEC catalyst access
+      - name: Check bounded SEC catalyst access with official search fallback
         shell: bash
         run: |
           python - <<'PY'
@@ -48,6 +48,7 @@ jobs:
               _, health = adapter.poll(pd.DataFrame({"ticker": ["AXTI", "CRDO", "INTC"]}))
               assert health["resolved"] == 3, health
               assert health["errors"] == 0, health
+              assert health["submissions_errors"] == health["search_fallbacks"], health
               print(health)
           PY
 

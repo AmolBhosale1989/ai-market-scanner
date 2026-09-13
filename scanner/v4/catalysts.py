@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -11,6 +11,7 @@ import tempfile
 import threading
 import time
 from typing import Any, Iterable, Mapping, Protocol
+from urllib.parse import urlencode
 
 import pandas as pd
 import requests
@@ -27,6 +28,7 @@ SEC_TICKERS_FALLBACK_URL = (
     "main/mappings/stocks/ticker_to_cik.json"
 )
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
+SEC_SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
 DEFAULT_SEC_USER_AGENT = "Market Hunt AmolBhosale1989@users.noreply.github.com"
 MATERIAL_FORMS = {
     "8-K", "8-K/A", "6-K", "6-K/A", "10-K", "10-K/A", "10-Q", "10-Q/A",
@@ -252,6 +254,65 @@ def parse_sec_submissions(
     return output
 
 
+def parse_sec_search(
+    ticker: str,
+    cik: str,
+    payload: Mapping[str, Any],
+    now: datetime | None = None,
+    lookback_hours: float = 72.0,
+) -> list[MarketEvent]:
+    """Normalize the SEC's official full-text search response as a submissions fallback."""
+    now = now or datetime.now(timezone.utc)
+    hits = payload.get("hits", {}).get("hits", [])
+    if not isinstance(hits, list):
+        return []
+    output: list[MarketEvent] = []
+    seen_accessions: set[str] = set()
+    for hit in hits:
+        source = hit.get("_source", {}) if isinstance(hit, Mapping) else {}
+        if not isinstance(source, Mapping):
+            continue
+        form = str(source.get("form") or source.get("file_type") or "").upper()
+        accession = str(source.get("adsh") or "").strip()
+        filed_at = _utc(source.get("file_date"))
+        if (
+            form not in MATERIAL_FORMS
+            or not accession
+            or accession in seen_accessions
+            or filed_at is None
+            or _age_hours(filed_at.isoformat(), now) > lookback_hours
+        ):
+            continue
+        seen_accessions.add(accession)
+        raw_items = source.get("items", [])
+        items = ",".join(str(item) for item in raw_items) if isinstance(raw_items, list) else str(raw_items or "")
+        classification = classify_sec_filing(form, items)
+        accession_clean = accession.replace("-", "")
+        filing_url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession_clean}/"
+        output.append(MarketEvent(
+            event_type=EventType.CATALYST,
+            ticker=ticker,
+            signal_id=f"{ticker}|CATALYST|SEC|{accession}",
+            observed_at_utc=filed_at.isoformat(),
+            event_id=_stable_event_id("sec", accession),
+            source="sec-edgar-full-text-search",
+            payload={
+                "source_event_id": accession,
+                "source_timestamp_utc": filed_at.isoformat(),
+                "source_timestamp_precision": "DATE",
+                "ingested_at_utc": now.isoformat(),
+                "provider": "SEC_EDGAR_SEARCH",
+                "form": form,
+                "items": items,
+                "filing_date": str(source.get("file_date") or ""),
+                "report_date": str(source.get("period_ending") or ""),
+                "source_url": filing_url,
+                **classification,
+            },
+        ))
+    return output
+
+
 class SecFilingAdapter:
     def __init__(
         self,
@@ -349,17 +410,34 @@ class SecFilingAdapter:
         resolved = [(ticker, ticker_map.get(ticker)) for ticker in symbols]
         unresolved = sum(1 for _, cik in resolved if not cik)
 
-        def fetch(item: tuple[str, str]) -> list[MarketEvent]:
+        def fetch(item: tuple[str, str]) -> tuple[list[MarketEvent], bool]:
             ticker, cik = item
-            payload = self._get_json(SEC_SUBMISSIONS_URL.format(cik=cik))
-            return parse_sec_submissions(ticker, cik, payload, now, self.lookback_hours)
+            try:
+                payload = self._get_json(SEC_SUBMISSIONS_URL.format(cik=cik))
+                return parse_sec_submissions(ticker, cik, payload, now, self.lookback_hours), False
+            except Exception:
+                start = (now - timedelta(hours=self.lookback_hours)).date().isoformat()
+                query = urlencode({
+                    "ciks": cik,
+                    "forms": ",".join(sorted(MATERIAL_FORMS)),
+                    "dateRange": "custom",
+                    "startdt": start,
+                    "enddt": now.date().isoformat(),
+                    "from": 0,
+                    "size": 100,
+                })
+                payload = self._get_json(f"{SEC_SEARCH_URL}?{query}")
+                return parse_sec_search(ticker, cik, payload, now, self.lookback_hours), True
 
         valid = [(ticker, cik) for ticker, cik in resolved if cik]
+        search_fallbacks = 0
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(valid)) or 1) as pool:
             futures = {pool.submit(fetch, item): item[0] for item in valid}
             for future in as_completed(futures):
                 try:
-                    events.extend(future.result())
+                    fetched, used_search = future.result()
+                    events.extend(fetched)
+                    search_fallbacks += int(used_search)
                 except Exception:
                     errors += 1
         health = {
@@ -368,6 +446,8 @@ class SecFilingAdapter:
             "requested": len(symbols),
             "resolved": len(valid),
             "unresolved": unresolved,
+            "submissions_errors": search_fallbacks + errors,
+            "search_fallbacks": search_fallbacks,
             "errors": errors,
             "events": len(events),
             "duration_ms": round((time.monotonic() - started) * 1000),
