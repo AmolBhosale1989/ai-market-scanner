@@ -247,3 +247,31 @@ def load_cutover_mode(state_file: Path, expected_model_version: str = "") -> str
     if expected_model_version and active != expected_model_version:
         return SHADOW_MODE
     return PRIMARY_MODE
+
+
+def apply_active_ranking(
+    candidates: pd.DataFrame,
+    state_file: Path,
+    model_file: Path,
+) -> tuple[pd.DataFrame, str]:
+    if candidates is None or candidates.empty:
+        return pd.DataFrame(), SHADOW_MODE
+    state = _read_json(Path(state_file))
+    if state.get("mode") != PRIMARY_MODE:
+        return candidates.copy(), SHADOW_MODE
+    if not Path(model_file).exists():
+        return candidates.copy(), SHADOW_MODE
+    try:
+        from .calibration import load_model
+        model = load_model(Path(model_file))
+    except Exception:
+        return candidates.copy(), SHADOW_MODE
+    active_version = str(state.get("active_model_version", ""))
+    if not active_version or model.version != active_version:
+        return candidates.copy(), SHADOW_MODE
+    if model.promotion_status != "VALIDATED_SHADOW":
+        return candidates.copy(), SHADOW_MODE
+    scored = model.score(candidates)
+    scored["v4_active_rank_score"] = scored["v45_calibrated_score"]
+    scored["v4_ranking_mode"] = PRIMARY_MODE
+    return scored, PRIMARY_MODE
