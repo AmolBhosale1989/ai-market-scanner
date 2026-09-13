@@ -26,7 +26,8 @@ def build_monitor_shortlist(
     if frame.empty:
         return frame
 
-    score = _numeric(frame, "market_hunt_score", -100)
+    score_column = "v4_active_rank_score" if "v4_active_rank_score" in frame else "market_hunt_score"
+    score = _numeric(frame, score_column, -100)
     if "market_hunt_score" not in frame:
         frame["market_hunt_score"] = score
     rvol = _numeric(frame, "intraday_rvol")
