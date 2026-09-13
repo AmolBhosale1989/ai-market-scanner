@@ -1,0 +1,7 @@
+{
+  "model_version": "untrained",
+  "promotion_status": "INSUFFICIENT_DATA",
+  "reason": "no outcomes",
+  "samples": 0,
+  "schema_version": "6.0.0-shadow"
+}

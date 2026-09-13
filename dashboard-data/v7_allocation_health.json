@@ -1,0 +1,25 @@
+{
+  "broker_execution_enabled": false,
+  "candidates_seen": 0,
+  "generated_at_utc": "2026-09-13T21:24:52.143174+00:00",
+  "paper_only": true,
+  "positions": 0,
+  "reason": "V6 must be VALIDATED_SHADOW",
+  "schema_version": "7.0.0-paper",
+  "settings": {
+    "allowed_confidence": [
+      "HIGH",
+      "MODERATE"
+    ],
+    "max_position_notional_pct": 20.0,
+    "max_positions": 8,
+    "max_sector_positions": 2,
+    "max_theme_positions": 2,
+    "max_total_risk_pct": 3.0,
+    "min_effective_rr": 2.5,
+    "min_p5_lower_probability": 25.0,
+    "paper_equity": 100000.0,
+    "risk_per_position_pct": 0.5
+  },
+  "status": "HOLD_SHADOW"
+}
