@@ -176,7 +176,10 @@ erase a previously detected negative veto.
 SEC access declares a configurable `SEC_USER_AGENT`, caches the ticker-to-CIK
 map for 24 hours and limits request starts to eight per second, below the SEC's
 published ten-request-per-second fair-access ceiling. No API key or paid feed is
-required.
+required. If SEC blocks the shared GitHub Actions IP from downloading the ticker
+map, the adapter uses the daily-updated `sec-cik-mapper` GitHub mirror only for
+ticker-to-CIK resolution; company submissions still come directly from the
+official SEC API, and the chosen map source is recorded in health evidence.
 
 Automatic negative vetoes are intentionally narrow: explicit bankruptcy,
 delisting, non-reliance/restatement, material impairment/restructuring, late

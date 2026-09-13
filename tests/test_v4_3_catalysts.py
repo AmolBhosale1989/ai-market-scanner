@@ -50,6 +50,7 @@ def test_sec_ticker_map_supports_exchange_array_format():
         "data": [[1759414, "Credo Technology", "CRDO", "Nasdaq"]],
     }
     assert parse_sec_ticker_map(payload) == {"CRDO": "0001759414"}
+    assert parse_sec_ticker_map({"CRDO": "0001759414"}) == {"CRDO": "0001759414"}
 
 
 def test_sec_classification_only_vetoes_explicit_high_confidence_risks():

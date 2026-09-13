@@ -22,6 +22,10 @@ from .health import parse_utc
 
 
 SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
+SEC_TICKERS_FALLBACK_URL = (
+    "https://raw.githubusercontent.com/jadchaar/sec-cik-mapper/"
+    "main/mappings/stocks/ticker_to_cik.json"
+)
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 DEFAULT_SEC_USER_AGENT = "Market Hunt AmolBhosale1989@users.noreply.github.com"
 MATERIAL_FORMS = {
@@ -99,6 +103,17 @@ def parse_sec_ticker_map(payload: Mapping[str, Any]) -> dict[str, str]:
                     continue
                 if ticker:
                     output[ticker] = cik
+        return output
+
+    if payload and all(not isinstance(value, Mapping) for value in payload.values()):
+        for raw_ticker, raw_cik in payload.items():
+            ticker = str(raw_ticker).strip().upper().replace(".", "-")
+            try:
+                cik = f"{int(raw_cik):010d}"
+            except (TypeError, ValueError):
+                continue
+            if ticker:
+                output[ticker] = cik
         return output
 
     for value in payload.values():
@@ -261,6 +276,7 @@ class SecFilingAdapter:
         self.max_retries = max(0, min(int(max_retries), 3))
         self._request_lock = threading.Lock()
         self._last_request_at = 0.0
+        self.ticker_map_source = ""
 
     def _get_json(self, url: str) -> Mapping[str, Any]:
         last_error: Exception | None = None
@@ -294,16 +310,31 @@ class SecFilingAdapter:
                 stale = {str(key): str(value) for key, value in cached.get("tickers", {}).items()}
                 age = _age_hours(cached.get("fetched_at_utc"), now)
                 if age is not None and age <= self.cache_hours:
+                    self.ticker_map_source = str(cached.get("source", "CACHE"))
                     return stale
             except (OSError, json.JSONDecodeError, TypeError):
                 pass
         try:
             tickers = parse_sec_ticker_map(self._get_json(SEC_TICKERS_URL))
+            source = "SEC_OFFICIAL"
         except Exception:
+            try:
+                tickers = parse_sec_ticker_map(self._get_json(SEC_TICKERS_FALLBACK_URL))
+                source = "SEC_CIK_MAPPER_GITHUB"
+            except Exception:
+                if stale:
+                    self.ticker_map_source = "STALE_CACHE"
+                    return stale
+                raise
+        if not tickers:
             if stale:
+                self.ticker_map_source = "STALE_CACHE"
                 return stale
-            raise
-        _atomic_json(self.cache_file, {"fetched_at_utc": now.isoformat(), "tickers": tickers})
+            raise ValueError("SEC ticker map was empty")
+        self.ticker_map_source = source
+        _atomic_json(self.cache_file, {
+            "fetched_at_utc": now.isoformat(), "source": source, "tickers": tickers,
+        })
         return tickers
 
     def poll(self, candidates: pd.DataFrame, now: datetime | None = None) -> tuple[list[MarketEvent], dict[str, Any]]:
@@ -333,6 +364,7 @@ class SecFilingAdapter:
                     errors += 1
         health = {
             "provider": "SEC_EDGAR",
+            "ticker_map_source": self.ticker_map_source,
             "requested": len(symbols),
             "resolved": len(valid),
             "unresolved": unresolved,
