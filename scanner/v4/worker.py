@@ -18,6 +18,7 @@ from ..config import OUTPUT_DIR
 from ..live import NY, _market_state
 from .adapters import LiveMarketAdapter
 from .alerting import AlertRouter
+from .cutover import SHADOW_MODE, apply_active_ranking
 from .catalysts import (
     CatalystAdapter,
     apply_catalyst_evidence,
@@ -76,6 +77,8 @@ class ContinuousMomentumWorker:
         outcome_ledger: SignalOutcomeLedger | None = None,
         catalyst_adapter: CatalystAdapter | None = None,
         options_microstructure_adapter: OptionsMicrostructureAdapter | None = None,
+        cutover_state_file: Path | None = None,
+        v45_model_file: Path | None = None,
     ):
         self.source = source
         self.adapter = adapter
@@ -88,6 +91,8 @@ class ContinuousMomentumWorker:
         self.outcome_ledger = outcome_ledger
         self.catalyst_adapter = catalyst_adapter
         self.options_microstructure_adapter = options_microstructure_adapter
+        self.cutover_state_file = Path(cutover_state_file) if cutover_state_file else None
+        self.v45_model_file = Path(v45_model_file) if v45_model_file else None
         self.stop_requested = threading.Event()
         runtime_state = self._load_runtime_state()
         self.cycle_index = int(runtime_state.get("cycle_index", 0))
@@ -166,12 +171,21 @@ class ContinuousMomentumWorker:
             detail = source_result.detail
             if source_degraded and source_age is not None and source_age > self.settings.max_source_age_seconds:
                 detail = f"{detail}; stale scan source".strip("; ")
+            ranked_source = source_result.frame
+            ranking_mode = SHADOW_MODE
+            if self.cutover_state_file is not None and self.v45_model_file is not None:
+                ranked_source, ranking_mode = apply_active_ranking(
+                    ranked_source,
+                    self.cutover_state_file,
+                    self.v45_model_file,
+                )
             shortlist = build_monitor_shortlist(
-                source_result.frame,
+                ranked_source,
                 hot_limit=self.settings.hot_limit,
                 warm_limit=self.settings.warm_limit,
             )
             candidates = len(shortlist)
+            detail = f"{detail}; ranking={ranking_mode}".strip("; ")
             batch = select_poll_batch(shortlist, self.cycle_index, self.settings)
             if self.catalyst_adapter is not None:
                 catalyst_result = self.catalyst_adapter.poll(batch)
