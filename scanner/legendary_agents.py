@@ -31,6 +31,7 @@ AGENTS = [
     TraderAgent("martinluk", "Martin Luk", "Asymmetric 5:1 Momentum Swing"),
     TraderAgent("top500swing", "Top-500 Swing Agent", "2–7 Day Liquid Swing Ideas"),
     TraderAgent("highmomentumbeta", "High Momentum / High Beta Agent", "Fast-Mover Momentum + Beta/Volatility"),
+    TraderAgent("superstock", "Superstock Agent", "Explosive Leader / Early Supertrend Candidate"),
 ]
 
 
@@ -77,6 +78,9 @@ def _base(df: pd.DataFrame) -> pd.DataFrame:
     out["_rsi"] = _num(out, "rsi14", 50)
     out["_adv"] = _num(out, "avg_dollar_volume")
     out["_beta"] = _num(out, "beta", np.nan)
+    out["_max_up30"] = _num(out, "max_up_day_30d_pct", 0)
+    out["_tenpct_days30"] = _num(out, "ten_pct_up_days_30d", 0)
+    out["_explosive30"] = _bool(out, "explosive_move_30d", False)
     out["_top500_liquid"] = out["_adv"].rank(method="first", ascending=False).le(500)
     return out
 
@@ -98,6 +102,7 @@ def _finalize(d: pd.DataFrame, agent: TraderAgent, score: pd.Series, matched: pd
         "technical_score", "formation_score", "rs20_vs_spy", "rsi14", "atr_pct", "adr20_pct",
         "entry_trigger", "entry_model", "stop", "effective_target", "effective_rr",
         "runway_to_next_resistance_pct", "catalyst_status", "catalyst_score",
+        "max_up_day_30d_pct", "ten_pct_up_days_30d", "explosive_move_30d",
         "intraday_rvol", "pattern",
     ]
     keep = [c for c in cols if c in d.columns]
@@ -371,6 +376,79 @@ def _highmomentumbeta(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
     return out
 
 
+def _superstock(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
+    """Rank explosive liquid leaders that still have room to become outsized winners.
+
+    This is a research discovery engine. It deliberately rewards evidence that a
+    stock can make exceptional moves, while penalizing poor structure, weak
+    relative strength, excessive risk and limited resistance runway.
+    """
+    liquidity_ok = d["_price"].ge(5) & d["_adv"].ge(20_000_000)
+    volatility_ok = d["_atr"].between(2.5, 10) & d["_adr"].ge(3.0)
+    explosive_ok = d["_explosive30"] | d["_max_up30"].ge(10)
+    leadership_ok = d["_rs"].ge(5)
+    structure_ok = d["_stage"].isin(["DISCOVER", "FORMING", "ARMED", "CONFIRMED"])
+    risk_ok = d["_risk"].le(6.5)
+
+    score = (
+        5
+        + d["_rs"].clip(-10, 40) * 1.25
+        + d["_tech"] * 0.22
+        + d["_form"] * 0.16
+        + d["_cat"].clip(0, 100) * 0.18
+        + d["_atr"].clip(0, 10) * 1.8
+        + d["_adr"].clip(0, 10) * 2.0
+        + d["_max_up30"].clip(0, 25) * 0.9
+        + d["_tenpct_days30"].clip(0, 5) * 5.0
+        + np.where(d["_explosive30"], 10, 0)
+        + np.where(d["_rsi"].between(55, 75), 8,
+          np.where(d["_rsi"].between(48, 55), 4,
+          np.where(d["_rsi"].between(75, 82), 2,
+          np.where(d["_rsi"].lt(45), -8, 0))))
+        + np.where(d["_theme"].isin(["STRONG", "LEADING"]), 8, 0)
+        + np.where(d["_rr"].ge(3.0), 10, np.where(d["_rr"].ge(2.0), 6, np.where(d["_rr"].ge(1.5), 2, -5)))
+        + np.where(d["_runway"].ge(10), 10, np.where(d["_runway"].ge(6), 7, np.where(d["_runway"].ge(4), 3, -5)))
+        + np.where(d["_stage"].eq("ARMED"), 7, 0)
+        + np.where(d["_stage"].eq("FORMING"), 6, 0)
+        + np.where(d["_stage"].eq("CONFIRMED"), 5, 0)
+        + np.where(d["_pattern"].str.contains("tight|pullback|flag|base|breakout|contraction|support"), 7, 0)
+        - np.where(d["_risk"].gt(5), 6, 0)
+    )
+
+    matched = liquidity_ok & volatility_ok & explosive_ok & leadership_ok & structure_ok & risk_ok
+    why = pd.Series(
+        "Explosive 30-day behavior + liquid leadership + high relative strength + constructive structure + catalyst/theme support + asymmetric runway",
+        index=d.index,
+    )
+    out = _finalize(d, a, score, matched, why)
+    if out.empty:
+        return out
+
+    sc = pd.to_numeric(out["legendary_score"], errors="coerce").fillna(0)
+    rr = pd.to_numeric(out.get("effective_rr"), errors="coerce").fillna(0)
+    runway = pd.to_numeric(out.get("runway_to_next_resistance_pct"), errors="coerce").fillna(0)
+    rs = pd.to_numeric(out.get("rs20_vs_spy"), errors="coerce").fillna(0)
+    tech = pd.to_numeric(out.get("technical_score"), errors="coerce").fillna(0)
+    cat = pd.to_numeric(out.get("catalyst_score"), errors="coerce").fillna(0)
+    maxup = pd.to_numeric(out.get("max_up_day_30d_pct"), errors="coerce").fillna(0)
+
+    aplus = sc.ge(85) & rr.ge(2.5) & runway.ge(6) & rs.ge(10) & tech.ge(60) & maxup.ge(10)
+    agrade = sc.ge(75) & rr.ge(2.0) & runway.ge(4) & rs.ge(7)
+    bgrade = sc.ge(60)
+
+    out["superstock_grade"] = np.select(
+        [aplus, agrade, bgrade],
+        ["A+ SUPERSTOCK", "A SUPERSTOCK", "B WATCH"],
+        default="REJECT / LOW CONVICTION",
+    )
+    out["superstock_action"] = np.select(
+        [aplus & cat.ge(30), aplus, agrade],
+        ["PRIORITY RESEARCH", "WAIT FOR FRESH CATALYST", "WATCH FOR EARLY ENTRY"],
+        default="MONITOR ONLY",
+    )
+    return out
+
+
 _RUNNERS = {
     "minervini": _minervini,
     "oneil": _oneil,
@@ -383,6 +461,7 @@ _RUNNERS = {
     "martinluk": _martinluk,
     "top500swing": _top500swing,
     "highmomentumbeta": _highmomentumbeta,
+    "superstock": _superstock,
 }
 
 
