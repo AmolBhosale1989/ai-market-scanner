@@ -36,8 +36,12 @@ def evaluate_prefilter(ticker: str, hist: pd.DataFrame):
          pd.to_numeric(window["Low"],errors="coerce")) / close * 100
     )
     adr20_pct=float(daily_range_pct.replace([float("inf"),-float("inf")],float("nan")).dropna().mean())
+    close_all=pd.to_numeric(d["Close"],errors="coerce").dropna()
+    ret20_pct=float((close_all.iloc[-1]/close_all.iloc[-21]-1)*100) if len(close_all)>=21 and close_all.iloc[-21] else 0.0
+    daily_returns_30=close_all.pct_change().tail(30)*100
+    max_up_day_30d_pct=float(daily_returns_30.max()) if not daily_returns_30.dropna().empty else 0.0
 
-    metrics=[price,avg_share_volume,avg_dollar_volume,median_dollar_volume,adr20_pct]
+    metrics=[price,avg_share_volume,avg_dollar_volume,median_dollar_volume,adr20_pct,ret20_pct,max_up_day_30d_pct]
     if not all(math.isfinite(x) for x in metrics):
         return None
 
@@ -68,6 +72,8 @@ def evaluate_prefilter(ticker: str, hist: pd.DataFrame):
         "avg_dollar_volume20":round(avg_dollar_volume,0),
         "median_dollar_volume20":round(median_dollar_volume,0),
         "adr20_pct":round(adr20_pct,2),
+        "ret20_pct":round(ret20_pct,2),
+        "max_up_day_30d_pct":round(max_up_day_30d_pct,2),
         "tradable":bool(eligible),
         "rejection_reason":"|".join(rejection_reasons),
     }
@@ -81,6 +87,6 @@ def build_tradable_rows(histories: dict[str,pd.DataFrame]):
     if not rows:
         return pd.DataFrame(columns=[
             "ticker","price","avg_share_volume20","avg_dollar_volume20",
-            "median_dollar_volume20","adr20_pct","tradable","rejection_reason"
+            "median_dollar_volume20","adr20_pct","ret20_pct","max_up_day_30d_pct","tradable","rejection_reason"
         ])
     return pd.DataFrame(rows)
