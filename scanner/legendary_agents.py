@@ -293,31 +293,39 @@ def _top500swing(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
 
 
 def _highmomentumbeta(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
+    """Discover and rank high-momentum, high-volatility/high-beta candidates.
+
+    Discovery is deliberately broader than the final Market Hunt trade gate.
+    Reported beta is rewarded when available; otherwise ATR/ADR are used as a
+    fast-mover proxy.  R/R and resistance runway affect ranking rather than
+    suppressing the entire discovery list.
+    """
     beta_available = d["_beta"].notna()
-    beta_ok = d["_beta"].ge(1.3)
-    volatility_proxy_ok = d["_atr"].ge(4.0) & d["_adr"].ge(4.0)
+    true_beta_ok = beta_available & d["_beta"].ge(1.3)
+    fast_mover_ok = d["_atr"].ge(3.5) & d["_adr"].ge(3.5)
+    liquidity_ok = d["_price"].ge(5) & d["_adv"].ge(20_000_000)
+    momentum_ok = d["_rs"].ge(3) | d["_rvol"].ge(1.2)
+    risk_ok = d["_risk"].le(7)
+
     score = (
-        12 + d["_tech"] * 0.26 + d["_form"] * 0.16
-        + d["_rs"].clip(-10, 25) * 0.95
-        + d["_cat"].clip(0, 100) * 0.14
+        8
+        + d["_rs"].clip(-10, 40) * 1.10
+        + d["_atr"].clip(0, 10) * 2.2
+        + d["_adr"].clip(0, 10) * 2.2
         + d["_rvol"].clip(0, 5) * 4.0
-        + np.where(d["_atr"].ge(4), 8, 0)
-        + np.where(d["_adr"].ge(4), 8, 0)
-        + np.where(beta_available & d["_beta"].ge(1.5), 10, 0)
-        + np.where(d["_stage"].isin(["ARMED", "CONFIRMED"]), 8, 0)
+        + d["_tech"] * 0.18
+        + d["_form"] * 0.10
+        + d["_cat"].clip(0, 100) * 0.12
+        + np.where(true_beta_ok, 10, 0)
+        + np.where(d["_rr"].ge(2.5), 8, np.where(d["_rr"].ge(1.5), 5, np.where(d["_rr"].ge(1.0), 2, -3)))
+        + np.where(d["_runway"].ge(8), 7, np.where(d["_runway"].ge(4), 4, np.where(d["_runway"].ge(2), 1, -3)))
+        + np.where(d["_stage"].isin(["CONFIRMED", "ARMED", "FORMING"]), 6, 0)
+        + np.where(d["_cat"].ge(30), 4, 0)
     )
-    matched = (
-        _quality_gate(d)
-        & d["_rs"].ge(5)
-        & d["_atr"].ge(3.5)
-        & d["_adr"].ge(3.5)
-        & (beta_ok | volatility_proxy_ok)
-        & d["_rr"].ge(2.0)
-        & d["_runway"].ge(5)
-        & d["_stage"].isin(["FORMING", "ARMED", "CONFIRMED"])
-    )
+
+    matched = liquidity_ok & fast_mover_ok & momentum_ok & risk_ok
     why = pd.Series(
-        "High relative strength + fast ATR/ADR profile + momentum confirmation; uses reported beta when available and volatility as fallback proxy",
+        "Fast-mover discovery: strong relative strength/RVOL plus high ATR/ADR; reported beta is rewarded when available, with R/R and runway used for ranking",
         index=d.index,
     )
     return _finalize(d, a, score, matched, why)
