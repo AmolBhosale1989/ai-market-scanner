@@ -330,3 +330,31 @@ The workflow publishes:
 
 The comparison is evidence-only. It cannot activate V4.5 or place an order.
 V4.6 remains manual and fail-closed while the sample accumulates.
+
+## Automatic model safety monitoring
+
+Every outcome run evaluates the newest 60 mature observations produced by the
+validated V4.5 model pipeline. It monitors +5%/+10%/+15% Brier score against the model's
+frozen base rates, five-session expectancy, false-breakout rate and +5%
+precision relative to V3 over the same sessions. Fewer than 30 mature samples
+is `COLLECTING`, not a pass. A failed guardrail marks the model `DEGRADED`,
+blocks cutover and automatically rolls an already-active model back to V3.
+The workflow can never promote a model automatically.
+
+Manual activation copies the exact eligible model to a separate immutable
+active-model artifact. Later shadow retraining cannot silently replace that
+pinned production version; missing or mismatched active artifacts fall back to
+V3.
+
+## V5 regime-adaptive ranking
+
+V5 is implemented as a second isolated shadow ranker. It starts with the
+leakage-safe V4.5 base probabilities and adds hierarchically shrunk adjustments
+for market regime, theme, catalyst type and entry model. Sparse segments fall
+back to the global model instead of inventing confidence.
+
+Training and final validation are time ordered. V5 requires at least 100
+resolved outcomes and 25 final holdout samples; every +5%, +10% and +15%
+probability must remain within the configured Brier tolerance versus V4.5.
+Until then, its status is `INSUFFICIENT_DATA` or `SHADOW_ONLY`. V5 has no
+production cutover path and cannot change signal state, alerts or orders.

@@ -1,6 +1,14 @@
 name: Market Hunt V4 Outcome Resolution
 
 on:
+  push:
+    paths:
+      - 'scanner/v4/**'
+      - 'scanner/v5/**'
+      - 'scanner/v4_model_monitor.py'
+      - 'scanner/v4_cutover.py'
+      - 'scanner/v5_model.py'
+      - '.github/workflows/market-hunt-v4-outcomes.yml'
   schedule:
     - cron: '45 22 * * 1-5'
   workflow_dispatch:
@@ -38,8 +46,12 @@ jobs:
         run: python -m scanner.v4_outcomes --fit-calibration
       - name: Record and resolve V3 versus V4.5 shadow evidence
         run: python -m scanner.v4_shadow_validation
-      - name: Evaluate V4.6 cutover gates
-        run: python -m scanner.v4_cutover --evaluate
+      - name: Monitor V4.5 calibration and expectancy
+        run: python -m scanner.v4_model_monitor
+      - name: Fit V5 regime-adaptive shadow model
+        run: python -m scanner.v5_model
+      - name: Evaluate V4.6 gates and enforce automatic rollback
+        run: python -m scanner.v4_cutover --evaluate --enforce-safety
       - name: Save enriched V4 signal history
         if: always()
         uses: actions/cache/save@v4
@@ -57,7 +69,7 @@ jobs:
           rm -rf /tmp/market-hunt-scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
           mkdir -p /tmp/market-hunt-scan-data/dashboard-data
-          for f in v4_outcomes.csv v4_outcome_summary.csv v4_5_model.json v4_5_validation.csv v4_5_ranked_candidates.csv v4_shadow_observations.csv v4_shadow_strategy_summary.csv v4_shadow_daily_comparison.csv v4_shadow_breakdowns.csv v4_shadow_validation_health.json v4_6_cutover_evaluation.json; do
+          for f in v4_outcomes.csv v4_outcome_summary.csv v4_5_model.json v4_5_validation.csv v4_5_ranked_candidates.csv v4_shadow_observations.csv v4_shadow_strategy_summary.csv v4_shadow_daily_comparison.csv v4_shadow_breakdowns.csv v4_shadow_validation_health.json v4_model_monitor.json v4_model_monitor.csv v4_6_cutover_evaluation.json v5_model.json v5_validation.csv v5_ranked_candidates.csv; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
@@ -86,5 +98,11 @@ jobs:
             outputs/v4_shadow_daily_comparison.csv
             outputs/v4_shadow_breakdowns.csv
             outputs/v4_shadow_validation_health.json
+            outputs/v4_model_monitor.json
+            outputs/v4_model_monitor.csv
             outputs/v4_6_cutover_evaluation.json
+            .state/v4/v5_model.json
+            outputs/v5_model.json
+            outputs/v5_validation.csv
+            outputs/v5_ranked_candidates.csv
           if-no-files-found: warn

@@ -16,7 +16,10 @@ from .v4.cutover import (
 
 
 def _csv(path: Path) -> pd.DataFrame:
-    return pd.read_csv(path) if path.exists() else pd.DataFrame()
+    try:
+        return pd.read_csv(path)
+    except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError):
+        return pd.DataFrame()
 
 
 def _json(path: Path) -> dict:
@@ -38,12 +41,15 @@ def _v3_candidates(output_dir: Path) -> pd.DataFrame:
 
 
 def evaluate(state_dir: Path, output_dir: Path):
+    worker_health = _json(output_dir / "v4_worker_health.json") or _json(state_dir / "v4_worker_health.json")
+    model_health = _json(output_dir / "v4_model_monitor.json")
+    worker_health["model_monitor_status"] = str(model_health.get("status", "UNKNOWN"))
     decision = evaluate_cutover(
         _v3_candidates(output_dir),
         _csv(output_dir / "v4_5_ranked_candidates.csv"),
         _csv(output_dir / "v4_outcomes.csv"),
         _json(state_dir / "v4_5_model.json") or _json(output_dir / "v4_5_model.json"),
-        _json(output_dir / "v4_worker_health.json") or _json(state_dir / "v4_worker_health.json"),
+        worker_health,
         CutoverSettings(),
     )
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -61,6 +67,7 @@ if __name__ == "__main__":
     parser.add_argument("--evaluate", action="store_true")
     parser.add_argument("--activate", action="store_true")
     parser.add_argument("--rollback", default="")
+    parser.add_argument("--enforce-safety", action="store_true")
     args = parser.parse_args()
 
     state_dir = Path(args.state_dir)
@@ -72,6 +79,12 @@ if __name__ == "__main__":
     elif args.activate:
         decision = evaluate(state_dir, output_dir)
         model = _json(state_dir / "v4_5_model.json") or _json(output_dir / "v4_5_model.json")
-        print(json.dumps(controller.activate(decision, str(model.get("model_version", ""))), indent=2))
+        active = controller.activate(decision, str(model.get("model_version", "")))
+        (state_dir / "v4_5_active_model.json").write_text(
+            json.dumps(model, indent=2, sort_keys=True, allow_nan=False)
+        )
+        print(json.dumps(active, indent=2))
     else:
-        evaluate(state_dir, output_dir)
+        decision = evaluate(state_dir, output_dir)
+        if args.enforce_safety and controller.state().get("mode") == "V4_5_PRIMARY" and not decision.eligible:
+            print(json.dumps(controller.rollback("automatic safety gate: " + ",".join(decision.failed_gates)), indent=2))

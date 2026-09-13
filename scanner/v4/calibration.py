@@ -274,7 +274,8 @@ def fit_model(outcomes: pd.DataFrame, settings: FitSettings | None = None) -> tu
         "targets": target_payloads,
         "settings": settings.__dict__,
     }
-    canonical = json.dumps(core, sort_keys=True, separators=(",", ":"), default=str)
+    version_core = {key: value for key, value in core.items() if key != "created_at_utc"}
+    canonical = json.dumps(version_core, sort_keys=True, separators=(",", ":"), default=str)
     version = hashlib.sha256(canonical.encode()).hexdigest()[:12]
     core["model_version"] = f"v4.5-{version}"
     core["promotion_status"] = "VALIDATED_SHADOW" if all(target_passes) else "SHADOW_ONLY"
