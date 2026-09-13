@@ -1,6 +1,6 @@
 # Market Hunt V4 Architecture
 
-Status: **V4.4 options/microstructure implementation / shadow mode**. V3 remains
+Status: **V4.5 calibrated-ranking implementation / shadow mode**. V3 remains
 the production path until the validation gates below pass. V4 never enables
 broker execution.
 
@@ -37,7 +37,7 @@ flowchart TD
 | State/event storage | Idempotent append-only events plus current signal state | File shadow adapter implemented |
 | Catalyst intelligence | SEC/news classification and magnitude | V4.3 bounded polling and conservative veto layer implemented |
 | Outcome intelligence | MFE, MAE, +5/+10/+15%, R-multiple and failure reason | V4.2 event ledger and daily resolver implemented |
-| Calibration | Walk-forward probabilities by setup and regime | Existing baseline; leakage-safe V4 model planned |
+| Calibration | Walk-forward probabilities by setup and regime | V4.5 time-split calibrated ranking model implemented in shadow |
 | Delivery | Mobile dashboard and actionable alerts | Deduplicated audit/Telegram alert router implemented |
 
 ## Core design rules
@@ -74,7 +74,7 @@ options flow, microstructure, state transitions and outcomes.
 | 4.2 | Outcome ledger and replayable backtester | Implemented in shadow; sample accumulation and calibration still required |
 | 4.3 | SEC/news event adapters | Implemented in shadow; false-positive evidence must accumulate before alerts |
 | 4.4 | Options/microstructure adapters | Shadow implementation complete; missing-data behavior tested. Production promotion still requires provider/licensing approval |
-| 4.5 | Calibrated ranking model | Adequate out-of-sample signals and improvement over frozen baseline |
+| 4.5 | Calibrated ranking model | Shadow implementation complete; promotion requires adequate samples and non-degrading out-of-sample Brier calibration for +5/+10/+15% targets |
 | 4.6 | Production cutover | Shadow agreement, alert precision and rollback drill pass |
 
 ## Operational targets
@@ -232,3 +232,36 @@ Missing chains, missing bars and provider failures are explicit. They never
 fabricate bullish confirmation and they do not fail the primary momentum cycle.
 Production use remains gated on approval of a commercial provider and its
 licensing/data rights.
+
+
+## V4.5 calibrated ranking
+
+V4.5 trains only on resolved historical V4 outcome records and preserves time
+ordering: the oldest observations form the training set and the newest block is
+held out for validation. The model estimates separate probabilities for reaching
++5%, +10% and +15% within the forward evidence window.
+
+The initial model deliberately avoids opaque auto-optimization. It uses fixed,
+versioned feature buckets for Market Hunt score, technical score, catalyst score,
+risk/reward, RVOL and theme strength, plus bounded categorical context such as
+stage, market regime, entry model and theme. Each bucket is shrunk toward the
+training-set base rate so small samples cannot produce false 0%/100%
+confidence.
+
+Every fitted model receives a content-derived version ID and records its exact
+training/validation time ranges. Promotion remains shadow-only unless all three
+targets have enough positive examples, enough holdout samples, and an
+out-of-sample Brier score that does not materially degrade versus the frozen
+base-rate predictor.
+
+The daily outcome workflow writes:
+
+- `v4_5_model.json` — versioned model, feature maps and promotion metadata;
+- `v4_5_validation.csv` — holdout Brier score, baseline score and gate result
+  for +5%, +10% and +15%;
+- `v4_5_ranked_candidates.csv` — current broad-scan candidates ranked by the
+  calibrated shadow score.
+
+V4.5 does not replace the existing production ranking yet and cannot change a
+trade state or place an order. That cutover is reserved for V4.6 after shadow
+agreement and alert-precision gates pass.
