@@ -11,24 +11,89 @@ from scanner.legendary_agents import run_legendary_agents
 st.set_page_config(page_title="Market Hunt V3", page_icon="⚡", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""<style>
-:root{--bg:#07101d;--panel:#0e1b2d;--panel2:#12243a;--line:#203a58;--text:#f2f7ff;--muted:#91a6bf;--green:#65e6b2;--amber:#ffd166;--blue:#73b7ff}
-.stApp{background:radial-gradient(circle at 8% 0%,#152b47 0,var(--bg) 38%);color:var(--text)}
-.block-container{max-width:1380px;padding-top:1.25rem;padding-bottom:5rem}
-.hero{padding:24px 26px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#142b48,#0c1727 62%);
-box-shadow:0 18px 45px #0006;margin-bottom:16px}.eyebrow{font-size:.75rem;letter-spacing:.14em;color:var(--green);font-weight:800}
-.hero h1{font-size:clamp(2rem,5vw,3.35rem);line-height:1;margin:.4rem 0}.hero p{color:var(--muted);max-width:760px;margin:.7rem 0 0}
-[data-testid="stMetric"]{background:linear-gradient(145deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:18px;padding:14px 15px;box-shadow:0 10px 28px #0004}
-[data-testid="stMetricLabel"]{color:var(--muted)}[data-testid="stMetricValue"]{color:var(--text)}
-.status{display:inline-flex;gap:7px;align-items:center;padding:6px 11px;border:1px solid #275171;border-radius:999px;background:#10253a;color:var(--blue);font-size:.78rem}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green)}
-.section-note{color:var(--muted);font-size:.88rem;margin-top:-.55rem;margin-bottom:.8rem}
-.signal{border:1px solid var(--line);border-radius:18px;padding:16px;background:linear-gradient(145deg,#102039,#0c1727);margin:.4rem 0}
+:root{
+  --bg:#050912;--bg2:#0a1020;--panel:rgba(15,24,42,.82);--panel2:rgba(20,32,55,.92);
+  --line:rgba(120,155,210,.18);--line2:rgba(116,229,187,.28);--text:#f7fbff;--muted:#8fa4bd;
+  --green:#72efc1;--green2:#34d399;--amber:#ffd166;--blue:#78b9ff;--violet:#a78bfa;--red:#ff7b8a;
+}
+html,body,[class*="css"]{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.stApp{
+  background:
+    radial-gradient(circle at 8% -10%,rgba(60,130,246,.22),transparent 28%),
+    radial-gradient(circle at 95% 0%,rgba(114,239,193,.10),transparent 24%),
+    linear-gradient(180deg,var(--bg2) 0%,var(--bg) 32%,#04070d 100%);
+  color:var(--text);
+}
+.block-container{max-width:1460px;padding-top:1rem;padding-bottom:5rem}
+header[data-testid="stHeader"]{background:transparent}
+.hero{
+  position:relative;overflow:hidden;padding:30px 32px;border:1px solid var(--line);border-radius:28px;
+  background:linear-gradient(135deg,rgba(21,42,72,.96),rgba(8,15,28,.95) 58%,rgba(10,27,31,.95));
+  box-shadow:0 30px 80px rgba(0,0,0,.42);margin-bottom:16px;
+}
+.hero:after{
+  content:"";position:absolute;width:340px;height:340px;border-radius:50%;right:-110px;top:-170px;
+  background:radial-gradient(circle,rgba(114,239,193,.20),transparent 65%);
+}
+.hero-grid{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;position:relative;z-index:1}
+.eyebrow{font-size:.72rem;letter-spacing:.18em;color:var(--green);font-weight:850;text-transform:uppercase}
+.hero h1{font-size:clamp(2.4rem,5vw,4.4rem);line-height:.95;margin:.55rem 0 .7rem;letter-spacing:-.045em}
+.hero p{color:#a9bad0;max-width:760px;margin:0;font-size:1rem;line-height:1.55}
+.hero-mark{font-size:4.2rem;opacity:.9;filter:drop-shadow(0 12px 35px rgba(114,239,193,.25))}
+.status-row{display:flex;flex-wrap:wrap;gap:8px;margin:.6rem 0 .25rem}
+.status{
+  display:inline-flex;gap:8px;align-items:center;padding:7px 12px;border:1px solid var(--line);
+  border-radius:999px;background:rgba(12,27,44,.72);color:#c7d7eb;font-size:.78rem;backdrop-filter:blur(14px)
+}
+.status strong{color:var(--text)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 14px var(--green)}
+.pill{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:.72rem;font-weight:800;letter-spacing:.02em;border:1px solid var(--line)}
+.pill.good{background:rgba(52,211,153,.10);color:var(--green);border-color:rgba(52,211,153,.26)}
+.pill.warn{background:rgba(255,209,102,.09);color:var(--amber);border-color:rgba(255,209,102,.25)}
+.pill.bad{background:rgba(255,123,138,.09);color:var(--red);border-color:rgba(255,123,138,.25)}
+.section-note{color:var(--muted);font-size:.9rem;margin-top:-.5rem;margin-bottom:1rem}
+[data-testid="stMetric"]{
+  background:linear-gradient(145deg,rgba(21,34,57,.92),rgba(10,18,31,.92));border:1px solid var(--line);
+  border-radius:20px;padding:16px 17px;box-shadow:0 14px 34px rgba(0,0,0,.28);backdrop-filter:blur(14px)
+}
+[data-testid="stMetric"]:hover{transform:translateY(-1px);border-color:rgba(120,185,255,.32)}
+[data-testid="stMetricLabel"]{color:#8fa4bd;font-weight:650}
+[data-testid="stMetricValue"]{color:var(--text);font-weight:780;letter-spacing:-.02em}
+.signal{
+  border:1px solid var(--line);border-radius:20px;padding:17px 18px;
+  background:linear-gradient(145deg,rgba(18,33,56,.95),rgba(8,15,28,.95));margin:.55rem 0;
+  box-shadow:0 10px 24px rgba(0,0,0,.22)
+}
 .signal b{font-size:1.15rem}.good{color:var(--green)}.warn{color:var(--amber)}.muted{color:var(--muted)}
-.stTabs [data-baseweb="tab-list"]{gap:8px;overflow-x:auto}.stTabs [data-baseweb="tab"]{background:#0c192a;border:1px solid #1e3855;border-radius:999px;padding:8px 16px}
-.stTabs [aria-selected="true"]{background:#183353!important;color:#fff!important}
-div[data-testid="stDataFrame"]{border:1px solid var(--line);border-radius:16px;overflow:hidden}
-@media(max-width:640px){.block-container{padding:1rem .72rem 5rem}.hero{padding:19px;border-radius:20px}.hero p{font-size:.9rem}
-[data-testid="stMetric"]{padding:11px}.stTabs [data-baseweb="tab"]{padding:7px 12px}}
+.agent-card{
+  border:1px solid var(--line);border-radius:20px;padding:16px 18px;margin:.2rem 0 .7rem;
+  background:linear-gradient(145deg,rgba(18,33,56,.82),rgba(8,15,28,.9));box-shadow:0 12px 28px rgba(0,0,0,.22)
+}
+.agent-card .name{font-size:1rem;font-weight:800;color:var(--text)} .agent-card .setup{font-size:.82rem;color:var(--muted);margin-top:2px}
+.agent-card .count{font-size:1.55rem;font-weight:850;color:var(--green);letter-spacing:-.03em}
+.stTabs [data-baseweb="tab-list"]{
+  gap:8px;overflow-x:auto;background:rgba(7,13,24,.72);padding:6px;border:1px solid var(--line);border-radius:16px;
+  position:sticky;top:.45rem;z-index:50;backdrop-filter:blur(18px)
+}
+.stTabs [data-baseweb="tab"]{
+  background:transparent;border:1px solid transparent;border-radius:12px;padding:9px 15px;color:#9fb2c8;font-weight:700
+}
+.stTabs [aria-selected="true"]{
+  background:linear-gradient(135deg,rgba(52,94,145,.72),rgba(25,68,81,.72))!important;
+  border-color:rgba(120,185,255,.28)!important;color:#fff!important
+}
+div[data-testid="stDataFrame"]{border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,.18)}
+div[data-testid="stExpander"]{border:1px solid var(--line)!important;border-radius:16px!important;background:rgba(9,16,28,.50)}
+.stButton>button,.stDownloadButton>button{
+  border-radius:12px;border:1px solid var(--line);background:linear-gradient(135deg,#173a5f,#153a43);color:#fff;font-weight:750
+}
+.stTextInput input,.stMultiSelect>div>div{border-radius:12px!important}
+@media(max-width:740px){
+  .block-container{padding: .75rem .62rem 4rem}.hero{padding:22px 20px;border-radius:22px}
+  .hero-grid{align-items:flex-start}.hero-mark{font-size:2.6rem}.hero h1{font-size:2.7rem}
+  .hero p{font-size:.9rem}.stTabs [data-baseweb="tab"]{padding:8px 11px;font-size:.82rem}
+  [data-testid="stMetric"]{padding:12px}
+}
 </style>""", unsafe_allow_html=True)
 
 REMOTE_BASE = os.getenv("SCAN_DATA_BASE_URL", "https://raw.githubusercontent.com/AmolBhosale1989/ai-market-scanner/scan-data/dashboard-data").rstrip("/")
@@ -98,16 +163,24 @@ if data["legendary"].empty and not data["candidates"].empty:
     except Exception as exc:
         st.warning(f"Legendary-agent fallback could not run: {exc}")
 
-st.markdown("""<div class="hero"><div class="eyebrow">PERSONAL RESEARCH TERMINAL · V3</div>
-<h1>Market Hunt</h1><p>Broad U.S. discovery, leading themes, multi-timeframe structure,
-event intelligence and live confirmation—distilled into actionable research states.</p></div>""", unsafe_allow_html=True)
+st.markdown("""<div class="hero"><div class="hero-grid"><div>
+<div class="eyebrow">AI MARKET INTELLIGENCE · PERSONAL TERMINAL · V3</div>
+<h1>Market Hunt</h1>
+<p>Discover liquid U.S. swing opportunities, momentum leaders, catalyst-driven setups and multi-agent consensus from one research command center.</p>
+</div><div class="hero-mark">⚡</div></div></div>""", unsafe_allow_html=True)
 
 scan_meta, live_meta, health, monitor = data["scan_meta"], data["live_meta"], data["health"], data["monitor"]
 scan_stamp = str(scan_meta.iloc[0].get("generated_at_utc", "Waiting for first scan")) if not scan_meta.empty else "Waiting for first scan"
 live_stamp = str(live_meta.iloc[0].get("updated_at_utc", "Waiting for monitor")) if not live_meta.empty else "Waiting for monitor"
 source_state = "CONNECTED" if sources["picks"] != "unavailable" else "WAITING"
-st.markdown(f'<span class="status"><span class="dot"></span>{source_state} · base {sources["picks"]} · refreshes every 60s</span>', unsafe_allow_html=True)
-st.caption(f"Base scan: {scan_stamp} UTC · Live monitor: {live_stamp} UTC")
+st.markdown(
+    f'<div class="status-row">'
+    f'<span class="status"><span class="dot"></span><strong>{source_state}</strong></span>'
+    f'<span class="status">Data source: <strong>{sources["picks"]}</strong></span>'
+    f'<span class="status">Auto refresh: <strong>60s</strong></span>'
+    f'</div>', unsafe_allow_html=True
+)
+st.caption(f"Base scan · {scan_stamp} UTC   |   Live monitor · {live_stamp} UTC")
 
 h = health.iloc[0] if not health.empty else {}
 mh = monitor.iloc[0] if not monitor.empty else {}
@@ -222,6 +295,19 @@ with legendary_tab:
         ("Top-500 Swing Agent", "2–7 Day Liquid Swing Ideas", "trader_top500swing"),
         ("High Momentum / High Beta Agent", "Fast-Mover Momentum + Beta/Volatility", "trader_highmomentumbeta"),
     ]
+
+    preview_cols = st.columns(3)
+    for idx, (trader_name, setup_name, key) in enumerate(trader_views[-3:]):
+        frame = data[key]
+        with preview_cols[idx]:
+            st.markdown(
+                f'<div class="agent-card"><div class="name">{trader_name}</div>'
+                f'<div class="setup">{setup_name}</div>'
+                f'<div class="count">{len(frame)}</div>'
+                f'<div class="setup">current matches</div></div>',
+                unsafe_allow_html=True,
+            )
+
     for trader_name, setup_name, key in trader_views:
         frame = data[key]
         with st.expander(f"{trader_name} · {setup_name}", expanded=False):
