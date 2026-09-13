@@ -40,6 +40,7 @@ def detect_forming_setup(d: pd.DataFrame):
     high20=_safe(last["HIGH20_PREV"],price)
     range10=_safe(last["RANGE10_PCT"])
     rvol=_safe(last["RVOL"])
+    vol_vs_ma20=_safe(last.get("VOL_VS_MA20", last.get("RVOL", 0)))
     vol5vs20=_safe(last["VOL5_VS20"],1)
     ret20,ret5=_safe(last["RET20"]),_safe(last["RET5"])
     rsi=_safe(last["RSI14"])
@@ -75,10 +76,15 @@ def detect_forming_setup(d: pd.DataFrame):
         score+=10; tags.append("tight range")
     if ret20>=8 and -8<=ret5<=2:
         score+=14; tags.append("bull flag/pullback")
+    low_volume_pullback = vol5vs20 < 0.9 and ret5 <= 2
     if vol5vs20<0.9:
         score+=6; tags.append("volume contraction")
-    if 1.15<=rvol<=2.5:
-        score+=8; tags.append("volume expanding")
+    if low_volume_pullback:
+        score+=4; tags.append("low-volume pullback")
+    if vol_vs_ma20>=1.3:
+        score+=8; tags.append("20d volume expansion")
+    elif 1.15<=rvol<=2.5:
+        score+=6; tags.append("volume expanding")
 
     score=max(0,min(100,round(score,1)))
 
