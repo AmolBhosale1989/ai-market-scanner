@@ -247,7 +247,7 @@ with overview:
 with opportunities:
     candidates = add_opportunity_context(data["candidates"])
     st.subheader("Broad ranked opportunities")
-    st.markdown('<div class="section-note">This is generated from the full deep-scanned U.S. candidate universe—not a preset ticker list. It includes liquid FORMING, DISCOVER, ARMED and CONFIRMED setups ranked by Market Hunt score.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-note">This is generated from the full deep-scanned U.S. candidate universe—not a preset ticker list. It includes liquid FORMING, DISCOVER, ARMED and CONFIRMED setups ranked by Market Hunt score, and requires at least one +10% close-to-close day in the last 30 trading sessions.</div>', unsafe_allow_html=True)
 
     if candidates.empty:
         st.info("Broad candidate scan is not available yet.")
@@ -259,6 +259,11 @@ with opportunities:
             broad = broad[broad["volatility_gate_passed"].astype(str).str.lower().isin(["true","1","yes"])]
         if "stage" in broad.columns:
             broad = broad[broad["stage"].astype(str).isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])]
+        if "explosive_move_30d" in broad.columns:
+            explosive = broad["explosive_move_30d"].astype(str).str.lower().isin(["true","1","yes"])
+            broad = broad[explosive]
+        elif "max_up_day_30d_pct" in broad.columns:
+            broad = broad[pd.to_numeric(broad["max_up_day_30d_pct"], errors="coerce").ge(10.0)]
         if "market_hunt_score" in broad.columns:
             broad["market_hunt_score"] = pd.to_numeric(broad["market_hunt_score"], errors="coerce")
             broad = broad.sort_values("market_hunt_score", ascending=False)
@@ -280,7 +285,8 @@ with opportunities:
             broad_view = broad_view[broad_view["stage"].astype(str).isin(broad_selected)]
 
         broad_cols = ["ticker","company_name","price","stage","market_hunt_score","technical_score","formation_score",
-                      "rs20_vs_spy","rsi14","rsi_state","volume_vs_20ma","swing_volume_state","atr_pct","adr20_pct",
+                      "rs20_vs_spy","rsi14","rsi_state","volume_vs_20ma","swing_volume_state",
+                      "max_up_day_30d_pct","ten_pct_up_days_30d","explosive_move_30d","atr_pct","adr20_pct",
                       "avg_dollar_volume","catalyst_status","catalyst_score","entry_trigger","entry_model","stop",
                       "effective_target","effective_rr","runway_to_next_resistance_pct","pattern"]
         st.caption(f"Showing {min(len(broad_view), int(broad_limit))} of {len(broad_view):,} matching broad-market candidates")
