@@ -179,10 +179,13 @@ map for 24 hours and limits request starts to eight per second, below the SEC's
 published ten-request-per-second fair-access ceiling. No API key or paid feed is
 required. If SEC blocks the shared GitHub Actions IP from downloading the ticker
 map, the adapter uses the daily-updated `sec-cik-mapper` GitHub mirror only for
-ticker-to-CIK resolution. If the submissions host is blocked, the adapter falls
-back to the SEC's official full-text search host, which preserves accession,
-form and 8-K item evidence. Health records both fallback use and final provider
-errors; an empty but successful search is distinct from a failed request.
+ticker-to-CIK resolution. If the submissions host is blocked, the adapter first
+tries the SEC's official full-text search host, which preserves accession, form
+and 8-K item evidence. If both SEC hosts reject the shared runner, Nasdaq's
+public filing index is a final metadata-only fallback. That fallback never
+invents missing 8-K items: only explicit form evidence can affect a veto. Health
+records every fallback and final provider error; an empty successful query is
+distinct from a failed request.
 
 Automatic negative vetoes are intentionally narrow: explicit bankruptcy,
 delisting, non-reliance/restatement, material impairment/restructuring, late

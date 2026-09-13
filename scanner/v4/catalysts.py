@@ -29,6 +29,7 @@ SEC_TICKERS_FALLBACK_URL = (
 )
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 SEC_SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
+NASDAQ_FILINGS_URL = "https://api.nasdaq.com/api/company/{ticker}/sec-filings?limit=50"
 DEFAULT_SEC_USER_AGENT = "Market Hunt AmolBhosale1989@users.noreply.github.com"
 MATERIAL_FORMS = {
     "8-K", "8-K/A", "6-K", "6-K/A", "10-K", "10-K/A", "10-Q", "10-Q/A",
@@ -313,6 +314,60 @@ def parse_sec_search(
     return output
 
 
+def parse_nasdaq_filings(
+    ticker: str,
+    payload: Mapping[str, Any],
+    now: datetime | None = None,
+    lookback_hours: float = 72.0,
+) -> list[MarketEvent]:
+    """Normalize Nasdaq's public SEC filing index without inferring missing 8-K items."""
+    now = now or datetime.now(timezone.utc)
+    data = payload.get("data", {})
+    rows = data.get("rows", []) if isinstance(data, Mapping) else []
+    if not isinstance(rows, list):
+        return []
+    form_aliases = {"S-1A": "S-1/A", "S-3A": "S-3/A", "F-1A": "F-1/A", "F-3A": "F-3/A"}
+    output: list[MarketEvent] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        raw_form = str(row.get("formType") or "").strip().upper()
+        form = form_aliases.get(raw_form, raw_form)
+        try:
+            filed_at = datetime.strptime(str(row.get("filed") or ""), "%m/%d/%Y").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if form not in MATERIAL_FORMS or _age_hours(filed_at.isoformat(), now) > lookback_hours:
+            continue
+        view = row.get("view", {})
+        source_url = str(view.get("htmlLink") or "") if isinstance(view, Mapping) else ""
+        source_id = source_url or f"{ticker}|{form}|{filed_at.date().isoformat()}"
+        classification = classify_sec_filing(form)
+        output.append(MarketEvent(
+            event_type=EventType.CATALYST,
+            ticker=ticker,
+            signal_id=f"{ticker}|CATALYST|NASDAQ_SEC|{source_id}",
+            observed_at_utc=filed_at.isoformat(),
+            event_id=_stable_event_id("nasdaq-sec", source_id),
+            source="nasdaq-sec-filings-index",
+            payload={
+                "source_event_id": source_id,
+                "source_timestamp_utc": filed_at.isoformat(),
+                "source_timestamp_precision": "DATE",
+                "ingested_at_utc": now.isoformat(),
+                "provider": "NASDAQ_SEC_INDEX",
+                "headline": str(row.get("companyName") or ""),
+                "form": form,
+                "items": "",
+                "filing_date": filed_at.date().isoformat(),
+                "report_date": str(row.get("period") or ""),
+                "source_url": source_url,
+                **classification,
+            },
+        ))
+    return output
+
+
 class SecFilingAdapter:
     def __init__(
         self,
@@ -410,34 +465,47 @@ class SecFilingAdapter:
         resolved = [(ticker, ticker_map.get(ticker)) for ticker in symbols]
         unresolved = sum(1 for _, cik in resolved if not cik)
 
-        def fetch(item: tuple[str, str]) -> tuple[list[MarketEvent], bool]:
+        def fetch(item: tuple[str, str]) -> tuple[list[MarketEvent], str]:
             ticker, cik = item
             try:
                 payload = self._get_json(SEC_SUBMISSIONS_URL.format(cik=cik))
-                return parse_sec_submissions(ticker, cik, payload, now, self.lookback_hours), False
+                if not isinstance(payload.get("filings", {}).get("recent"), Mapping):
+                    raise ValueError("SEC submissions response was missing filings.recent")
+                return parse_sec_submissions(ticker, cik, payload, now, self.lookback_hours), "SUBMISSIONS"
             except Exception:
-                start = (now - timedelta(hours=self.lookback_hours)).date().isoformat()
-                query = urlencode({
-                    "ciks": cik,
-                    "forms": ",".join(sorted(MATERIAL_FORMS)),
-                    "dateRange": "custom",
-                    "startdt": start,
-                    "enddt": now.date().isoformat(),
-                    "from": 0,
-                    "size": 100,
-                })
-                payload = self._get_json(f"{SEC_SEARCH_URL}?{query}")
-                return parse_sec_search(ticker, cik, payload, now, self.lookback_hours), True
+                try:
+                    start = (now - timedelta(hours=self.lookback_hours)).date().isoformat()
+                    query = urlencode({
+                        "ciks": cik,
+                        "forms": ",".join(sorted(MATERIAL_FORMS)),
+                        "dateRange": "custom",
+                        "startdt": start,
+                        "enddt": now.date().isoformat(),
+                        "from": 0,
+                        "size": 100,
+                    })
+                    payload = self._get_json(f"{SEC_SEARCH_URL}?{query}")
+                    if not isinstance(payload.get("hits", {}).get("hits"), list):
+                        raise ValueError("SEC search response was missing hits.hits")
+                    return parse_sec_search(ticker, cik, payload, now, self.lookback_hours), "SEC_SEARCH"
+                except Exception:
+                    payload = self._get_json(NASDAQ_FILINGS_URL.format(ticker=ticker))
+                    data = payload.get("data")
+                    if not isinstance(data, Mapping) or not isinstance(data.get("rows"), list):
+                        raise ValueError("Nasdaq filing response was missing data.rows")
+                    return parse_nasdaq_filings(ticker, payload, now, self.lookback_hours), "NASDAQ_INDEX"
 
         valid = [(ticker, cik) for ticker, cik in resolved if cik]
         search_fallbacks = 0
+        nasdaq_fallbacks = 0
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(valid)) or 1) as pool:
             futures = {pool.submit(fetch, item): item[0] for item in valid}
             for future in as_completed(futures):
                 try:
-                    fetched, used_search = future.result()
+                    fetched, provider_path = future.result()
                     events.extend(fetched)
-                    search_fallbacks += int(used_search)
+                    search_fallbacks += int(provider_path == "SEC_SEARCH")
+                    nasdaq_fallbacks += int(provider_path == "NASDAQ_INDEX")
                 except Exception:
                     errors += 1
         health = {
@@ -446,8 +514,10 @@ class SecFilingAdapter:
             "requested": len(symbols),
             "resolved": len(valid),
             "unresolved": unresolved,
-            "submissions_errors": search_fallbacks + errors,
+            "submissions_errors": search_fallbacks + nasdaq_fallbacks + errors,
             "search_fallbacks": search_fallbacks,
+            "search_errors": nasdaq_fallbacks + errors,
+            "nasdaq_fallbacks": nasdaq_fallbacks,
             "errors": errors,
             "events": len(events),
             "duration_ms": round((time.monotonic() - started) * 1000),

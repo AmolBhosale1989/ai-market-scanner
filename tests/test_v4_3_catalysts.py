@@ -11,6 +11,7 @@ from scanner.v4.catalysts import (
     classify_sec_filing,
     events_frame,
     load_recent_catalyst_events,
+    parse_nasdaq_filings,
     parse_sec_search,
     parse_sec_submissions,
     parse_sec_ticker_map,
@@ -133,6 +134,44 @@ def test_sec_adapter_uses_official_search_when_submissions_endpoint_is_blocked(t
     assert health["errors"] == 0
     assert health["submissions_errors"] == 1
     assert health["search_fallbacks"] == 1
+
+
+def test_nasdaq_filing_fallback_uses_form_evidence_only():
+    payload = {"data": {"rows": [{
+        "companyName": "Credo Technology", "formType": "424B5",
+        "filed": "09/14/2026", "period": "09/13/2026",
+        "view": {"htmlLink": "https://example.test/filing?ref=123"},
+    }, {
+        "companyName": "Credo Technology", "formType": "8-K",
+        "filed": "09/14/2026", "period": "09/13/2026",
+        "view": {"htmlLink": "https://example.test/filing?ref=456"},
+    }]}}
+    events = parse_nasdaq_filings("CRDO", payload, now=NOW)
+    assert len(events) == 2
+    by_form = {event.payload["form"]: event for event in events}
+    assert by_form["424B5"].payload["negative_veto"] is True
+    assert by_form["8-K"].payload["negative_veto"] is False
+    assert by_form["8-K"].payload["items"] == ""
+
+
+def test_sec_adapter_uses_nasdaq_after_both_sec_hosts_are_blocked(tmp_path, monkeypatch):
+    from scanner.v4.catalysts import SecFilingAdapter
+
+    adapter = SecFilingAdapter(tmp_path / "ticker-map.json", max_workers=1, max_retries=0)
+    monkeypatch.setattr(adapter, "_ticker_map", lambda _now: {"CRDO": "0001759414"})
+
+    def get_json(url):
+        if "api.nasdaq.com" not in url:
+            raise RuntimeError("shared runner denied")
+        return {"data": {"rows": []}}
+
+    monkeypatch.setattr(adapter, "_get_json", get_json)
+    events, health = adapter.poll(pd.DataFrame({"ticker": ["CRDO"]}), now=NOW)
+    assert events == []
+    assert health["errors"] == 0
+    assert health["submissions_errors"] == 1
+    assert health["search_errors"] == 1
+    assert health["nasdaq_fallbacks"] == 1
 
 
 def test_empty_catalyst_export_keeps_a_readable_schema():
