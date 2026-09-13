@@ -32,6 +32,7 @@ AGENTS = [
     TraderAgent("top500swing", "Top-500 Swing Agent", "2–7 Day Liquid Swing Ideas"),
     TraderAgent("highmomentumbeta", "High Momentum / High Beta Agent", "Fast-Mover Momentum + Beta/Volatility"),
     TraderAgent("superstock", "Superstock Agent", "Explosive Leader / Early Supertrend Candidate"),
+    TraderAgent("brownmoose", "Brownmoose Agent", "B1/B2 Confluence + Retest + Multi-Target Plan"),
 ]
 
 
@@ -103,6 +104,9 @@ def _finalize(d: pd.DataFrame, agent: TraderAgent, score: pd.Series, matched: pd
         "entry_trigger", "entry_model", "stop", "effective_target", "effective_rr",
         "runway_to_next_resistance_pct", "catalyst_status", "catalyst_score",
         "max_up_day_30d_pct", "ten_pct_up_days_30d", "explosive_move_30d",
+        "ema20", "ema50", "ema200", "daily_support", "daily_resistance",
+        "weekly_support", "weekly_resistance", "monthly_support", "monthly_resistance",
+        "target_5", "target_8", "target_10", "next_higher_resistance",
         "intraday_rvol", "pattern",
     ]
     keep = [c for c in cols if c in d.columns]
@@ -449,6 +453,171 @@ def _superstock(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
     return out
 
 
+def _brownmoose(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
+    """Approximate the observed Brownmoose subscriber-post framework.
+
+    The model looks for liquid stocks where a staged B1/B2 plan can be built
+    around confluence between moving averages, horizontal support and prior
+    breakout/retest structure. Targets are mapped from overhead resistance.
+    This is a research approximation, not a claim of the trader's exact rules.
+    """
+    price = d["_price"]
+    ema20 = _num(d, "ema20", np.nan)
+    ema50 = _num(d, "ema50", np.nan)
+    ema200 = _num(d, "ema200", np.nan)
+    ds = _num(d, "daily_support", np.nan)
+    ws = _num(d, "weekly_support", np.nan)
+    ms = _num(d, "monthly_support", np.nan)
+
+    support_frame = pd.DataFrame({
+        "EMA20": ema20,
+        "EMA50": ema50,
+        "EMA200": ema200,
+        "DAILY_SUPPORT": ds,
+        "WEEKLY_SUPPORT": ws,
+        "MONTHLY_SUPPORT": ms,
+    }, index=d.index)
+
+    valid_support = support_frame.where(
+        support_frame.gt(0) & support_frame.le(price * 1.015, axis=0)
+    )
+
+    b1 = valid_support.max(axis=1, skipna=True)
+    b2_frame = valid_support.where(valid_support.lt(b1 * 0.992, axis=0))
+    b2 = b2_frame.max(axis=1, skipna=True)
+
+    b1_source = valid_support.eq(b1, axis=0).idxmax(axis=1)
+    b2_source = b2_frame.eq(b2, axis=0).idxmax(axis=1)
+    b1_source = b1_source.where(b1.notna(), "")
+    b2_source = b2_source.where(b2.notna(), "")
+
+    dr = _num(d, "daily_resistance", np.nan)
+    wr = _num(d, "weekly_resistance", np.nan)
+    mr = _num(d, "monthly_resistance", np.nan)
+    t5 = _num(d, "target_5", np.nan)
+    t8 = _num(d, "target_8", np.nan)
+    t10 = _num(d, "target_10", np.nan)
+    nh = _num(d, "next_higher_resistance", np.nan)
+
+    resistance_frame = pd.DataFrame({
+        "DAILY_RESISTANCE": dr,
+        "WEEKLY_RESISTANCE": wr,
+        "MONTHLY_RESISTANCE": mr,
+        "NEXT_RESISTANCE": nh,
+        "TARGET_5": t5,
+        "TARGET_8": t8,
+        "TARGET_10": t10,
+    }, index=d.index).where(lambda x: x.gt(price, axis=0))
+
+    def _ordered_targets(row):
+        vals = sorted({round(float(v), 6) for v in row.dropna().tolist() if float(v) > 0})
+        vals = vals[:3]
+        return pd.Series(
+            vals + [np.nan] * (3 - len(vals)),
+            index=["brown_t1", "brown_t2", "brown_t3"],
+        )
+
+    targets = resistance_frame.apply(_ordered_targets, axis=1)
+
+    # Confluence = number of meaningful technical references clustered near B1.
+    dist = support_frame.sub(b1, axis=0).abs().div(b1.replace(0, np.nan), axis=0) * 100
+    confluence_count = dist.le(2.0).sum(axis=1)
+    b1_distance = ((price / b1) - 1) * 100
+    b2_distance = ((price / b2) - 1) * 100
+
+    # Preserve the scanner's existing technical stop when useful; otherwise use
+    # a modest structural buffer under B2/B1 for research R/R calculations.
+    existing_stop = _num(d, "stop", np.nan)
+    structural_anchor = b2.fillna(b1)
+    structural_stop = structural_anchor * 0.985
+    invalidation = pd.concat([existing_stop, structural_stop], axis=1).min(axis=1, skipna=True)
+
+    t1 = targets["brown_t1"]
+    risk_per_share = (b1 - invalidation).clip(lower=0.01)
+    reward_t1 = (t1 - b1).clip(lower=0)
+    brown_rr_t1 = reward_t1 / risk_per_share
+
+    near_b1 = b1.notna() & b1_distance.between(-1.0, 4.0)
+    near_b2 = b2.notna() & b2_distance.between(-1.0, 3.0)
+    breakout_retest = d["_pattern"].str.contains("breakout|retest|support|base|handle|pullback")
+    ema200_context = b1_source.eq("EMA200") | b2_source.eq("EMA200")
+    structure_ok = d["_stage"].isin(["DISCOVER", "FORMING", "ARMED", "CONFIRMED"])
+    liquidity_ok = d["_price"].ge(5) & d["_adv"].ge(20_000_000)
+    risk_ok = d["_risk"].le(7.0)
+
+    score = (
+        10
+        + d["_tech"] * 0.28
+        + d["_form"] * 0.22
+        + d["_rs"].clip(-10, 25) * 0.55
+        + confluence_count.clip(0, 6) * 7
+        + np.where(near_b1, 12, 0)
+        + np.where(near_b2, 8, 0)
+        + np.where(ema200_context, 8, 0)
+        + np.where(breakout_retest, 8, 0)
+        + np.where(brown_rr_t1.ge(3), 10, np.where(brown_rr_t1.ge(2), 6, np.where(brown_rr_t1.ge(1.5), 3, -4)))
+        + np.where(d["_stage"].eq("ARMED"), 7, 0)
+        + np.where(d["_stage"].eq("CONFIRMED"), 5, 0)
+        + np.where(d["_stage"].eq("FORMING"), 5, 0)
+        + np.where(d["_rsi"].between(45, 68), 5, 0)
+        - np.where(d["_risk"].gt(6), 5, 0)
+    )
+
+    matched = (
+        liquidity_ok
+        & structure_ok
+        & risk_ok
+        & b1.notna()
+        & t1.notna()
+        & confluence_count.ge(2)
+        & brown_rr_t1.ge(1.3)
+    )
+
+    why = pd.Series(
+        "Staged B1/B2 plan from clustered EMA/support references, breakout/retest structure and mapped T1/T2/T3 resistance targets",
+        index=d.index,
+    )
+    out = _finalize(d, a, score, matched, why)
+    if out.empty:
+        return out
+
+    idx = out.index
+    out["brownmoose_confluence_score"] = (confluence_count.loc[idx].clip(0, 6) / 6 * 100).round(0)
+    out["brown_b1"] = b1.loc[idx].round(2)
+    out["brown_b1_source"] = b1_source.loc[idx]
+    out["brown_b2"] = b2.loc[idx].round(2)
+    out["brown_b2_source"] = b2_source.loc[idx]
+    out["brown_invalidation"] = invalidation.loc[idx].round(2)
+    out["brown_t1"] = targets.loc[idx, "brown_t1"].round(2)
+    out["brown_t2"] = targets.loc[idx, "brown_t2"].round(2)
+    out["brown_t3"] = targets.loc[idx, "brown_t3"].round(2)
+    out["brown_rr_to_t1"] = brown_rr_t1.loc[idx].round(2)
+    out["brown_b1_distance_pct"] = b1_distance.loc[idx].round(2)
+    out["brown_b2_distance_pct"] = b2_distance.loc[idx].round(2)
+
+    state = np.select(
+        [
+            near_b2.loc[idx],
+            near_b1.loc[idx] & d.loc[idx, "_stage"].eq("CONFIRMED"),
+            near_b1.loc[idx],
+            d.loc[idx, "_stage"].eq("CONFIRMED"),
+        ],
+        ["B2 READY", "B1 READY / CONFIRMED", "B1 READY", "BREAKOUT CONFIRMED"],
+        default="WATCH",
+    )
+    out["brownmoose_state"] = state
+    out["brownmoose_grade"] = np.select(
+        [
+            out["legendary_score"].ge(85) & out["brownmoose_confluence_score"].ge(50) & out["brown_rr_to_t1"].ge(2.0),
+            out["legendary_score"].ge(75) & out["brown_rr_to_t1"].ge(1.5),
+            out["legendary_score"].ge(60),
+        ],
+        ["A+ PLAN", "A PLAN", "B WATCH"],
+        default="LOW CONVICTION",
+    )
+    return out
+
+
 _RUNNERS = {
     "minervini": _minervini,
     "oneil": _oneil,
@@ -462,6 +631,7 @@ _RUNNERS = {
     "top500swing": _top500swing,
     "highmomentumbeta": _highmomentumbeta,
     "superstock": _superstock,
+    "brownmoose": _brownmoose,
 }
 
 
