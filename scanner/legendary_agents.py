@@ -328,7 +328,30 @@ def _highmomentumbeta(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
         "Fast-mover discovery: strong relative strength/RVOL plus high ATR/ADR; reported beta is rewarded when available, with R/R and runway used for ranking",
         index=d.index,
     )
-    return _finalize(d, a, score, matched, why)
+    out = _finalize(d, a, score, matched, why)
+    if out.empty:
+        return out
+
+    # Momentum-specific quality label.  This is a research setup grade, not the
+    # final Market Hunt trade recommendation.
+    strong_buy = (
+        out["legendary_score"].ge(80)
+        & pd.to_numeric(out.get("effective_rr"), errors="coerce").fillna(0).ge(2.0)
+        & pd.to_numeric(out.get("runway_to_next_resistance_pct"), errors="coerce").fillna(0).ge(5.0)
+        & pd.to_numeric(out.get("technical_score"), errors="coerce").fillna(0).ge(60)
+        & pd.to_numeric(out.get("rs20_vs_spy"), errors="coerce").fillna(0).ge(8)
+    )
+    weak = (
+        out["legendary_score"].lt(60)
+        | pd.to_numeric(out.get("effective_rr"), errors="coerce").fillna(0).lt(1.2)
+        | pd.to_numeric(out.get("runway_to_next_resistance_pct"), errors="coerce").fillna(0).lt(2.0)
+    )
+    out["momentum_grade"] = np.select(
+        [strong_buy, weak],
+        ["STRONG BUY SETUP", "WEAK SETUP"],
+        default="GOOD SETUP",
+    )
+    return out
 
 
 _RUNNERS = {
