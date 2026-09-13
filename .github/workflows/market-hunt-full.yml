@@ -1,4 +1,4 @@
-name: Market Hunt Full Universe Scan
+name: Market Hunt Daily Broad Scan
 
 on:
   push:
@@ -29,12 +29,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Run full U.S. universe scan with tradability and health gates
+      - name: Run full-market prefilter plus ranked deep scan
         env:
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
-        run: python -m scanner.main --refresh-universe --top 50
+        run: python -m scanner.main --top 50 --deep-limit 1500
       - name: Save latest base scan for intraday monitor
         if: success()
         uses: actions/cache/save@v4
