@@ -8,6 +8,7 @@ from .v4.adapters import YahooPollingAdapter
 from .v4.alerting import AlertRouter, FileAlertSink, TelegramAlertSink
 from .v4.engine import MomentumEngine
 from .v4.health import HealthRecorder
+from .v4.outcomes import SignalOutcomeLedger
 from .v4.source import FallbackCandidateSource, HttpCandidateSource, LocalCandidateSource
 from .v4.store import FileEventStore
 from .v4.worker import ContinuousMomentumWorker, WorkerSettings
@@ -40,6 +41,11 @@ def build_worker(args) -> ContinuousMomentumWorker:
         ),
         output_dir=output_dir,
         runtime_state_file=state_dir / "v4_worker_runtime.json",
+        outcome_ledger=SignalOutcomeLedger(
+            state_file=state_dir / "v4_outcomes.json",
+            mirror_csv=output_dir / "v4_outcomes.csv",
+            summary_csv=output_dir / "v4_outcome_summary.csv",
+        ),
         settings=WorkerSettings(
             hot_limit=args.hot_limit,
             warm_limit=args.warm_limit,

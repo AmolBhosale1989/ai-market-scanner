@@ -36,7 +36,7 @@ flowchart TD
 | Live momentum | Deterministic WATCH → ARMED → TRIGGERED → CONFIRMED lifecycle | Continuous shadow worker implemented |
 | State/event storage | Idempotent append-only events plus current signal state | File shadow adapter implemented |
 | Catalyst intelligence | SEC/news classification and magnitude | Existing batch logic; streaming adapter planned |
-| Outcome intelligence | MFE, MAE, +5/+10/+15%, R-multiple and failure reason | Existing journal; V4 event ledger planned |
+| Outcome intelligence | MFE, MAE, +5/+10/+15%, R-multiple and failure reason | V4.2 event ledger and daily resolver implemented |
 | Calibration | Walk-forward probabilities by setup and regime | Existing baseline; leakage-safe V4 model planned |
 | Delivery | Mobile dashboard and actionable alerts | Deduplicated audit/Telegram alert router implemented |
 
@@ -71,7 +71,7 @@ options flow, microstructure, state transitions and outcomes.
 | --- | --- | --- |
 | 4.0 | Contracts, shortlist tiers, state engine, shadow store | Unit tests and replay determinism |
 | 4.1 | Continuous live adapter and alert router | Implemented in shadow; ≥95% market-hours uptime and p95 event-lag evidence still required |
-| 4.2 | Outcome ledger and replayable backtester | No look-ahead leakage; fill/slippage assumptions documented |
+| 4.2 | Outcome ledger and replayable backtester | Implemented in shadow; sample accumulation and calibration still required |
 | 4.3 | SEC/news event adapters | Source timestamps, deduplication and false-positive review |
 | 4.4 | Options/microstructure adapters | Provider/licensing approved; missing-data behavior tested |
 | 4.5 | Calibrated ranking model | Adequate out-of-sample signals and improvement over frozen baseline |
@@ -132,3 +132,28 @@ python -m scanner.v4_worker
 The worker writes snapshots, transitions, alert audit records, per-cycle
 metrics and an aggregate health summary. It does not replace the production
 monitor or place trades.
+
+## V4.2 outcome evidence
+
+V4.2 creates a signal-level ledger when a setup first becomes TRIGGERED or
+LIVE_CONFIRMED. It records:
+
+- a conservative long fill at the trigger plus 10 bps entry slippage;
+- 30-minute and 1/2/3/5-session forward returns;
+- MFE, MAE and whether +5%, +10% or +15% was reached;
+- target/invalidated/failed-breakout outcomes and an explainable failure reason;
+- setup, theme, catalyst, score and market-regime context.
+
+The trigger bar uses only its observed close for MFE/MAE because price ordering
+inside that bar is ambiguous. Later bars can contribute their high/low. Daily
+resolution uses only the first five sessions after entry; if stop and target
+are both touched on the same daily bar, the resolver assumes the stop occurred
+first. This deliberately conservative rule prevents look-ahead optimism.
+Trade-path MFE/MAE stops accumulating at the modeled exit. Separate forward
+five-session MFE/MAE and +5/+10/+15% fields measure what the stock eventually
+did even if the paper trade had already exited, preventing those two questions
+from contaminating each other.
+
+Event replay runs twice from an empty state and compares checksums. A mismatch
+fails validation. The weekday outcome workflow runs after the U.S. after-hours
+window and publishes the accumulated outcome ledger and summary.

@@ -20,6 +20,7 @@ from .adapters import LiveMarketAdapter
 from .alerting import AlertRouter
 from .engine import MomentumEngine
 from .health import CycleMetric, HealthRecorder, age_seconds, parse_utc
+from .outcomes import SignalOutcomeLedger
 from .shortlist import build_monitor_shortlist
 from .source import CandidateSource
 
@@ -65,6 +66,7 @@ class ContinuousMomentumWorker:
         settings: WorkerSettings | None = None,
         output_dir: Path = OUTPUT_DIR,
         runtime_state_file: Path | None = None,
+        outcome_ledger: SignalOutcomeLedger | None = None,
     ):
         self.source = source
         self.adapter = adapter
@@ -74,6 +76,7 @@ class ContinuousMomentumWorker:
         self.settings = settings or WorkerSettings()
         self.output_dir = Path(output_dir)
         self.runtime_state_file = Path(runtime_state_file) if runtime_state_file else None
+        self.outcome_ledger = outcome_ledger
         self.stop_requested = threading.Event()
         runtime_state = self._load_runtime_state()
         self.cycle_index = int(runtime_state.get("cycle_index", 0))
@@ -171,7 +174,15 @@ class ContinuousMomentumWorker:
                 if parsed and str(row.get("live_status", "")) == "LIVE":
                     event_lags.append(max(0.0, (processed_at - parsed).total_seconds() * 1000))
                 events.append(self.engine.snapshot_event(row, observed))
-            transitions = self.engine.process_many(events)
+            observations = []
+            transitions = []
+            for event in events:
+                transition = self.engine.process(event)
+                observations.append((event, transition))
+                if transition is not None:
+                    transitions.append(transition)
+            if self.outcome_ledger is not None:
+                self.outcome_ledger.observe_many(observations)
             transitions_count = len(transitions)
             alert_deliveries, alert_failures = self.alerts.route(transitions)
 

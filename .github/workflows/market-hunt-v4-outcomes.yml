@@ -1,0 +1,74 @@
+name: Market Hunt V4 Outcome Resolution
+
+on:
+  schedule:
+    - cron: '45 22 * * 1-5'
+  workflow_dispatch:
+
+concurrency:
+  group: market-hunt-v4-outcomes
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  resolve-outcomes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Restore V4 signal history
+        uses: actions/cache/restore@v4
+        with:
+          path: .state
+          key: market-hunt-state-outcomes-missing-${{ github.run_id }}
+          restore-keys: |
+            market-hunt-state-
+      - name: Verify deterministic replay
+        run: python -m scanner.v4_outcomes --verify-replay
+      - name: Resolve available daily horizons
+        run: python -m scanner.v4_outcomes --resolve-daily
+      - name: Save enriched V4 signal history
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .state
+          key: market-hunt-state-${{ github.run_id }}
+      - name: Publish V4.2 outcome evidence
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "market-hunt-bot"
+          git config user.email "market-hunt-bot@users.noreply.github.com"
+          git fetch origin scan-data:scan-data
+          rm -rf /tmp/market-hunt-scan-data
+          git worktree add /tmp/market-hunt-scan-data scan-data
+          mkdir -p /tmp/market-hunt-scan-data/dashboard-data
+          for f in v4_outcomes.csv v4_outcome_summary.csv; do
+            if [ -f "outputs/$f" ]; then
+              cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
+            fi
+          done
+          cd /tmp/market-hunt-scan-data
+          git add dashboard-data
+          if ! git diff --cached --quiet; then
+            git commit -m "Update V4 outcome evidence [skip ci]"
+            git push origin scan-data
+          fi
+      - name: Upload V4.2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-hunt-v4-outcomes-${{ github.run_id }}
+          path: |
+            outputs/v4_outcomes.csv
+            outputs/v4_outcome_summary.csv
+            .state/v4/v4_outcomes.json
+          if-no-files-found: warn

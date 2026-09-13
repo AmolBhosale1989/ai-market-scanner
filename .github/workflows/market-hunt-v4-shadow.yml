@@ -53,6 +53,8 @@ jobs:
             outputs/v4_alerts.ndjson
             outputs/v4_worker_cycles.csv
             outputs/v4_worker_health.json
+            outputs/v4_outcomes.csv
+            outputs/v4_outcome_summary.csv
             .state/v4/v4_events.ndjson
             .state/v4/v4_signal_state.json
             .state/v4/v4_alert_dispatch.json
@@ -60,4 +62,5 @@ jobs:
             .state/v4/v4_alerts.ndjson
             .state/v4/v4_worker_cycles.csv
             .state/v4/v4_worker_health.json
+            .state/v4/v4_outcomes.json
           if-no-files-found: warn
