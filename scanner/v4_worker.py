@@ -75,7 +75,7 @@ def build_worker(args) -> ContinuousMomentumWorker:
         catalyst_adapter=catalyst_adapter,
         options_microstructure_adapter=options_microstructure_adapter,
         cutover_state_file=state_dir / "v4_6_cutover_state.json",
-        v45_model_file=state_dir / "v4_5_model.json",
+        v45_model_file=state_dir / "v4_5_active_model.json",
         settings=WorkerSettings(
             hot_limit=args.hot_limit,
             warm_limit=args.warm_limit,

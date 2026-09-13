@@ -1,4 +1,5 @@
 import os
+import json
 from io import StringIO
 from pathlib import Path
 
@@ -115,6 +116,22 @@ def load_csv(name):
             except Exception: pass
     return pd.DataFrame(), "unavailable"
 
+@st.cache_data(ttl=60, show_spinner=False)
+def remote_json(name):
+    response = requests.get(f"{REMOTE_BASE}/{name}", timeout=8)
+    response.raise_for_status()
+    return response.json()
+
+def load_json(name):
+    try:
+        return remote_json(name), "published"
+    except Exception:
+        path = LOCAL_DIR / name
+        if path.exists():
+            try: return json.loads(path.read_text()), "local"
+            except Exception: pass
+    return {}, "unavailable"
+
 def number(value, default=0):
     try: return float(value)
     except (TypeError, ValueError): return default
@@ -164,10 +181,23 @@ files = {
     "trader_superstock":"trader_superstock.csv",
     "trader_brownmoose":"trader_brownmoose.csv",
     "trader_venu":"trader_venu.csv",
+    "v45_ranked":"v4_5_ranked_candidates.csv",
+    "v45_validation":"v4_5_validation.csv",
+    "v4_shadow_summary":"v4_shadow_strategy_summary.csv",
+    "v4_shadow_daily":"v4_shadow_daily_comparison.csv",
+    "v4_shadow_breakdowns":"v4_shadow_breakdowns.csv",
+    "v4_shadow_observations":"v4_shadow_observations.csv",
+    "v4_model_monitor":"v4_model_monitor.csv",
+    "v5_ranked":"v5_ranked_candidates.csv",
+    "v5_validation":"v5_validation.csv",
+    "v4_options_microstructure":"v4_options_microstructure.csv",
 }
 data, sources = {}, {}
 for key, filename in files.items():
     data[key], sources[key] = load_csv(filename)
+v46_cutover, v46_source = load_json("v4_6_cutover_evaluation.json")
+v45_model, v45_model_source = load_json("v4_5_model.json")
+v5_model, v5_model_source = load_json("v5_model.json")
 
 # Resilience fallback: if the full-scan publisher is delayed or GitHub Actions
 # is queued, derive legendary-agent lists from the latest published deep-scan
@@ -190,7 +220,7 @@ if data["legendary"].empty and not data["candidates"].empty:
         st.warning(f"Legendary-agent fallback could not run: {exc}")
 
 st.markdown("""<div class="hero"><div class="hero-grid"><div>
-<div class="eyebrow">AI MARKET INTELLIGENCE · PERSONAL TERMINAL · V3</div>
+<div class="eyebrow">AI MARKET INTELLIGENCE · V3 LIVE · V4/V5 SHADOW</div>
 <h1>Market Hunt</h1>
 <p>Discover liquid U.S. swing opportunities, momentum leaders, catalyst-driven setups and multi-agent consensus from one research command center.</p>
 </div><div class="hero-mark">⚡</div></div></div>""", unsafe_allow_html=True)
@@ -217,8 +247,8 @@ m3.metric("Tradable", f'{int(number(h.get("tradable_symbols"))):,}')
 m4.metric("Analyzable", f'{number(h.get("analyzable_coverage"))*100:.1f}%')
 m5.metric("Live alerts", f'{int(number(mh.get("alerts_generated"))):,}')
 
-overview, opportunities, legendary_tab, live_tab, event_tab, validation, system = st.tabs(
-    ["Overview", "Opportunities", "Legendary setups", "Live monitor", "Events", "Validation", "System"]
+overview, opportunities, legendary_tab, live_tab, event_tab, v4_tab, validation, system = st.tabs(
+    ["Overview", "Opportunities", "Legendary setups", "Live monitor", "Events", "V4 Intelligence", "Validation", "System"]
 )
 
 with overview:
@@ -478,6 +508,76 @@ with event_tab:
                    "entry_trigger","stop","effective_target","effective_rr"]
         st.dataframe(events[columns(events,preferred)].head(100),hide_index=True,use_container_width=True)
 
+with v4_tab:
+    st.subheader("V4/V5 shadow intelligence")
+    st.markdown('<div class="section-note">V3 remains primary. These rankings and probabilities are evidence-only until every production gate passes.</div>', unsafe_allow_html=True)
+    monitor_frame = data["v4_model_monitor"]
+    monitor_row = monitor_frame.iloc[0] if not monitor_frame.empty else {}
+    cutover_status = str(v46_cutover.get("status", "COLLECTING"))
+    model_status = str(v45_model.get("promotion_status", "COLLECTING"))
+    monitor_status = str(monitor_row.get("status", "COLLECTING"))
+    v5_status = str(v5_model.get("promotion_status", "COLLECTING"))
+    k1,k2,k3,k4,k5 = st.columns(5)
+    k1.metric("Primary ranking", "V3")
+    k2.metric("V4.5 model", model_status)
+    k3.metric("Model health", monitor_status)
+    k4.metric("Cutover", cutover_status)
+    k5.metric("V5 adaptive", v5_status)
+    failed = v46_cutover.get("failed_gates", [])
+    if v46_cutover.get("eligible"):
+        st.success("V4.5 has passed the evidence gates and is eligible for a manual, version-pinned cutover.")
+    else:
+        st.warning("V4.5 remains safely in shadow mode. Open gates: " + (", ".join(map(str, failed)) if failed else "evidence still collecting"))
+
+    ranked = data["v45_ranked"]
+    st.subheader("Current calibrated candidates")
+    if ranked.empty:
+        st.info("V4.5 ranked candidates are waiting for the first outcome workflow.")
+    else:
+        ranked = ranked.copy()
+        ranked["v4_rank"] = range(1, len(ranked) + 1)
+        if "market_hunt_score" in ranked:
+            ranked["v3_rank"] = pd.to_numeric(ranked["market_hunt_score"], errors="coerce").rank(method="min", ascending=False)
+        ranked_cols = ["ticker","company_name","price","stage","v45_calibrated_score","v45_p5_probability","v45_p10_probability","v45_p15_probability","market_hunt_score","technical_score","catalyst_score","theme","market_regime_state","intraday_rvol","entry_trigger","stop","effective_target","effective_rr","v45_model_version"]
+        ranked_cols = ["ticker","v3_rank","v4_rank"] + [name for name in ranked_cols if name != "ticker"]
+        st.dataframe(ranked[columns(ranked, ranked_cols)].head(30), hide_index=True, use_container_width=True)
+
+    with st.expander("Options flow and microstructure evidence"):
+        evidence = data["v4_options_microstructure"]
+        if evidence.empty:
+            st.write("Bounded V4.4 evidence is waiting for the next intraday cycle.")
+        else:
+            evidence_cols = ["ticker","options_status","call_volume","put_volume","call_put_volume_ratio","call_open_interest","put_open_interest","unusual_call_contracts","unusual_put_contracts","call_implied_volatility","put_implied_volatility","microstructure_status","volume_acceleration_5m","price_pressure_5m_pct","last_bar_close_location","last_bar_dollar_volume"]
+            st.dataframe(evidence[columns(evidence, evidence_cols)], hide_index=True, use_container_width=True)
+
+    shadow_summary = data["v4_shadow_summary"]
+    st.subheader("V3 versus V4.5 forward evidence")
+    if shadow_summary.empty:
+        st.info("Point-in-time comparison is collecting; five later sessions are required before an observation matures.")
+    else:
+        st.dataframe(shadow_summary, hide_index=True, use_container_width=True)
+    shadow_daily = data["v4_shadow_daily"]
+    if not shadow_daily.empty and "as_of_session" in shadow_daily:
+        chart = shadow_daily.copy()
+        chart["as_of_session"] = pd.to_datetime(chart["as_of_session"], errors="coerce")
+        chart = chart.dropna(subset=["as_of_session"]).set_index("as_of_session")
+        if "top_k_agreement_pct" in chart:
+            st.caption("Daily top-20 V3/V4.5 ranking agreement")
+            st.line_chart(chart[["top_k_agreement_pct"]])
+
+    with st.expander("Performance by theme, catalyst and market regime"):
+        breakdowns = data["v4_shadow_breakdowns"]
+        st.dataframe(breakdowns, hide_index=True, use_container_width=True) if not breakdowns.empty else st.write("No mature segment evidence yet.")
+    with st.expander("V5 regime-adaptive research ranking"):
+        v5_ranked = data["v5_ranked"]
+        if v5_ranked.empty:
+            st.write("V5 is waiting for sufficient resolved outcomes.")
+        else:
+            v5_cols = ["ticker","company_name","price","v5_adaptive_score","v5_p5_probability","v5_p10_probability","v5_p15_probability","market_regime_state","theme","catalyst_type","entry_model","market_hunt_score","v5_model_version","v5_model_status"]
+            st.dataframe(v5_ranked[columns(v5_ranked, v5_cols)].head(30), hide_index=True, use_container_width=True)
+        if not data["v5_validation"].empty:
+            st.dataframe(data["v5_validation"], hide_index=True, use_container_width=True)
+
 with validation:
     performance, setup, calibration, gate = data["performance"], data["performance_setup"], data["calibration"], data["gate"]
     st.subheader("Forward validation")
@@ -509,7 +609,7 @@ with validation:
 
 with system:
     st.subheader("Pipeline and data health")
-    st.write("5k+ universe → liquidity gate → themes → technical structure → D/W/M levels → runway and R/R → catalysts → live VWAP/ORB/RVOL → research state")
+    st.write("5k+ universe → liquidity gate → themes → technical structure → D/W/M levels → runway and R/R → catalysts → live VWAP/ORB/RVOL → V4 calibration/monitoring → V5 adaptive shadow ranking → guarded cutover")
     status_rows=pd.DataFrame([{"dataset":key,"rows":len(data[key]),"source":sources[key]} for key in files])
     st.dataframe(status_rows,hide_index=True,use_container_width=True)
     tradable=data["tradable"]

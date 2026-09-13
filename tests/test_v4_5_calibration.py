@@ -96,3 +96,10 @@ def test_v45_validation_gate_is_recorded_for_each_target():
     assert len(validation) == 3
     assert set(validation["validation_gate"]).issubset({"PASS", "FAIL"})
     assert model.promotion_status in {"VALIDATED_SHADOW", "SHADOW_ONLY"}
+
+
+def test_v45_model_version_is_stable_for_identical_evidence():
+    settings = FitSettings(min_total_samples=60, min_validation_samples=15, min_positive_samples=5)
+    first, _ = fit_model(outcomes(100), settings)
+    second, _ = fit_model(outcomes(100), settings)
+    assert first.version == second.version

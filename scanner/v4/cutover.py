@@ -40,6 +40,7 @@ class CutoverDecision:
     market_hours_uptime_pct: float | None
     event_lag_p95_ms: float | None
     v45_model_status: str
+    model_monitor_status: str
     rollback_drill_passed: bool
     failed_gates: tuple[str, ...]
     settings: dict[str, Any]
@@ -147,11 +148,14 @@ def evaluate_cutover(
     uptime = health_payload.get("market_hours_uptime_pct")
     lag = health_payload.get("event_lag_p95_ms")
     model_status = str(model_payload.get("promotion_status", ""))
+    monitor_status = str(health_payload.get("model_monitor_status", "HEALTHY"))
     rollback_ok = rollback_drill()
     failed: list[str] = []
 
     if model_status != settings.require_v45_status:
         failed.append("V4_5_MODEL_STATUS")
+    if monitor_status != "HEALTHY":
+        failed.append("MODEL_MONITOR")
     if agreement is None or agreement < settings.min_shadow_agreement_pct:
         failed.append("SHADOW_AGREEMENT")
     if samples < settings.min_alert_samples:
@@ -184,6 +188,7 @@ def evaluate_cutover(
         market_hours_uptime_pct=None if not math.isfinite(uptime_value) else round(uptime_value, 2),
         event_lag_p95_ms=None if not math.isfinite(lag_value) else round(lag_value, 1),
         v45_model_status=model_status,
+        model_monitor_status=monitor_status,
         rollback_drill_passed=rollback_ok,
         failed_gates=tuple(failed),
         settings=asdict(settings),
