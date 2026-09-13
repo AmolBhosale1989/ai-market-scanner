@@ -5,9 +5,13 @@ on:
     paths:
       - 'scanner/v4/**'
       - 'scanner/v5/**'
+      - 'scanner/v6/**'
+      - 'scanner/v7/**'
       - 'scanner/v4_model_monitor.py'
       - 'scanner/v4_cutover.py'
       - 'scanner/v5_model.py'
+      - 'scanner/v6_model.py'
+      - 'scanner/v7_allocator.py'
       - '.github/workflows/market-hunt-v4-outcomes.yml'
   schedule:
     - cron: '45 22 * * 1-5'
@@ -50,6 +54,10 @@ jobs:
         run: python -m scanner.v4_model_monitor
       - name: Fit V5 regime-adaptive shadow model
         run: python -m scanner.v5_model
+      - name: Fit V6 uncertainty-aware shadow ensemble
+        run: python -m scanner.v6_model
+      - name: Build V7 portfolio-aware paper plan
+        run: python -m scanner.v7_allocator
       - name: Evaluate V4.6 gates and enforce automatic rollback
         run: python -m scanner.v4_cutover --evaluate --enforce-safety
       - name: Save enriched V4 signal history
@@ -69,7 +77,7 @@ jobs:
           rm -rf /tmp/market-hunt-scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
           mkdir -p /tmp/market-hunt-scan-data/dashboard-data
-          for f in v4_outcomes.csv v4_outcome_summary.csv v4_5_model.json v4_5_validation.csv v4_5_ranked_candidates.csv v4_shadow_observations.csv v4_shadow_strategy_summary.csv v4_shadow_daily_comparison.csv v4_shadow_breakdowns.csv v4_shadow_validation_health.json v4_model_monitor.json v4_model_monitor.csv v4_6_cutover_evaluation.json v5_model.json v5_validation.csv v5_ranked_candidates.csv; do
+          for f in v4_outcomes.csv v4_outcome_summary.csv v4_5_model.json v4_5_validation.csv v4_5_ranked_candidates.csv v4_shadow_observations.csv v4_shadow_strategy_summary.csv v4_shadow_daily_comparison.csv v4_shadow_breakdowns.csv v4_shadow_validation_health.json v4_model_monitor.json v4_model_monitor.csv v4_6_cutover_evaluation.json v5_model.json v5_validation.csv v5_ranked_candidates.csv v6_model.json v6_validation.csv v6_ranked_candidates.csv v7_paper_portfolio.csv v7_allocation_health.json; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
@@ -105,4 +113,10 @@ jobs:
             outputs/v5_model.json
             outputs/v5_validation.csv
             outputs/v5_ranked_candidates.csv
+            .state/v4/v6_model.json
+            outputs/v6_model.json
+            outputs/v6_validation.csv
+            outputs/v6_ranked_candidates.csv
+            outputs/v7_paper_portfolio.csv
+            outputs/v7_allocation_health.json
           if-no-files-found: warn

@@ -190,6 +190,9 @@ files = {
     "v4_model_monitor":"v4_model_monitor.csv",
     "v5_ranked":"v5_ranked_candidates.csv",
     "v5_validation":"v5_validation.csv",
+    "v6_ranked":"v6_ranked_candidates.csv",
+    "v6_validation":"v6_validation.csv",
+    "v7_portfolio":"v7_paper_portfolio.csv",
     "v4_options_microstructure":"v4_options_microstructure.csv",
 }
 data, sources = {}, {}
@@ -198,6 +201,8 @@ for key, filename in files.items():
 v46_cutover, v46_source = load_json("v4_6_cutover_evaluation.json")
 v45_model, v45_model_source = load_json("v4_5_model.json")
 v5_model, v5_model_source = load_json("v5_model.json")
+v6_model, v6_model_source = load_json("v6_model.json")
+v7_health, v7_health_source = load_json("v7_allocation_health.json")
 
 # Resilience fallback: if the full-scan publisher is delayed or GitHub Actions
 # is queued, derive legendary-agent lists from the latest published deep-scan
@@ -220,7 +225,7 @@ if data["legendary"].empty and not data["candidates"].empty:
         st.warning(f"Legendary-agent fallback could not run: {exc}")
 
 st.markdown("""<div class="hero"><div class="hero-grid"><div>
-<div class="eyebrow">AI MARKET INTELLIGENCE · V3 LIVE · V4/V5 SHADOW</div>
+<div class="eyebrow">AI MARKET INTELLIGENCE · V3 LIVE · V4–V6 SHADOW · V7 PAPER</div>
 <h1>Market Hunt</h1>
 <p>Discover liquid U.S. swing opportunities, momentum leaders, catalyst-driven setups and multi-agent consensus from one research command center.</p>
 </div><div class="hero-mark">⚡</div></div></div>""", unsafe_allow_html=True)
@@ -509,7 +514,7 @@ with event_tab:
         st.dataframe(events[columns(events,preferred)].head(100),hide_index=True,use_container_width=True)
 
 with v4_tab:
-    st.subheader("V4/V5 shadow intelligence")
+    st.subheader("V4–V7 research intelligence")
     st.markdown('<div class="section-note">V3 remains primary. These rankings and probabilities are evidence-only until every production gate passes.</div>', unsafe_allow_html=True)
     monitor_frame = data["v4_model_monitor"]
     monitor_row = monitor_frame.iloc[0] if not monitor_frame.empty else {}
@@ -517,12 +522,17 @@ with v4_tab:
     model_status = str(v45_model.get("promotion_status", "COLLECTING"))
     monitor_status = str(monitor_row.get("status", "COLLECTING"))
     v5_status = str(v5_model.get("promotion_status", "COLLECTING"))
-    k1,k2,k3,k4,k5 = st.columns(5)
+    v6_status = str(v6_model.get("promotion_status", "COLLECTING"))
+    v7_status = str(v7_health.get("status", "COLLECTING"))
+    k1,k2,k3,k4 = st.columns(4)
     k1.metric("Primary ranking", "V3")
     k2.metric("V4.5 model", model_status)
     k3.metric("Model health", monitor_status)
     k4.metric("Cutover", cutover_status)
+    k5,k6,k7 = st.columns(3)
     k5.metric("V5 adaptive", v5_status)
+    k6.metric("V6 uncertainty", v6_status)
+    k7.metric("V7 paper plan", v7_status)
     failed = v46_cutover.get("failed_gates", [])
     if v46_cutover.get("eligible"):
         st.success("V4.5 has passed the evidence gates and is eligible for a manual, version-pinned cutover.")
@@ -578,6 +588,25 @@ with v4_tab:
         if not data["v5_validation"].empty:
             st.dataframe(data["v5_validation"], hide_index=True, use_container_width=True)
 
+    with st.expander("V6 uncertainty-aware ensemble ranking"):
+        v6_ranked = data["v6_ranked"]
+        if v6_ranked.empty:
+            st.write("V6 is waiting for sufficient chronological train, calibration and holdout evidence.")
+        else:
+            v6_cols = ["ticker","company_name","price","v6_robust_score","v6_decision","v6_confidence","v6_p5_probability","v6_p5_lower","v6_p5_upper","v6_p10_probability","v6_p10_lower","v6_p10_upper","v6_p15_probability","v6_p15_lower","v6_p15_upper","v6_max_disagreement_pp","market_regime_state","theme","effective_rr","entry_trigger","stop","v6_model_version"]
+            st.dataframe(v6_ranked[columns(v6_ranked, v6_cols)].head(30), hide_index=True, use_container_width=True)
+        if not data["v6_validation"].empty:
+            st.dataframe(data["v6_validation"], hide_index=True, use_container_width=True)
+
+    with st.expander("V7 portfolio-aware paper plan"):
+        st.caption("Paper simulation only. No broker execution is enabled.")
+        v7_portfolio = data["v7_portfolio"]
+        if v7_portfolio.empty:
+            st.write("V7 is holding until V6 validates and eligible candidates pass all portfolio risk limits.")
+        else:
+            v7_cols = ["v7_allocation_rank","ticker","company_name","sector","theme","v6_robust_score","v6_confidence","v7_paper_shares","v7_entry","v7_stop","v7_position_notional","v7_position_risk","v7_position_risk_pct","v7_cumulative_risk_pct","v7_action"]
+            st.dataframe(v7_portfolio[columns(v7_portfolio, v7_cols)], hide_index=True, use_container_width=True)
+
 with validation:
     performance, setup, calibration, gate = data["performance"], data["performance_setup"], data["calibration"], data["gate"]
     st.subheader("Forward validation")
@@ -609,7 +638,7 @@ with validation:
 
 with system:
     st.subheader("Pipeline and data health")
-    st.write("5k+ universe → liquidity gate → themes → technical structure → D/W/M levels → runway and R/R → catalysts → live VWAP/ORB/RVOL → V4 calibration/monitoring → V5 adaptive shadow ranking → guarded cutover")
+    st.write("5k+ universe → liquidity gate → themes → technical structure → D/W/M levels → runway and R/R → catalysts → live VWAP/ORB/RVOL → V4 calibration/monitoring → V5 adaptive ranking → V6 uncertainty/abstention → V7 paper risk allocation → guarded cutover")
     status_rows=pd.DataFrame([{"dataset":key,"rows":len(data[key]),"source":sources[key]} for key in files])
     st.dataframe(status_rows,hide_index=True,use_container_width=True)
     tradable=data["tradable"]

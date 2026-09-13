@@ -151,11 +151,14 @@ def fit_adaptive_model(
     metrics = []
     passes = []
     for target, label in TARGETS.items():
-        actual = validation[label].map(_truthy).astype(float).reset_index(drop=True)
+        # score() ranks rows, so each model's labels must come from its own
+        # ranked frame to preserve prediction/label alignment.
+        actual_base = base_validation[label].map(_truthy).astype(float)
+        actual_adaptive = adaptive_validation[label].map(_truthy).astype(float)
         base_probability = pd.to_numeric(base_validation[f"v45_{target}_probability"], errors="coerce") / 100.0
         adaptive_probability = pd.to_numeric(adaptive_validation[f"v5_{target}_probability"], errors="coerce") / 100.0
-        base_brier = _brier(actual, base_probability)
-        adaptive_brier = _brier(actual, adaptive_probability)
+        base_brier = _brier(actual_base, base_probability)
+        adaptive_brier = _brier(actual_adaptive, adaptive_probability)
         passed = math.isfinite(adaptive_brier) and adaptive_brier <= base_brier + settings.max_brier_degradation
         passes.append(passed)
         metrics.append({
