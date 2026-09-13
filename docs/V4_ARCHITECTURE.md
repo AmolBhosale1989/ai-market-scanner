@@ -303,3 +303,30 @@ When activated, the worker loads the exact model version recorded in the
 cutover state. Missing model files, version mismatch, invalid model status, or
 corrupt state all fail closed to V3-primary shadow routing. Broker execution
 remains disabled.
+
+
+## Daily V3 versus V4.5 shadow validation
+
+The post-V4.6 validation phase records the top 20 V3 and V4.5 candidates as an
+immutable point-in-time snapshot after each U.S. session. Re-running the job for
+the same session cannot rewrite the original ranks, scores, prices or model
+version. This prevents later information from leaking into the comparison.
+
+Each following weekday run resolves whatever forward sessions are available.
+A candidate becomes mature only after five later trading sessions. The resolver
+then measures +5%, +10% and +15% reach, one- through five-session returns,
+five-session MFE/MAE, false-breakout rate and realized five-session R-multiple.
+Daily-bar ambiguity is conservative: if the stop and +5% level are both touched
+in one bar, the stop is treated as occurring first.
+
+The workflow publishes:
+
+- `v4_shadow_observations.csv` — immutable candidate-level ranks and outcomes;
+- `v4_shadow_strategy_summary.csv` — direct V3/V4.5 hit rate, win rate,
+  return, MFE/MAE, expectancy and Brier-score comparison;
+- `v4_shadow_daily_comparison.csv` — daily top-20 overlap and model identity;
+- `v4_shadow_breakdowns.csv` — results by theme, catalyst and market regime;
+- `v4_shadow_validation_health.json` — collection and maturity status.
+
+The comparison is evidence-only. It cannot activate V4.5 or place an order.
+V4.6 remains manual and fail-closed while the sample accumulates.

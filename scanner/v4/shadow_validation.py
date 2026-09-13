@@ -1,0 +1,396 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+import json
+import math
+import os
+from pathlib import Path
+import tempfile
+from typing import Any, Mapping
+
+import numpy as np
+import pandas as pd
+
+
+SHADOW_VALIDATION_SCHEMA = "4.shadow.1"
+TARGET_THRESHOLDS = (5, 10, 15)
+RETURN_HORIZONS = (1, 2, 3, 5)
+BREAKDOWN_COLUMNS = ("theme", "catalyst_type", "market_regime_state")
+
+
+def _number(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y"}
+
+
+def _pct(exit_price: float | None, entry_price: float | None) -> float | None:
+    if exit_price is None or entry_price is None or entry_price <= 0:
+        return None
+    return round((exit_price / entry_price - 1.0) * 100.0, 4)
+
+
+def _value(row: Mapping[str, Any], *columns: str) -> Any:
+    for column in columns:
+        value = row.get(column)
+        if value is not None and not (isinstance(value, float) and math.isnan(value)):
+            return value
+    return None
+
+
+def _rank(frame: pd.DataFrame, score_column: str) -> pd.DataFrame:
+    if frame is None or frame.empty or "ticker" not in frame or score_column not in frame:
+        return pd.DataFrame()
+    out = frame.copy()
+    out["ticker"] = out["ticker"].astype(str).str.strip().str.upper()
+    out["_shadow_score"] = pd.to_numeric(out[score_column], errors="coerce")
+    out = out[(out["ticker"] != "") & out["_shadow_score"].notna()]
+    out = out.sort_values(["_shadow_score", "ticker"], ascending=[False, True])
+    out = out.drop_duplicates("ticker").reset_index(drop=True)
+    out["_shadow_rank"] = np.arange(1, len(out) + 1)
+    return out
+
+
+def infer_as_of_session(candidates: pd.DataFrame, source_timestamp_utc: str = "") -> str:
+    if candidates is not None and not candidates.empty and "live_session_date" in candidates:
+        sessions = pd.to_datetime(candidates["live_session_date"], errors="coerce").dropna()
+        if not sessions.empty:
+            return sessions.dt.date.mode().iloc[0].isoformat()
+    parsed = pd.to_datetime(source_timestamp_utc, errors="coerce", utc=True)
+    if not pd.isna(parsed):
+        return parsed.date().isoformat()
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+@dataclass(frozen=True)
+class ShadowValidationSettings:
+    top_k: int = 20
+    forward_sessions: int = 5
+
+
+class ShadowValidationLedger:
+    """Point-in-time V3/V4 ranking snapshots and forward outcome evidence."""
+
+    def __init__(
+        self,
+        state_file: Path,
+        observations_csv: Path | None = None,
+        summary_csv: Path | None = None,
+        daily_csv: Path | None = None,
+        breakdowns_csv: Path | None = None,
+        health_json: Path | None = None,
+        settings: ShadowValidationSettings | None = None,
+    ):
+        self.state_file = Path(state_file)
+        self.observations_csv = Path(observations_csv) if observations_csv else None
+        self.summary_csv = Path(summary_csv) if summary_csv else None
+        self.daily_csv = Path(daily_csv) if daily_csv else None
+        self.breakdowns_csv = Path(breakdowns_csv) if breakdowns_csv else None
+        self.health_json = Path(health_json) if health_json else None
+        self.settings = settings or ShadowValidationSettings()
+
+    def _load(self) -> dict[str, dict[str, Any]]:
+        try:
+            payload = json.loads(self.state_file.read_text())
+        except (OSError, json.JSONDecodeError):
+            return {}
+        observations = payload.get("observations", {}) if isinstance(payload, dict) else {}
+        return observations if isinstance(observations, dict) else {}
+
+    def load_frame(self) -> pd.DataFrame:
+        return self._frame(self._load())
+
+    def _save(self, observations: dict[str, dict[str, Any]]) -> None:
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": SHADOW_VALIDATION_SCHEMA,
+            "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "observations": observations,
+        }
+        fd, temporary = tempfile.mkstemp(prefix=f".{self.state_file.name}.", dir=self.state_file.parent, text=True)
+        try:
+            with os.fdopen(fd, "w") as handle:
+                json.dump(payload, handle, indent=2, sort_keys=True, allow_nan=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self.state_file)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+
+    @staticmethod
+    def _frame(observations: dict[str, dict[str, Any]]) -> pd.DataFrame:
+        if not observations:
+            return pd.DataFrame()
+        return pd.DataFrame(observations.values()).sort_values(
+            ["as_of_session", "ticker"], ascending=[True, True]
+        ).reset_index(drop=True)
+
+    def record_snapshot(
+        self,
+        v3_candidates: pd.DataFrame,
+        v45_candidates: pd.DataFrame,
+        as_of_session: str,
+        observed_at_utc: str = "",
+        model_payload: Mapping[str, Any] | None = None,
+        source_name: str = "",
+    ) -> pd.DataFrame:
+        observations = self._load()
+        v3 = _rank(v3_candidates, "market_hunt_score")
+        v45 = _rank(v45_candidates, "v45_calibrated_score")
+        v3_top = v3.head(self.settings.top_k)
+        v45_top = v45.head(self.settings.top_k)
+        v3_rows = {row["ticker"]: row for _, row in v3_top.iterrows()}
+        v45_rows = {row["ticker"]: row for _, row in v45_top.iterrows()}
+        captured_at = observed_at_utc or datetime.now(timezone.utc).isoformat()
+        model_payload = dict(model_payload or {})
+
+        for ticker in sorted(set(v3_rows) | set(v45_rows)):
+            key = f"{as_of_session}|{ticker}"
+            # A rerun must not rewrite the point-in-time ranking with later data.
+            if key in observations:
+                continue
+            v3_row = v3_rows.get(ticker)
+            v45_row = v45_rows.get(ticker)
+            source_row = v3_row if v3_row is not None else v45_row
+            assert source_row is not None
+            record = {
+                "observation_id": key,
+                "as_of_session": as_of_session,
+                "observed_at_utc": captured_at,
+                "source_name": source_name,
+                "ticker": ticker,
+                "baseline_price": _number(_value(source_row, "price", "live_price")),
+                "selected_v3": v3_row is not None,
+                "selected_v45": v45_row is not None,
+                "v3_rank": int(v3_row["_shadow_rank"]) if v3_row is not None else None,
+                "v45_rank": int(v45_row["_shadow_rank"]) if v45_row is not None else None,
+                "market_hunt_score": _number(_value(source_row, "market_hunt_score")),
+                "v45_calibrated_score": _number(_value(v45_row, "v45_calibrated_score")) if v45_row is not None else None,
+                "v45_p5_probability": _number(_value(v45_row, "v45_p5_probability")) if v45_row is not None else None,
+                "v45_p10_probability": _number(_value(v45_row, "v45_p10_probability")) if v45_row is not None else None,
+                "v45_p15_probability": _number(_value(v45_row, "v45_p15_probability")) if v45_row is not None else None,
+                "v45_model_version": str(model_payload.get("model_version", "")),
+                "v45_model_status": str(model_payload.get("promotion_status", "")),
+                "stage": str(_value(source_row, "stage") or ""),
+                "theme": str(_value(source_row, "theme") or "UNCLASSIFIED"),
+                "catalyst_type": str(_value(source_row, "catalyst_type", "catalyst_status") or "NONE"),
+                "market_regime_state": str(_value(source_row, "market_regime_state") or "UNKNOWN"),
+                "entry_model": str(_value(source_row, "entry_model") or ""),
+                "stop": _number(_value(source_row, "stop")),
+                "effective_target": _number(_value(source_row, "effective_target")),
+                "effective_rr": _number(_value(source_row, "effective_rr")),
+                "daily_bars_resolved": 0,
+                "forward_5d_mfe_pct": None,
+                "forward_5d_mae_pct": None,
+                "false_breakout": None,
+                "r_multiple_5d": None,
+            }
+            for horizon in RETURN_HORIZONS:
+                record[f"return_{horizon}d_pct"] = None
+            for threshold in TARGET_THRESHOLDS:
+                record[f"forward_hit_{threshold}pct"] = None
+            observations[key] = record
+
+        self._save(observations)
+        self._export(observations)
+        return self._frame(observations)
+
+    def unresolved_tickers(self) -> list[str]:
+        frame = self.load_frame()
+        if frame.empty:
+            return []
+        resolved = pd.to_numeric(frame.get("daily_bars_resolved"), errors="coerce").fillna(0)
+        return sorted(frame.loc[resolved.lt(self.settings.forward_sessions), "ticker"].astype(str).unique())
+
+    def resolve_histories(self, histories: Mapping[str, pd.DataFrame]) -> pd.DataFrame:
+        observations = self._load()
+        for record in observations.values():
+            ticker = str(record.get("ticker", ""))
+            history = histories.get(ticker)
+            entry = _number(record.get("baseline_price"))
+            if history is None or history.empty or entry is None:
+                continue
+            frame = history.copy()
+            if isinstance(frame.columns, pd.MultiIndex):
+                frame.columns = [column[0] for column in frame.columns]
+            if not {"High", "Low", "Close"}.issubset(frame.columns):
+                continue
+            session = pd.Timestamp(record["as_of_session"]).date()
+            future = frame[pd.DatetimeIndex(frame.index).date > session].sort_index()
+            available = min(len(future), self.settings.forward_sessions)
+            record["daily_bars_resolved"] = max(int(record.get("daily_bars_resolved", 0)), available)
+            for horizon in RETURN_HORIZONS:
+                if len(future) >= horizon:
+                    record[f"return_{horizon}d_pct"] = _pct(
+                        _number(future.iloc[horizon - 1]["Close"]), entry
+                    )
+            if available < self.settings.forward_sessions:
+                continue
+
+            window = future.head(self.settings.forward_sessions)
+            high = _number(pd.to_numeric(window["High"], errors="coerce").max())
+            low = _number(pd.to_numeric(window["Low"], errors="coerce").min())
+            record["forward_5d_mfe_pct"] = _pct(high, entry)
+            record["forward_5d_mae_pct"] = _pct(low, entry)
+            for threshold in TARGET_THRESHOLDS:
+                mfe = _number(record.get("forward_5d_mfe_pct"))
+                record[f"forward_hit_{threshold}pct"] = bool(mfe is not None and mfe >= threshold)
+
+            stop = _number(record.get("stop"))
+            false_breakout = False
+            threshold_price = entry * 1.05
+            for _, bar in window.iterrows():
+                bar_low, bar_high = _number(bar["Low"]), _number(bar["High"])
+                # Same-day stop/target ordering is unknowable in daily bars, so
+                # count it as a failure rather than manufacture a favorable path.
+                if stop is not None and bar_low is not None and bar_low <= stop:
+                    false_breakout = True
+                    break
+                if bar_high is not None and bar_high >= threshold_price:
+                    break
+            record["false_breakout"] = false_breakout
+
+            close_5d = _number(window.iloc[-1]["Close"])
+            risk = entry - stop if stop is not None and entry > stop else None
+            if close_5d is not None and risk:
+                record["r_multiple_5d"] = round((close_5d - entry) / risk, 4)
+
+        self._save(observations)
+        self._export(observations)
+        return self._frame(observations)
+
+    def _strategy_summary(self, frame: pd.DataFrame) -> pd.DataFrame:
+        rows: list[dict[str, Any]] = []
+        for strategy, selector in (("V3", "selected_v3"), ("V4_5", "selected_v45")):
+            selected = frame[frame.get(selector, False).map(_truthy)].copy() if not frame.empty else frame
+            mature = selected[
+                pd.to_numeric(selected.get("daily_bars_resolved"), errors="coerce")
+                .fillna(0).ge(self.settings.forward_sessions)
+            ].copy() if not selected.empty else selected
+            row: dict[str, Any] = {
+                "strategy": strategy,
+                "top_k": self.settings.top_k,
+                "observation_days": int(selected["as_of_session"].nunique()) if len(selected) else 0,
+                "selected_candidates": len(selected),
+                "mature_candidates": len(mature),
+            }
+            if mature.empty:
+                for threshold in TARGET_THRESHOLDS:
+                    row[f"forward_hit_{threshold}pct_rate"] = None
+                    row[f"p{threshold}_brier_score"] = None
+                row.update({
+                    "win_rate_5d_pct": None,
+                    "avg_return_5d_pct": None,
+                    "median_return_5d_pct": None,
+                    "avg_forward_5d_mfe_pct": None,
+                    "avg_forward_5d_mae_pct": None,
+                    "avg_r_multiple_5d": None,
+                    "false_breakout_rate_pct": None,
+                })
+                rows.append(row)
+                continue
+            for threshold in TARGET_THRESHOLDS:
+                values = mature.get(f"forward_hit_{threshold}pct", pd.Series(dtype=object)).map(_truthy)
+                row[f"forward_hit_{threshold}pct_rate"] = round(float(values.mean() * 100), 2) if len(values) else None
+            returns = pd.to_numeric(mature.get("return_5d_pct"), errors="coerce").dropna()
+            row["win_rate_5d_pct"] = round(float(returns.gt(0).mean() * 100), 2) if len(returns) else None
+            row["avg_return_5d_pct"] = round(float(returns.mean()), 4) if len(returns) else None
+            row["median_return_5d_pct"] = round(float(returns.median()), 4) if len(returns) else None
+            for name in ("forward_5d_mfe_pct", "forward_5d_mae_pct", "r_multiple_5d"):
+                values = pd.to_numeric(mature.get(name), errors="coerce").dropna()
+                row[f"avg_{name}"] = round(float(values.mean()), 4) if len(values) else None
+            failures = mature.get("false_breakout", pd.Series(dtype=object)).map(_truthy)
+            row["false_breakout_rate_pct"] = round(float(failures.mean() * 100), 2) if len(failures) else None
+            for target in TARGET_THRESHOLDS:
+                probability = pd.to_numeric(mature.get(f"v45_p{target}_probability"), errors="coerce") / 100.0
+                actual = mature.get(f"forward_hit_{target}pct", pd.Series(index=mature.index, dtype=object)).map(_truthy).astype(float)
+                usable = probability.notna() & actual.notna()
+                row[f"p{target}_brier_score"] = round(float(((probability[usable] - actual[usable]) ** 2).mean()), 6) if usable.any() else None
+            rows.append(row)
+        return pd.DataFrame(rows)
+
+    def _daily(self, frame: pd.DataFrame) -> pd.DataFrame:
+        rows = []
+        for session, group in frame.groupby("as_of_session") if not frame.empty else []:
+            v3 = set(group.loc[group["selected_v3"].map(_truthy), "ticker"])
+            v45 = set(group.loc[group["selected_v45"].map(_truthy), "ticker"])
+            denominator = min(self.settings.top_k, len(v3), len(v45))
+            mature = pd.to_numeric(group["daily_bars_resolved"], errors="coerce").fillna(0).ge(self.settings.forward_sessions)
+            rows.append({
+                "as_of_session": session,
+                "v3_candidates": len(v3),
+                "v45_candidates": len(v45),
+                "overlap_candidates": len(v3 & v45),
+                "top_k_agreement_pct": round(len(v3 & v45) / denominator * 100, 2) if denominator else None,
+                "mature_candidates": int(mature.sum()),
+                "model_version": str(group["v45_model_version"].iloc[0]),
+                "model_status": str(group["v45_model_status"].iloc[0]),
+            })
+        return pd.DataFrame(rows)
+
+    def _breakdowns(self, frame: pd.DataFrame) -> pd.DataFrame:
+        rows: list[dict[str, Any]] = []
+        for strategy, selector in (("V3", "selected_v3"), ("V4_5", "selected_v45")):
+            selected = frame[frame.get(selector, False).map(_truthy)].copy() if not frame.empty else frame
+            mature = selected[
+                pd.to_numeric(selected.get("daily_bars_resolved"), errors="coerce")
+                .fillna(0).ge(self.settings.forward_sessions)
+            ].copy() if not selected.empty else selected
+            for dimension in BREAKDOWN_COLUMNS:
+                if dimension not in mature:
+                    continue
+                for label, group in mature.groupby(dimension, dropna=False):
+                    returns = pd.to_numeric(group.get("return_5d_pct"), errors="coerce").dropna()
+                    rows.append({
+                        "strategy": strategy,
+                        "dimension": dimension,
+                        "segment": str(label or "UNKNOWN"),
+                        "samples": len(group),
+                        "hit_5pct_rate": round(float(group["forward_hit_5pct"].map(_truthy).mean() * 100), 2),
+                        "hit_10pct_rate": round(float(group["forward_hit_10pct"].map(_truthy).mean() * 100), 2),
+                        "hit_15pct_rate": round(float(group["forward_hit_15pct"].map(_truthy).mean() * 100), 2),
+                        "avg_return_5d_pct": round(float(returns.mean()), 4) if len(returns) else None,
+                        "avg_r_multiple_5d": round(float(pd.to_numeric(group["r_multiple_5d"], errors="coerce").mean()), 4),
+                    })
+        return pd.DataFrame(rows)
+
+    def _export(self, observations: dict[str, dict[str, Any]]) -> None:
+        frame = self._frame(observations)
+        summary = self._strategy_summary(frame)
+        daily = self._daily(frame)
+        breakdowns = self._breakdowns(frame)
+        for path, output in (
+            (self.observations_csv, frame),
+            (self.summary_csv, summary),
+            (self.daily_csv, daily),
+            (self.breakdowns_csv, breakdowns),
+        ):
+            if path is not None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                output.to_csv(path, index=False)
+        if self.health_json is not None:
+            self.health_json.parent.mkdir(parents=True, exist_ok=True)
+            mature = pd.to_numeric(frame.get("daily_bars_resolved"), errors="coerce").fillna(0).ge(
+                self.settings.forward_sessions
+            ) if not frame.empty else pd.Series(dtype=bool)
+            health = {
+                "schema_version": SHADOW_VALIDATION_SCHEMA,
+                "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+                "status": "EVIDENCE_AVAILABLE" if mature.any() else "COLLECTING",
+                "observation_days": int(frame["as_of_session"].nunique()) if len(frame) else 0,
+                "observations": len(frame),
+                "mature_observations": int(mature.sum()),
+                "top_k": self.settings.top_k,
+                "forward_sessions": self.settings.forward_sessions,
+            }
+            self.health_json.write_text(json.dumps(health, indent=2, sort_keys=True, allow_nan=False))

@@ -1,7 +1,8 @@
 # Market Hunt V3 — U.S. Opportunity Scanner
 
-Market Hunt V4.3 is now under development in isolated shadow mode. Its event
-contracts, candidate tiers, signal/outcome engine and bounded SEC/news catalyst layer are documented in
+Market Hunt V4.6 is implemented in fail-closed shadow mode, with daily V3-versus-V4.5
+forward validation now collecting point-in-time evidence. Its event contracts,
+candidate tiers, signal/outcome engine and bounded SEC/news catalyst layer are documented in
 [`docs/V4_ARCHITECTURE.md`](docs/V4_ARCHITECTURE.md). V3 remains the production
 scanner until the V4 validation and cutover gates pass.
 
