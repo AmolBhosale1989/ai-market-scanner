@@ -121,7 +121,8 @@ class CalibratedRankingModel:
                 round(self._predict_target(row, target) * 100, 1)
                 for _, row in out.iterrows()
             ]
-        legacy = pd.to_numeric(out.get("market_hunt_score", 0), errors="coerce").fillna(0)
+        legacy_source = out["market_hunt_score"] if "market_hunt_score" in out else pd.Series(0.0, index=out.index)
+        legacy = pd.to_numeric(legacy_source, errors="coerce").fillna(0)
         out["v45_calibrated_score"] = (
             out["v45_p5_probability"] * 0.20
             + out["v45_p10_probability"] * 0.55
@@ -177,11 +178,6 @@ def _fit_target(
         "global_probability": round(base, 6),
         "features": feature_maps,
     }
-    provisional = CalibratedRankingModel({
-        "targets": {"tmp": target_payload},
-        "model_version": "validation",
-        "promotion_status": "SHADOW",
-    })
     probabilities = []
     for _, row in validation.iterrows():
         model = target_payload
