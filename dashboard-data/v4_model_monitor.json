@@ -1,0 +1,18 @@
+{
+  "detail": "need >= 30 mature out-of-sample observations",
+  "failed_checks": [],
+  "generated_at_utc": "2026-09-13T21:13:53.770691+00:00",
+  "mature_samples": 0,
+  "model_version": "untrained",
+  "model_versions_seen": 0,
+  "schema_version": "4.monitor.1",
+  "settings": {
+    "max_brier_degradation": 0.02,
+    "max_false_breakout_pct": 45.0,
+    "min_average_r": 0.0,
+    "min_hit5_delta_vs_v3_pct": -5.0,
+    "min_mature_samples": 30,
+    "recent_window": 60
+  },
+  "status": "COLLECTING"
+}

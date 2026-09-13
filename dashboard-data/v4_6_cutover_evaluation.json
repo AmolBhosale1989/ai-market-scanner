@@ -1,0 +1,30 @@
+{
+  "alert_precision_pct": null,
+  "alert_samples": 0,
+  "eligible": false,
+  "event_lag_p95_ms": null,
+  "failed_gates": [
+    "V4_5_MODEL_STATUS",
+    "MODEL_MONITOR",
+    "ALERT_SAMPLE_SIZE",
+    "ALERT_PRECISION",
+    "MARKET_UPTIME",
+    "EVENT_LAG"
+  ],
+  "generated_at_utc": "2026-09-13T21:13:55.747611+00:00",
+  "market_hours_uptime_pct": null,
+  "model_monitor_status": "COLLECTING",
+  "rollback_drill_passed": true,
+  "settings": {
+    "max_event_lag_p95_ms": 120000.0,
+    "min_alert_precision_pct": 55.0,
+    "min_alert_samples": 30,
+    "min_market_uptime_pct": 95.0,
+    "min_shadow_agreement_pct": 60.0,
+    "require_v45_status": "VALIDATED_SHADOW",
+    "top_k": 20
+  },
+  "shadow_agreement_pct": 100.0,
+  "status": "HOLD_SHADOW",
+  "v45_model_status": "INSUFFICIENT_DATA"
+}

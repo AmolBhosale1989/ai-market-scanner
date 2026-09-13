@@ -1,0 +1,10 @@
+{
+  "forward_sessions": 5,
+  "generated_at_utc": "2026-09-13T21:13:53.013759+00:00",
+  "mature_observations": 0,
+  "observation_days": 1,
+  "observations": 20,
+  "schema_version": "4.shadow.1",
+  "status": "COLLECTING",
+  "top_k": 20
+}
