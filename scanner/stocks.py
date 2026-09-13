@@ -97,6 +97,10 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
     formation=detect_forming_setup(d)
     technical_stage=formation["stage"]
     rs20=_f(last["RET20"])-benchmark_return20
+    daily_returns_30 = d["Close"].pct_change().tail(30) * 100
+    max_up_day_30d_pct = _f(daily_returns_30.max(), math.nan)
+    ten_pct_up_days_30d = int((daily_returns_30 >= 10.0).sum())
+    explosive_move_30d = bool(math.isfinite(max_up_day_30d_pct) and max_up_day_30d_pct >= 10.0)
 
     market_regime=market_regime or {"regime_score":50.0,"regime_state":"NEUTRAL","regime_reason":"not provided"}
     market_regime_state=str(market_regime.get("regime_state","NEUTRAL"))
@@ -179,6 +183,9 @@ def analyze_dataframe(ticker: str, df: pd.DataFrame, benchmark_return20: float =
         "rs20_vs_spy":round(rs20,2),
         "rsi14":round(rsi,1),
         "rvol":round(_f(last["RVOL"]),2),
+        "max_up_day_30d_pct":round(max_up_day_30d_pct,2) if math.isfinite(max_up_day_30d_pct) else math.nan,
+        "ten_pct_up_days_30d":ten_pct_up_days_30d,
+        "explosive_move_30d":explosive_move_30d,
         "atr_pct":round(atr_pct,2),
         "avg_dollar_volume":round(avg_dollar_volume,0),
         "ema20":round(_f(last["EMA20"]),2),
