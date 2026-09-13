@@ -33,6 +33,7 @@ AGENTS = [
     TraderAgent("highmomentumbeta", "High Momentum / High Beta Agent", "Fast-Mover Momentum + Beta/Volatility"),
     TraderAgent("superstock", "Superstock Agent", "Explosive Leader / Early Supertrend Candidate"),
     TraderAgent("brownmoose", "Brownmoose Agent", "B1/B2 Confluence + Retest + Multi-Target Plan"),
+    TraderAgent("venu", "Venu Agent", "Position Leader + Rotation Swing"),
 ]
 
 
@@ -618,6 +619,124 @@ def _brownmoose(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
     return out
 
 
+def _venu(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
+    """Approximate a research-driven leader/rotation framework.
+
+    Two modes are surfaced:
+    - POSITION LEADER: stronger trend, RS, catalyst/theme and structure for
+      potentially longer holds.
+    - ROTATION SWING: tactical pullback/breakout setups within strong themes.
+    """
+    ema20 = _num(d, "ema20", np.nan)
+    ema50 = _num(d, "ema50", np.nan)
+    ema200 = _num(d, "ema200", np.nan)
+    price = d["_price"]
+
+    trend20 = ema20.notna() & price.ge(ema20)
+    trend50 = ema50.notna() & price.ge(ema50)
+    trend200 = ema200.notna() & price.ge(ema200)
+    stacked = ema20.notna() & ema50.notna() & ema200.notna() & ema20.ge(ema50) & ema50.ge(ema200)
+
+    strong_theme = d["_theme"].isin(["STRONG", "LEADING"])
+    leadership = d["_rs"].ge(5)
+    strong_leadership = d["_rs"].ge(10)
+    constructive_stage = d["_stage"].isin(["FORMING", "ARMED", "CONFIRMED"])
+    pullback_pattern = d["_pattern"].str.contains("pullback|retest|support|tight|base|handle|contraction")
+    breakout_pattern = d["_pattern"].str.contains("breakout|pivot|resistance|gap")
+    liquid = d["_price"].ge(5) & d["_adv"].ge(20_000_000)
+    risk_ok = d["_risk"].le(6.5)
+
+    # Catalyst score is used as the current fundamental/event-strength proxy.
+    # This avoids pretending we have exact earnings acceleration fields when
+    # they are not present in the candidate frame.
+    fundamental_proxy = d["_cat"].clip(0, 100)
+
+    position_score = (
+        8
+        + d["_tech"] * 0.24
+        + d["_form"] * 0.18
+        + d["_rs"].clip(-10, 30) * 1.00
+        + fundamental_proxy * 0.22
+        + np.where(strong_theme, 10, 0)
+        + np.where(stacked, 10, 0)
+        + np.where(trend20 & trend50 & trend200, 8, 0)
+        + np.where(strong_leadership, 8, 0)
+        + np.where(d["_rr"].ge(2.5), 8, np.where(d["_rr"].ge(1.8), 4, -4))
+        + np.where(d["_runway"].ge(8), 8, np.where(d["_runway"].ge(5), 5, -3))
+        + np.where(d["_rsi"].between(52, 72), 5, 0)
+    )
+
+    rotation_score = (
+        8
+        + d["_tech"] * 0.26
+        + d["_form"] * 0.22
+        + d["_rs"].clip(-10, 25) * 0.75
+        + fundamental_proxy * 0.14
+        + np.where(strong_theme, 8, 0)
+        + np.where(pullback_pattern, 10, 0)
+        + np.where(breakout_pattern, 7, 0)
+        + np.where(trend20 | trend50, 6, 0)
+        + np.where(d["_stage"].eq("ARMED"), 8, 0)
+        + np.where(d["_stage"].eq("CONFIRMED"), 6, 0)
+        + np.where(d["_rr"].ge(2.0), 7, np.where(d["_rr"].ge(1.5), 3, -4))
+        + np.where(d["_runway"].ge(5), 6, np.where(d["_runway"].ge(3), 3, -3))
+    )
+
+    position_match = (
+        liquid & risk_ok & constructive_stage
+        & leadership
+        & strong_theme
+        & (trend50 | trend200)
+        & d["_cat"].ge(25)
+        & d["_rr"].ge(1.8)
+    )
+    rotation_match = (
+        liquid & risk_ok & constructive_stage
+        & d["_rs"].ge(2)
+        & (strong_theme | d["_cat"].ge(20))
+        & (pullback_pattern | breakout_pattern)
+        & d["_rr"].ge(1.4)
+    )
+
+    matched = position_match | rotation_match
+    combined_score = pd.Series(
+        np.where(position_match, np.maximum(position_score, rotation_score), rotation_score),
+        index=d.index,
+    )
+
+    why = pd.Series(
+        "Research-driven leader framework: theme leadership, catalyst/fundamental proxy, relative strength, trend alignment and constructive pullback/breakout timing",
+        index=d.index,
+    )
+    out = _finalize(d, a, combined_score, matched, why)
+    if out.empty:
+        return out
+
+    idx = out.index
+    pm = position_match.loc[idx]
+    rm = rotation_match.loc[idx]
+    out["venu_mode"] = np.select(
+        [pm & rm, pm, rm],
+        ["POSITION LEADER + ROTATION", "POSITION LEADER", "ROTATION SWING"],
+        default="WATCH",
+    )
+    out["venu_trend_stack"] = np.where(stacked.loc[idx], "EMA20>EMA50>EMA200", "NOT FULLY STACKED")
+    out["venu_theme_leadership"] = np.where(strong_theme.loc[idx], "LEADING/STRONG", "MIXED")
+    out["venu_fundamental_proxy_score"] = fundamental_proxy.loc[idx].round(0)
+    out["venu_grade"] = np.select(
+        [
+            out["legendary_score"].ge(85)
+            & pd.to_numeric(out.get("rs20_vs_spy"), errors="coerce").fillna(0).ge(10)
+            & out["venu_fundamental_proxy_score"].ge(35),
+            out["legendary_score"].ge(75),
+            out["legendary_score"].ge(60),
+        ],
+        ["A+ LEADER", "A LEADER", "B WATCH"],
+        default="LOW CONVICTION",
+    )
+    return out
+
+
 _RUNNERS = {
     "minervini": _minervini,
     "oneil": _oneil,
@@ -632,6 +751,7 @@ _RUNNERS = {
     "highmomentumbeta": _highmomentumbeta,
     "superstock": _superstock,
     "brownmoose": _brownmoose,
+    "venu": _venu,
 }
 
 
