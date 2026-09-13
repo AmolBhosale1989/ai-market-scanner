@@ -6,6 +6,8 @@ import pandas as pd
 import requests
 import streamlit as st
 
+from scanner.legendary_agents import run_legendary_agents
+
 st.set_page_config(page_title="Market Hunt V3", page_icon="⚡", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""<style>
@@ -73,6 +75,25 @@ files = {
 data, sources = {}, {}
 for key, filename in files.items():
     data[key], sources[key] = load_csv(filename)
+
+# Resilience fallback: if the full-scan publisher is delayed or GitHub Actions
+# is queued, derive legendary-agent lists from the latest published deep-scan
+# candidate table directly on Render. Remote scan-data remains the preferred
+# source and automatically replaces these local fallback files when available.
+if data["legendary"].empty and not data["candidates"].empty:
+    try:
+        LOCAL_DIR.mkdir(parents=True, exist_ok=True)
+        run_legendary_agents(data["candidates"], LOCAL_DIR, top_n=25)
+        legendary_keys = [
+            "legendary", "legendary_consensus",
+            "trader_minervini", "trader_oneil", "trader_weinstein",
+            "trader_darvas", "trader_livermore", "trader_qullamaggie",
+            "trader_druckenmiller", "trader_lawwaisum", "trader_martinluk",
+        ]
+        for key in legendary_keys:
+            data[key], sources[key] = load_csv(files[key])
+    except Exception as exc:
+        st.warning(f"Legendary-agent fallback could not run: {exc}")
 
 st.markdown("""<div class="hero"><div class="eyebrow">PERSONAL RESEARCH TERMINAL · V3</div>
 <h1>Market Hunt</h1><p>Broad U.S. discovery, leading themes, multi-timeframe structure,
