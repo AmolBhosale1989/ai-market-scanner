@@ -48,8 +48,9 @@ jobs:
               _, health = adapter.poll(pd.DataFrame({"ticker": ["AXTI", "CRDO", "INTC"]}))
               assert health["resolved"] == 3, health
               assert health["errors"] == 0, health
-              assert health["submissions_errors"] == health["search_fallbacks"] + health["nasdaq_fallbacks"], health
-              assert health["search_errors"] == health["nasdaq_fallbacks"], health
+              assert health["submissions_errors"] == health["search_fallbacks"] + health["relay_fallbacks"] + health["nasdaq_fallbacks"], health
+              assert health["search_errors"] == health["relay_fallbacks"] + health["nasdaq_fallbacks"], health
+              assert health["relay_errors"] == health["nasdaq_fallbacks"], health
               print(health)
           PY
 

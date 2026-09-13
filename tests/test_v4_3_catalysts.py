@@ -159,6 +159,7 @@ def test_sec_adapter_uses_nasdaq_after_both_sec_hosts_are_blocked(tmp_path, monk
 
     adapter = SecFilingAdapter(tmp_path / "ticker-map.json", max_workers=1, max_retries=0)
     monkeypatch.setattr(adapter, "_ticker_map", lambda _now: {"CRDO": "0001759414"})
+    monkeypatch.setattr(adapter, "_get_proxied_json", lambda _url: (_ for _ in ()).throw(RuntimeError("relay denied")))
 
     def get_json(url):
         if "api.nasdaq.com" not in url:
@@ -171,7 +172,25 @@ def test_sec_adapter_uses_nasdaq_after_both_sec_hosts_are_blocked(tmp_path, monk
     assert health["errors"] == 0
     assert health["submissions_errors"] == 1
     assert health["search_errors"] == 1
+    assert health["relay_errors"] == 1
     assert health["nasdaq_fallbacks"] == 1
+
+
+def test_sec_adapter_validates_relay_cik_before_accepting_events(tmp_path, monkeypatch):
+    from scanner.v4.catalysts import SecFilingAdapter
+
+    adapter = SecFilingAdapter(tmp_path / "ticker-map.json", max_workers=1, max_retries=0)
+    monkeypatch.setattr(adapter, "_ticker_map", lambda _now: {"CRDO": "0001759414"})
+    monkeypatch.setattr(adapter, "_get_json", lambda _url: (_ for _ in ()).throw(RuntimeError("direct denied")))
+    relayed = sec_payload(["424B5"], [""])
+    relayed["cik"] = "1759414"
+    monkeypatch.setattr(adapter, "_get_proxied_json", lambda _url: relayed)
+    events, health = adapter.poll(pd.DataFrame({"ticker": ["CRDO"]}), now=NOW)
+    assert len(events) == 1
+    assert events[0].payload["negative_veto"] is True
+    assert events[0].payload["provider"] == "SEC_EDGAR_RELAY"
+    assert health["relay_fallbacks"] == 1
+    assert health["errors"] == 0
 
 
 def test_empty_catalyst_export_keeps_a_readable_schema():

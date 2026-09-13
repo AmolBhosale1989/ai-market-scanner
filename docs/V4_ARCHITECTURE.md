@@ -181,11 +181,13 @@ required. If SEC blocks the shared GitHub Actions IP from downloading the ticker
 map, the adapter uses the daily-updated `sec-cik-mapper` GitHub mirror only for
 ticker-to-CIK resolution. If the submissions host is blocked, the adapter first
 tries the SEC's official full-text search host, which preserves accession, form
-and 8-K item evidence. If both SEC hosts reject the shared runner, Nasdaq's
-public filing index is a final metadata-only fallback. That fallback never
-invents missing 8-K items: only explicit form evidence can affect a veto. Health
-records every fallback and final provider error; an empty successful query is
-distinct from a failed request.
+and 8-K item evidence. If both SEC hosts reject the shared runner, a read-through
+relay retrieves the same official submissions JSON and accepts it only after
+the returned CIK and schema match the request. Relay provenance is explicit in
+health evidence. Nasdaq's public filing index is a final metadata-only fallback;
+it never invents missing 8-K items, so only explicit form evidence can affect a
+veto. Health records every fallback and final provider error; an empty successful
+query is distinct from a failed request.
 
 Automatic negative vetoes are intentionally narrow: explicit bankruptcy,
 delisting, non-reliance/restatement, material impairment/restructuring, late

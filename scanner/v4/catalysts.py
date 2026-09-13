@@ -30,6 +30,7 @@ SEC_TICKERS_FALLBACK_URL = (
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 SEC_SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
 NASDAQ_FILINGS_URL = "https://api.nasdaq.com/api/company/{ticker}/sec-filings?limit=50"
+JINA_READER_URL = "https://r.jina.ai/{url}"
 DEFAULT_SEC_USER_AGENT = "Market Hunt AmolBhosale1989@users.noreply.github.com"
 MATERIAL_FORMS = {
     "8-K", "8-K/A", "6-K", "6-K/A", "10-K", "10-K/A", "10-Q", "10-Q/A",
@@ -418,6 +419,26 @@ class SecFilingAdapter:
                 time.sleep(min(2 ** attempt, 2))
         raise last_error or RuntimeError("SEC request failed")
 
+    def _get_proxied_json(self, url: str) -> Mapping[str, Any]:
+        response = self.session.get(
+            JINA_READER_URL.format(url=url),
+            headers={"User-Agent": self.user_agent},
+            timeout=max(self.timeout_seconds, 30.0),
+        )
+        response.raise_for_status()
+        marker = "Markdown Content:"
+        text = response.text
+        start = text.find(marker)
+        if start < 0:
+            raise ValueError("SEC relay response was missing the content marker")
+        json_start = text.find("{", start + len(marker))
+        if json_start < 0:
+            raise ValueError("SEC relay response was missing JSON")
+        payload, _ = json.JSONDecoder().raw_decode(text[json_start:])
+        if not isinstance(payload, Mapping):
+            raise ValueError("SEC relay content was not an object")
+        return payload
+
     def _ticker_map(self, now: datetime) -> dict[str, str]:
         stale: dict[str, str] = {}
         if self.cache_file.exists():
@@ -465,13 +486,34 @@ class SecFilingAdapter:
         resolved = [(ticker, ticker_map.get(ticker)) for ticker in symbols]
         unresolved = sum(1 for _, cik in resolved if not cik)
 
+        def validated_submissions(
+            ticker: str,
+            cik: str,
+            payload: Mapping[str, Any],
+            provider: str = "SEC_EDGAR",
+        ) -> list[MarketEvent]:
+            if str(payload.get("cik") or "").zfill(10) != cik:
+                raise ValueError("SEC submissions CIK did not match the requested company")
+            if not isinstance(payload.get("filings", {}).get("recent"), Mapping):
+                raise ValueError("SEC submissions response was missing filings.recent")
+            parsed = parse_sec_submissions(ticker, cik, payload, now, self.lookback_hours)
+            if provider == "SEC_EDGAR":
+                return parsed
+            return [MarketEvent(
+                event_type=event.event_type,
+                ticker=event.ticker,
+                signal_id=event.signal_id,
+                observed_at_utc=event.observed_at_utc,
+                event_id=event.event_id,
+                source="sec-edgar-submissions-relay",
+                payload={**event.payload, "provider": provider},
+            ) for event in parsed]
+
         def fetch(item: tuple[str, str]) -> tuple[list[MarketEvent], str]:
             ticker, cik = item
             try:
                 payload = self._get_json(SEC_SUBMISSIONS_URL.format(cik=cik))
-                if not isinstance(payload.get("filings", {}).get("recent"), Mapping):
-                    raise ValueError("SEC submissions response was missing filings.recent")
-                return parse_sec_submissions(ticker, cik, payload, now, self.lookback_hours), "SUBMISSIONS"
+                return validated_submissions(ticker, cik, payload), "SUBMISSIONS"
             except Exception:
                 try:
                     start = (now - timedelta(hours=self.lookback_hours)).date().isoformat()
@@ -489,14 +531,19 @@ class SecFilingAdapter:
                         raise ValueError("SEC search response was missing hits.hits")
                     return parse_sec_search(ticker, cik, payload, now, self.lookback_hours), "SEC_SEARCH"
                 except Exception:
-                    payload = self._get_json(NASDAQ_FILINGS_URL.format(ticker=ticker))
-                    data = payload.get("data")
-                    if not isinstance(data, Mapping) or not isinstance(data.get("rows"), list):
-                        raise ValueError("Nasdaq filing response was missing data.rows")
-                    return parse_nasdaq_filings(ticker, payload, now, self.lookback_hours), "NASDAQ_INDEX"
+                    try:
+                        payload = self._get_proxied_json(SEC_SUBMISSIONS_URL.format(cik=cik))
+                        return validated_submissions(ticker, cik, payload, "SEC_EDGAR_RELAY"), "SEC_RELAY"
+                    except Exception:
+                        payload = self._get_json(NASDAQ_FILINGS_URL.format(ticker=ticker))
+                        data = payload.get("data")
+                        if not isinstance(data, Mapping) or not isinstance(data.get("rows"), list):
+                            raise ValueError("Nasdaq filing response was missing data.rows")
+                        return parse_nasdaq_filings(ticker, payload, now, self.lookback_hours), "NASDAQ_INDEX"
 
         valid = [(ticker, cik) for ticker, cik in resolved if cik]
         search_fallbacks = 0
+        relay_fallbacks = 0
         nasdaq_fallbacks = 0
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(valid)) or 1) as pool:
             futures = {pool.submit(fetch, item): item[0] for item in valid}
@@ -505,6 +552,7 @@ class SecFilingAdapter:
                     fetched, provider_path = future.result()
                     events.extend(fetched)
                     search_fallbacks += int(provider_path == "SEC_SEARCH")
+                    relay_fallbacks += int(provider_path == "SEC_RELAY")
                     nasdaq_fallbacks += int(provider_path == "NASDAQ_INDEX")
                 except Exception:
                     errors += 1
@@ -514,9 +562,11 @@ class SecFilingAdapter:
             "requested": len(symbols),
             "resolved": len(valid),
             "unresolved": unresolved,
-            "submissions_errors": search_fallbacks + nasdaq_fallbacks + errors,
+            "submissions_errors": search_fallbacks + relay_fallbacks + nasdaq_fallbacks + errors,
             "search_fallbacks": search_fallbacks,
-            "search_errors": nasdaq_fallbacks + errors,
+            "search_errors": relay_fallbacks + nasdaq_fallbacks + errors,
+            "relay_fallbacks": relay_fallbacks,
+            "relay_errors": nasdaq_fallbacks + errors,
             "nasdaq_fallbacks": nasdaq_fallbacks,
             "errors": errors,
             "events": len(events),
