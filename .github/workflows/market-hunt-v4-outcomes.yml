@@ -36,6 +36,8 @@ jobs:
         run: python -m scanner.v4_outcomes --resolve-daily
       - name: Fit V4.5 calibrated ranking model
         run: python -m scanner.v4_outcomes --fit-calibration
+      - name: Evaluate V4.6 cutover gates
+        run: python -m scanner.v4_cutover --evaluate
       - name: Save enriched V4 signal history
         if: always()
         uses: actions/cache/save@v4
@@ -53,7 +55,7 @@ jobs:
           rm -rf /tmp/market-hunt-scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
           mkdir -p /tmp/market-hunt-scan-data/dashboard-data
-          for f in v4_outcomes.csv v4_outcome_summary.csv v4_5_model.json v4_5_validation.csv v4_5_ranked_candidates.csv; do
+          for f in v4_outcomes.csv v4_outcome_summary.csv v4_5_model.json v4_5_validation.csv v4_5_ranked_candidates.csv v4_6_cutover_evaluation.json; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
@@ -76,4 +78,5 @@ jobs:
             outputs/v4_5_model.json
             outputs/v4_5_validation.csv
             outputs/v4_5_ranked_candidates.csv
+            outputs/v4_6_cutover_evaluation.json
           if-no-files-found: warn
