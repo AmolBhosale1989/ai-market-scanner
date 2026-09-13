@@ -125,6 +125,7 @@ def test_health_recorder_calculates_market_hours_uptime(tmp_path):
         candidates=10,
         polled=5,
         received=5,
+        provider_coverage_pct=100.0,
         provider_errors=0,
         provider_duration_ms=100,
         event_lag_p95_ms=1000.0,
@@ -173,3 +174,44 @@ def test_stop_request_prevents_new_worker_cycle(tmp_path):
     )
     worker.request_stop()
     assert worker.run_forever(max_cycles=1) == 0
+
+
+def test_worker_uses_bounded_exponential_backoff_after_failures(tmp_path):
+    sink = RecordingSink()
+    worker = ContinuousMomentumWorker(
+        source=StaticSource(),
+        adapter=StaticAdapter(),
+        engine=MomentumEngine(FileEventStore(tmp_path / "state")),
+        alerts=AlertRouter(tmp_path / "dispatch.json", [sink]),
+        health=HealthRecorder(tmp_path / "cycles.csv", tmp_path / "health.json"),
+        settings=WorkerSettings(
+            market_interval_seconds=60,
+            failure_backoff_initial_seconds=300,
+            failure_backoff_max_seconds=600,
+        ),
+        output_dir=tmp_path / "output",
+    )
+    base = dict(
+        cycle_started_at_utc="2026-09-13T14:00:00+00:00",
+        cycle_completed_at_utc="2026-09-13T14:00:01+00:00",
+        market_open=True,
+        source_name="test",
+        source_degraded=False,
+        source_age_seconds=1.0,
+        candidates=2,
+        polled=2,
+        received=0,
+        provider_coverage_pct=0.0,
+        provider_errors=2,
+        provider_duration_ms=10,
+        event_lag_p95_ms=None,
+        transitions=0,
+        alert_deliveries=0,
+        alert_failures=0,
+    )
+    failed = CycleMetric(success=False, **base)
+    healthy = CycleMetric(success=True, **base)
+    assert worker.next_interval(failed) == 300
+    assert worker.next_interval(failed) == 600
+    assert worker.next_interval(failed) == 600
+    assert worker.next_interval(healthy) == 60

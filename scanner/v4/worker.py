@@ -30,6 +30,9 @@ class WorkerSettings:
     market_interval_seconds: int = 60
     off_hours_interval_seconds: int = 900
     max_source_age_seconds: int = 43_200
+    min_provider_coverage: float = 0.80
+    failure_backoff_initial_seconds: int = 300
+    failure_backoff_max_seconds: int = 1800
 
 
 def select_poll_batch(shortlist: pd.DataFrame, cycle_index: int, settings: WorkerSettings) -> pd.DataFrame:
@@ -68,6 +71,7 @@ class ContinuousMomentumWorker:
         self.output_dir = Path(output_dir)
         self.stop_requested = threading.Event()
         self.cycle_index = 0
+        self.consecutive_failures = 0
 
     def request_stop(self, *_args) -> None:
         self.stop_requested.set()
@@ -134,7 +138,8 @@ class ContinuousMomentumWorker:
             pd.DataFrame([item.to_dict() for item in transitions]).to_csv(
                 self.output_dir / "v4_transitions.csv", index=False
             )
-            success = provider_errors < max(1, polled)
+            coverage = (received / polled) if polled else 1.0
+            success = coverage >= self.settings.min_provider_coverage
         except Exception as exc:
             detail = f"{detail}; cycle failed: {type(exc).__name__}".strip("; ")
 
@@ -151,6 +156,7 @@ class ContinuousMomentumWorker:
             candidates=candidates,
             polled=polled,
             received=received,
+            provider_coverage_pct=round(received / polled * 100, 1) if polled else None,
             provider_errors=provider_errors,
             provider_duration_ms=provider_duration,
             event_lag_p95_ms=round(lag_p95, 1) if lag_p95 is not None else None,
@@ -162,6 +168,18 @@ class ContinuousMomentumWorker:
         self.health.record(metric)
         self.cycle_index += 1
         return metric
+
+    def next_interval(self, metric: CycleMetric) -> int:
+        if metric.success:
+            self.consecutive_failures = 0
+            return (
+                self.settings.market_interval_seconds
+                if metric.market_open
+                else self.settings.off_hours_interval_seconds
+            )
+        self.consecutive_failures += 1
+        backoff = self.settings.failure_backoff_initial_seconds * (2 ** (self.consecutive_failures - 1))
+        return min(backoff, self.settings.failure_backoff_max_seconds)
 
     def run_forever(self, max_cycles: int | None = None) -> int:
         self.install_signal_handlers()
@@ -176,10 +194,6 @@ class ContinuousMomentumWorker:
             )
             if max_cycles is not None and completed >= max_cycles:
                 break
-            interval = (
-                self.settings.market_interval_seconds
-                if metric.market_open
-                else self.settings.off_hours_interval_seconds
-            )
+            interval = self.next_interval(metric)
             self.stop_requested.wait(max(1, interval))
         return completed

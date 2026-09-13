@@ -22,6 +22,7 @@ class CycleMetric:
     candidates: int
     polled: int
     received: int
+    provider_coverage_pct: float | None
     provider_errors: int
     provider_duration_ms: int
     event_lag_p95_ms: float | None

@@ -94,6 +94,8 @@ options flow, microstructure, state transitions and outcomes.
 - Polls independent symbols concurrently through a provider-neutral adapter.
 - Measures source age, provider duration, provider errors, event-lag p95 and
   market-hours uptime.
+- Requires at least 80% provider coverage for a successful cycle and applies
+  bounded exponential backoff after failures or rate limits.
 - Routes actionable transitions once per channel. Failed channels remain
   retryable without duplicating successful deliveries.
 - Handles `SIGTERM`/`SIGINT` by refusing a new cycle, finishing the active one,

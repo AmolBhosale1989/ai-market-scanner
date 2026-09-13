@@ -42,6 +42,9 @@ def build_worker(args) -> ContinuousMomentumWorker:
             market_interval_seconds=args.market_interval,
             off_hours_interval_seconds=args.off_hours_interval,
             max_source_age_seconds=args.max_source_age,
+            min_provider_coverage=args.min_provider_coverage,
+            failure_backoff_initial_seconds=args.failure_backoff_initial,
+            failure_backoff_max_seconds=args.failure_backoff_max,
         ),
     )
 
@@ -65,6 +68,9 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--off-hours-interval", type=int, default=900)
     value.add_argument("--max-workers", type=int, default=8)
     value.add_argument("--max-source-age", type=int, default=43_200)
+    value.add_argument("--min-provider-coverage", type=float, default=0.80)
+    value.add_argument("--failure-backoff-initial", type=int, default=300)
+    value.add_argument("--failure-backoff-max", type=int, default=1800)
     return value
 
 
