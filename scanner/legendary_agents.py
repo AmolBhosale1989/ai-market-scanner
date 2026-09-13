@@ -29,6 +29,8 @@ AGENTS = [
     TraderAgent("druckenmiller", "Stanley Druckenmiller", "Liquidity + Catalyst + Technical Confirmation"),
     TraderAgent("lawwaisum", "Law Wai-Sum", "Growth Momentum + Position/Swing Hybrid"),
     TraderAgent("martinluk", "Martin Luk", "Asymmetric 5:1 Momentum Swing"),
+    TraderAgent("top500swing", "Top-500 Swing Agent", "2–7 Day Liquid Swing Ideas"),
+    TraderAgent("highmomentumbeta", "High Momentum / High Beta Agent", "Fast-Mover Momentum + Beta/Volatility"),
 ]
 
 
@@ -72,6 +74,9 @@ def _base(df: pd.DataFrame) -> pd.DataFrame:
     out["_entry"] = _text(out, "entry_model")
     out["_theme"] = _text(out, "theme_state")
     out["_regime"] = _text(out, "market_regime_state")
+    out["_adv"] = _num(out, "avg_dollar_volume")
+    out["_beta"] = _num(out, "beta", np.nan)
+    out["_top500_liquid"] = out["_adv"].rank(method="first", ascending=False).le(500)
     return out
 
 
@@ -250,6 +255,64 @@ def _martinluk(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
     return _finalize(d, a, score, matched, why)
 
 
+def _top500swing(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
+    score = (
+        18 + d["_tech"] * 0.30 + d["_form"] * 0.24
+        + d["_rs"].clip(-10, 20) * 0.65
+        + d["_cat"].clip(0, 100) * 0.10
+        + np.where(d["_stage"].isin(["FORMING", "ARMED", "CONFIRMED"]), 8, 0)
+        + np.where(d["_rr"].ge(2.5), 8, 0)
+        + np.where(d["_runway"].ge(6), 6, 0)
+    )
+    matched = (
+        _quality_gate(d)
+        & d["_top500_liquid"]
+        & d["_tech"].ge(60)
+        & d["_form"].ge(45)
+        & d["_rs"].ge(-2)
+        & d["_rr"].ge(2.0)
+        & d["_runway"].ge(4)
+        & d["_risk"].le(5.5)
+        & d["_stage"].isin(["FORMING", "ARMED", "CONFIRMED"])
+    )
+    why = pd.Series(
+        "Top-500-by-dollar-liquidity stock with constructive 2–7 day swing structure, defined risk and resistance runway",
+        index=d.index,
+    )
+    return _finalize(d, a, score, matched, why)
+
+
+def _highmomentumbeta(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
+    beta_available = d["_beta"].notna()
+    beta_ok = d["_beta"].ge(1.3)
+    volatility_proxy_ok = d["_atr"].ge(4.0) & d["_adr"].ge(4.0)
+    score = (
+        12 + d["_tech"] * 0.26 + d["_form"] * 0.16
+        + d["_rs"].clip(-10, 25) * 0.95
+        + d["_cat"].clip(0, 100) * 0.14
+        + d["_rvol"].clip(0, 5) * 4.0
+        + np.where(d["_atr"].ge(4), 8, 0)
+        + np.where(d["_adr"].ge(4), 8, 0)
+        + np.where(beta_available & d["_beta"].ge(1.5), 10, 0)
+        + np.where(d["_stage"].isin(["ARMED", "CONFIRMED"]), 8, 0)
+    )
+    matched = (
+        _quality_gate(d)
+        & d["_rs"].ge(5)
+        & d["_atr"].ge(3.5)
+        & d["_adr"].ge(3.5)
+        & (beta_ok | volatility_proxy_ok)
+        & d["_rr"].ge(2.0)
+        & d["_runway"].ge(5)
+        & d["_stage"].isin(["FORMING", "ARMED", "CONFIRMED"])
+    )
+    why = pd.Series(
+        "High relative strength + fast ATR/ADR profile + momentum confirmation; uses reported beta when available and volatility as fallback proxy",
+        index=d.index,
+    )
+    return _finalize(d, a, score, matched, why)
+
+
 _RUNNERS = {
     "minervini": _minervini,
     "oneil": _oneil,
@@ -260,6 +323,8 @@ _RUNNERS = {
     "druckenmiller": _druckenmiller,
     "lawwaisum": _lawwaisum,
     "martinluk": _martinluk,
+    "top500swing": _top500swing,
+    "highmomentumbeta": _highmomentumbeta,
 }
 
 
