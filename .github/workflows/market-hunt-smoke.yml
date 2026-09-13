@@ -24,6 +24,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -31,7 +33,7 @@ jobs:
       - name: Run 300-stock representative smoke test with health gate
         env:
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
-        run: python -m scanner.main --refresh-universe --limit 300 --top 20
+        run: python -m scanner.main --refresh-universe --limit 300 --top 20 --deep-limit 150
 
       - name: Run focused backtest smoke
         run: python -m scanner.backtest --tickers AAPL,MSFT,NVDA,AMD,META --period 2y --horizon 7 --stride 10
