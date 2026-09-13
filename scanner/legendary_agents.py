@@ -99,6 +99,11 @@ def _quality_gate(d: pd.DataFrame) -> pd.Series:
 
 
 def _finalize(d: pd.DataFrame, agent: TraderAgent, score: pd.Series, matched: pd.Series, why: pd.Series) -> pd.DataFrame:
+    # Universal Market Hunt eligibility rule: every strategy agent must prove
+    # recent explosive capability with at least one +10% close-to-close day
+    # in the last 30 trading sessions.
+    explosive_gate = d["_explosive30"] | d["_max_up30"].ge(10.0)
+    matched = matched & explosive_gate
     cols = [
         "ticker", "company_name", "price", "stage", "theme", "market_hunt_score",
         "technical_score", "formation_score", "rs20_vs_spy", "rsi14", "atr_pct", "adr20_pct",
