@@ -14,6 +14,7 @@ from .v4.catalysts import (
 )
 from .v4.engine import MomentumEngine
 from .v4.health import HealthRecorder
+from .v4.options_microstructure import YahooOptionsMicrostructureAdapter
 from .v4.outcomes import SignalOutcomeLedger
 from .v4.source import FallbackCandidateSource, HttpCandidateSource, LocalCandidateSource
 from .v4.store import FileEventStore
@@ -47,6 +48,12 @@ def build_worker(args) -> ContinuousMomentumWorker:
             ),
             LocalEventCalendarAdapter(output_dir / "upcoming_events.csv"),
         ])
+    options_microstructure_adapter = None
+    if args.options_microstructure:
+        options_microstructure_adapter = YahooOptionsMicrostructureAdapter(
+            max_workers=args.options_workers,
+            max_tickers=args.options_limit,
+        )
     return ContinuousMomentumWorker(
         source=source,
         adapter=YahooPollingAdapter(max_workers=args.max_workers),
@@ -66,6 +73,7 @@ def build_worker(args) -> ContinuousMomentumWorker:
             summary_csv=output_dir / "v4_outcome_summary.csv",
         ),
         catalyst_adapter=catalyst_adapter,
+        options_microstructure_adapter=options_microstructure_adapter,
         settings=WorkerSettings(
             hot_limit=args.hot_limit,
             warm_limit=args.warm_limit,
@@ -106,6 +114,13 @@ def parser() -> argparse.ArgumentParser:
     )
     value.add_argument("--catalyst-workers", type=int, default=4)
     value.add_argument("--news-limit", type=int, default=20)
+    value.add_argument(
+        "--options-microstructure",
+        action="store_true",
+        help="Enable V4.4 shadow-only options and bar-derived microstructure evidence.",
+    )
+    value.add_argument("--options-workers", type=int, default=4)
+    value.add_argument("--options-limit", type=int, default=8)
     value.add_argument(
         "--telegram-alerts",
         action="store_true",
