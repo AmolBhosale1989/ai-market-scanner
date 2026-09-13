@@ -256,27 +256,37 @@ def _martinluk(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
 
 
 def _top500swing(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
+    """Rank swing ideas from the 500 most liquid stocks.
+
+    This is intentionally broader than the final Market Hunt BUY gate.  Its job
+    is idea discovery: surface the best 2–7 day structures first, then let the
+    main live/catalyst/RR gates decide whether any becomes actionable.
+    """
+    liquidity_ok = d["_top500_liquid"] & d["_price"].ge(5)
+    tradability_ok = d["_atr"].between(1.5, 10) & d["_adr"].ge(1.5)
+    structure_ok = d["_tech"].ge(45) & d["_form"].ge(25)
+    risk_ok = d["_risk"].le(7)
+    stage_ok = ~d["_stage"].isin(["EXTENDED"])
+
     score = (
-        18 + d["_tech"] * 0.30 + d["_form"] * 0.24
-        + d["_rs"].clip(-10, 20) * 0.65
-        + d["_cat"].clip(0, 100) * 0.10
-        + np.where(d["_stage"].isin(["FORMING", "ARMED", "CONFIRMED"]), 8, 0)
-        + np.where(d["_rr"].ge(2.5), 8, 0)
-        + np.where(d["_runway"].ge(6), 6, 0)
+        10
+        + d["_tech"] * 0.34
+        + d["_form"] * 0.22
+        + d["_rs"].clip(-15, 30) * 0.55
+        + d["_cat"].clip(0, 100) * 0.08
+        + d["_adr"].clip(0, 8) * 1.8
+        + np.where(d["_rr"].ge(2.5), 10, np.where(d["_rr"].ge(1.5), 6, np.where(d["_rr"].ge(1.0), 2, -4)))
+        + np.where(d["_runway"].ge(8), 8, np.where(d["_runway"].ge(4), 5, np.where(d["_runway"].ge(2), 2, -4)))
+        + np.where(d["_stage"].eq("CONFIRMED"), 10, 0)
+        + np.where(d["_stage"].eq("ARMED"), 8, 0)
+        + np.where(d["_stage"].eq("FORMING"), 6, 0)
+        + np.where(d["_pattern"].str.contains("tight|pullback|flag|base|breakout|support|contraction"), 6, 0)
+        - np.where(d["_risk"].gt(6), 5, 0)
     )
-    matched = (
-        _quality_gate(d)
-        & d["_top500_liquid"]
-        & d["_tech"].ge(60)
-        & d["_form"].ge(45)
-        & d["_rs"].ge(-2)
-        & d["_rr"].ge(2.0)
-        & d["_runway"].ge(4)
-        & d["_risk"].le(5.5)
-        & d["_stage"].isin(["FORMING", "ARMED", "CONFIRMED"])
-    )
+
+    matched = liquidity_ok & tradability_ok & structure_ok & risk_ok & stage_ok
     why = pd.Series(
-        "Top-500-by-dollar-liquidity stock with constructive 2–7 day swing structure, defined risk and resistance runway",
+        "Top-500 liquid swing candidate ranked on trend/structure, relative strength, volatility, R/R, resistance runway, catalyst and risk",
         index=d.index,
     )
     return _finalize(d, a, score, matched, why)
