@@ -4,7 +4,9 @@ on:
   push:
     paths:
       - 'scanner/**'
+      - 'tests/**'
       - 'requirements.txt'
+      - 'requirements-dev.txt'
       - '.github/workflows/market-hunt-smoke.yml'
   workflow_dispatch:
 
@@ -28,7 +30,10 @@ jobs:
           cache-dependency-path: requirements.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
+
+      - name: Run deterministic unit tests
+        run: python -m pytest -q
 
       - name: Run 300-stock representative smoke test with health gate
         env:

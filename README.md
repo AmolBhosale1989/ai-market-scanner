@@ -1,5 +1,10 @@
 # Market Hunt V3 — U.S. Opportunity Scanner
 
+Market Hunt V4 is now under development in isolated shadow mode. Its event
+contracts, candidate tiers and signal-level state engine are documented in
+[`docs/V4_ARCHITECTURE.md`](docs/V4_ARCHITECTURE.md). V3 remains the production
+scanner until the V4 validation and cutover gates pass.
+
 Market Hunt V3 uses a broad exchange-listed master universe as the discovery perimeter, filters to a liquid tradable universe, ranks themes, finds early technical structures and monitors actionable names intraday.
 
 ## Hard trade-quality gates

@@ -1,0 +1,55 @@
+name: Market Hunt V4 Shadow
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  v4-shadow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Validate V3 gates and V4 foundation
+        run: python -m pytest -q
+      - name: Restore latest broad-scan outputs
+        uses: actions/cache/restore@v4
+        with:
+          path: outputs
+          key: market-hunt-base-missing-${{ github.run_id }}
+          restore-keys: |
+            market-hunt-base-
+      - name: Restore V4 shadow state
+        uses: actions/cache/restore@v4
+        with:
+          path: .state/v4
+          key: market-hunt-v4-state-missing-${{ github.run_id }}
+          restore-keys: |
+            market-hunt-v4-state-
+      - name: Run V4 shadow engine
+        run: python -m scanner.v4_live --hot-limit 20 --warm-limit 80 --fetch-limit 20
+      - name: Save V4 shadow state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .state/v4
+          key: market-hunt-v4-state-${{ github.run_id }}
+      - name: Upload V4 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-hunt-v4-shadow-${{ github.run_id }}
+          path: |
+            outputs/v4_monitor_shortlist.csv
+            outputs/v4_live_snapshot.csv
+            outputs/v4_transitions.csv
+            .state/v4/v4_events.ndjson
+            .state/v4/v4_signal_state.json
+          if-no-files-found: warn
