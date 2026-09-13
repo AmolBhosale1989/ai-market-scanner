@@ -358,3 +358,27 @@ resolved outcomes and 25 final holdout samples; every +5%, +10% and +15%
 probability must remain within the configured Brier tolerance versus V4.5.
 Until then, its status is `INSUFFICIENT_DATA` or `SHADOW_ONLY`. V5 has no
 production cutover path and cannot change signal state, alerts or orders.
+
+## V6 uncertainty-aware ensemble
+
+V6 adds an explicit uncertainty layer above V4.5 and V5. It uses three strictly
+ordered windows: older observations train V5, a later calibration window sets
+empirical probability margins, and the newest holdout validates Brier score and
+interval coverage. It requires at least 220 resolved outcomes by default.
+
+Each candidate receives ensemble probabilities, lower/upper probability bounds,
+model-disagreement measurements and a `RANK` or `ABSTAIN` decision. High model
+disagreement forces abstention and a zero robust score. V6 can become
+`VALIDATED_SHADOW`, but it has no production routing or broker authority.
+
+## V7 portfolio-aware paper allocation
+
+V7 converts only `VALIDATED_SHADOW` V6 `RANK` candidates into a paper plan. It
+sizes positions from the planned entry/stop distance and enforces per-position
+risk, total portfolio risk, maximum notional, position-count, sector and theme
+caps. Invalid stops, weak conservative probability, low R/R and V6 abstentions
+are rejected with auditable reason counts.
+
+The V7 artifact is explicitly marked `paper_only`; its health payload always
+reports `broker_execution_enabled: false`. If V6 is not validated, V7 emits
+`HOLD_SHADOW` and no positions.
