@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from .config import OUTPUT_DIR
+from .v4.source import HttpCandidateSource
 from .v4.cutover import (
     CutoverController,
     CutoverSettings,
@@ -26,13 +27,23 @@ def _json(path: Path) -> dict:
         return {}
 
 
+def _v3_candidates(output_dir: Path) -> pd.DataFrame:
+    local = _csv(output_dir / "all_candidates.csv")
+    if not local.empty:
+        return local
+    try:
+        return HttpCandidateSource().load().frame
+    except Exception:
+        return pd.DataFrame()
+
+
 def evaluate(state_dir: Path, output_dir: Path):
     decision = evaluate_cutover(
-        _csv(output_dir / "all_candidates.csv"),
+        _v3_candidates(output_dir),
         _csv(output_dir / "v4_5_ranked_candidates.csv"),
         _csv(output_dir / "v4_outcomes.csv"),
         _json(state_dir / "v4_5_model.json") or _json(output_dir / "v4_5_model.json"),
-        _json(output_dir / "v4_worker_health.json"),
+        _json(output_dir / "v4_worker_health.json") or _json(state_dir / "v4_worker_health.json"),
         CutoverSettings(),
     )
     output_dir.mkdir(parents=True, exist_ok=True)
