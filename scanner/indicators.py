@@ -36,8 +36,11 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     d["SMA200"] = d["Close"].rolling(200).mean()
     d["RSI14"] = rsi(d["Close"], 14)
     d["ATR14"] = atr(d, 14)
+    d["VOL_MA9"] = d["Volume"].rolling(9).mean()
     d["AVG_VOL20"] = d["Volume"].rolling(20).mean()
-    d["RVOL"] = d["Volume"] / d["AVG_VOL20"]
+    d["VOL_VS_MA9"] = d["Volume"] / d["VOL_MA9"]
+    d["VOL_VS_MA20"] = d["Volume"] / d["AVG_VOL20"]
+    d["RVOL"] = d["VOL_VS_MA20"]
     d["MACD"], d["MACD_SIGNAL"] = macd(d["Close"])
     d["RET5"] = d["Close"].pct_change(5) * 100
     d["RET20"] = d["Close"].pct_change(20) * 100
