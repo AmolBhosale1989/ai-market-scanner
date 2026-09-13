@@ -37,6 +37,9 @@ def _empty_live(status="NOT CHECKED"):
         "opening_range_low": math.nan,
         "live_above_or_high": False,
         "intraday_rvol": math.nan,
+        "volume_vs_9ma": math.nan,
+        "opening_30m_rvol": math.nan,
+        "opening_volume_spike_2x": False,
         "quote_bid": math.nan,
         "quote_ask": math.nan,
         "bid_ask_spread_pct": math.nan,
@@ -152,6 +155,47 @@ def _intraday_rvol(d: pd.DataFrame, session_date, current_session: pd.DataFrame)
     baseline=float(np.mean(comps))
     return current_volume/baseline if baseline>0 else math.nan
 
+
+def _volume_confirmation(d: pd.DataFrame, session_date, current_session: pd.DataFrame):
+    """Return fast 9-bar volume ratio and first-30m relative volume.
+
+    The 9-bar ratio uses completed 5-minute regular-session bars.  The opening
+    30-minute ratio compares today's first six 5-minute bars with the same
+    window from the prior three regular sessions, avoiding overnight volume
+    distortion.
+    """
+    if current_session.empty:
+        return math.nan, math.nan, False
+
+    vols=pd.to_numeric(current_session["Volume"],errors="coerce").fillna(0)
+    volume_vs_9ma=math.nan
+    if len(vols)>=10:
+        baseline=float(vols.iloc[-10:-1].mean())
+        latest=float(vols.iloc[-1])
+        if baseline>0:
+            volume_vs_9ma=latest/baseline
+
+    opening=current_session.between_time("09:30","09:59")
+    opening_volume=float(pd.to_numeric(opening["Volume"],errors="coerce").fillna(0).sum()) if not opening.empty else 0.0
+    prior_dates=sorted({x for x in d.index.date if x < session_date}, reverse=True)[:3]
+    comps=[]
+    for dt in prior_dates:
+        prior=_session_frame(d,dt).between_time("09:30","09:59")
+        if prior.empty:
+            continue
+        vol=float(pd.to_numeric(prior["Volume"],errors="coerce").fillna(0).sum())
+        if vol>0:
+            comps.append(vol)
+
+    opening_rvol=math.nan
+    if comps and opening_volume>0:
+        baseline=float(np.mean(comps))
+        if baseline>0:
+            opening_rvol=opening_volume/baseline
+
+    opening_spike=math.isfinite(opening_rvol) and opening_rvol>=2.0
+    return volume_vs_9ma, opening_rvol, opening_spike
+
 def _quote_spread(ticker: str):
     try:
         info=yf.Ticker(ticker).get_info()
@@ -253,6 +297,7 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
     vwap=_session_vwap(latest_session)
     or_high,or_low,or_complete=_opening_range(latest_session)
     rvol=_intraday_rvol(d,latest_date,latest_session)
+    volume_vs_9ma,opening_30m_rvol,opening_volume_spike_2x=_volume_confirmation(d,latest_date,latest_session)
     bid,ask,spread_pct=_quote_spread(ticker) if state=="LIVE" else (math.nan,math.nan,math.nan)
     spread_ok=math.isfinite(spread_pct) and spread_pct<=MAX_BID_ASK_SPREAD_PCT
 
@@ -279,7 +324,11 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
     if trigger_reached:
         score+=25
     if math.isfinite(rvol) and rvol>=LIVE_MIN_INTRADAY_RVOL:
-        score+=25
+        score+=20
+    if math.isfinite(volume_vs_9ma) and volume_vs_9ma>=2.0:
+        score+=5
+    if opening_volume_spike_2x:
+        score+=5
 
     live_action="NO LIVE SIGNAL"
     technical_ok=stage in {"ARMED","CONFIRMED"}
@@ -322,6 +371,9 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
         "opening_range_low":round(or_low,2) if math.isfinite(or_low) else math.nan,
         "live_above_or_high":bool(above_or),
         "intraday_rvol":round(rvol,2) if math.isfinite(rvol) else math.nan,
+        "volume_vs_9ma":round(volume_vs_9ma,2) if math.isfinite(volume_vs_9ma) else math.nan,
+        "opening_30m_rvol":round(opening_30m_rvol,2) if math.isfinite(opening_30m_rvol) else math.nan,
+        "opening_volume_spike_2x":bool(opening_volume_spike_2x),
         "quote_bid":round(bid,4) if math.isfinite(bid) else math.nan,
         "quote_ask":round(ask,4) if math.isfinite(ask) else math.nan,
         "bid_ask_spread_pct":round(spread_pct,3) if math.isfinite(spread_pct) else math.nan,
