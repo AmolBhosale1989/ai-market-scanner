@@ -26,6 +26,7 @@ from .catalysts import (
 )
 from .engine import MomentumEngine
 from .health import CycleMetric, HealthRecorder, age_seconds, parse_utc
+from .options_microstructure import OptionsMicrostructureAdapter
 from .outcomes import SignalOutcomeLedger
 from .shortlist import build_monitor_shortlist
 from .source import CandidateSource
@@ -74,6 +75,7 @@ class ContinuousMomentumWorker:
         runtime_state_file: Path | None = None,
         outcome_ledger: SignalOutcomeLedger | None = None,
         catalyst_adapter: CatalystAdapter | None = None,
+        options_microstructure_adapter: OptionsMicrostructureAdapter | None = None,
     ):
         self.source = source
         self.adapter = adapter
@@ -85,6 +87,7 @@ class ContinuousMomentumWorker:
         self.runtime_state_file = Path(runtime_state_file) if runtime_state_file else None
         self.outcome_ledger = outcome_ledger
         self.catalyst_adapter = catalyst_adapter
+        self.options_microstructure_adapter = options_microstructure_adapter
         self.stop_requested = threading.Event()
         runtime_state = self._load_runtime_state()
         self.cycle_index = int(runtime_state.get("cycle_index", 0))
@@ -187,6 +190,38 @@ class ContinuousMomentumWorker:
                     f"{detail}; catalysts={len(catalyst_result.events)} "
                     f"new={new_catalysts} status={catalyst_status}"
                 ).strip("; ")
+            if self.options_microstructure_adapter is not None:
+                try:
+                    evidence = self.options_microstructure_adapter.poll(batch)
+                    new_evidence = self.engine.store.append_events(evidence.events)
+                    self.output_dir.mkdir(parents=True, exist_ok=True)
+                    evidence.frame.to_csv(
+                        self.output_dir / "v4_options_microstructure.csv", index=False
+                    )
+                    (self.output_dir / "v4_options_microstructure_health.json").write_text(
+                        json.dumps(evidence.health, indent=2, sort_keys=True, allow_nan=False)
+                    )
+                    detail = (
+                        f"{detail}; v4.4_events={len(evidence.events)} "
+                        f"new={new_evidence} status={evidence.health.get('status', 'UNKNOWN')}"
+                    ).strip("; ")
+                except Exception as exc:
+                    self.output_dir.mkdir(parents=True, exist_ok=True)
+                    evidence_health = {
+                        "provider": "options-microstructure",
+                        "status": "FAILED",
+                        "errors": 1,
+                        "missing_data_is_nonfatal": True,
+                        "execution_grade": False,
+                        "error_type": type(exc).__name__,
+                    }
+                    (self.output_dir / "v4_options_microstructure_health.json").write_text(
+                        json.dumps(evidence_health, indent=2, sort_keys=True, allow_nan=False)
+                    )
+                    detail = (
+                        f"{detail}; v4.4_status=FAILED nonfatal={type(exc).__name__}"
+                    ).strip("; ")
+
             poll = self.adapter.poll(batch)
             polled, received = poll.requested, poll.received
             provider_errors, provider_duration = poll.errors, poll.duration_ms
