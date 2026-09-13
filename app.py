@@ -161,6 +161,7 @@ files = {
     "trader_martinluk":"trader_martinluk.csv",
     "trader_top500swing":"trader_top500swing.csv",
     "trader_highmomentumbeta":"trader_highmomentumbeta.csv",
+    "trader_superstock":"trader_superstock.csv",
 }
 data, sources = {}, {}
 for key, filename in files.items():
@@ -179,7 +180,7 @@ if data["legendary"].empty and not data["candidates"].empty:
             "trader_minervini", "trader_oneil", "trader_weinstein",
             "trader_darvas", "trader_livermore", "trader_qullamaggie",
             "trader_druckenmiller", "trader_lawwaisum", "trader_martinluk",
-            "trader_top500swing", "trader_highmomentumbeta",
+            "trader_top500swing", "trader_highmomentumbeta", "trader_superstock",
         ]
         for key in legendary_keys:
             data[key], sources[key] = load_csv(files[key])
@@ -295,6 +296,18 @@ with opportunities:
                            "market_hunt_broad_opportunities.csv", "text/csv", use_container_width=True,
                            key="download_broad_opportunities")
 
+    superstocks = data["trader_superstock"]
+    st.subheader("Superstock candidates")
+    st.markdown('<div class="section-note">Explosive liquid leaders with at least one +10% day in the last 30 sessions, ranked for outsized-move potential. A+ is a research priority, not an automatic trade.</div>', unsafe_allow_html=True)
+    if superstocks.empty:
+        st.info("No current Superstock candidates yet. The next successful full scan will populate this list.")
+    else:
+        super_cols=["ticker","company_name","price","superstock_grade","superstock_action","legendary_score","stage","theme",
+                    "market_hunt_score","rs20_vs_spy","rsi14","rsi_state","max_up_day_30d_pct","ten_pct_up_days_30d",
+                    "atr_pct","adr20_pct","effective_rr","runway_to_next_resistance_pct","catalyst_status","catalyst_score",
+                    "entry_trigger","stop","effective_target","pattern"]
+        st.dataframe(superstocks[columns(superstocks,super_cols)].head(25), hide_index=True, use_container_width=True)
+
     leaders = add_opportunity_context(data["leaders"])
     st.subheader("Liquid market leaders")
     st.markdown('<div class="section-note">Widely followed stocks remain visible even without a trade setup. Gate failures are shown explicitly and never promoted to BUY.</div>', unsafe_allow_html=True)
@@ -372,6 +385,7 @@ with legendary_tab:
         ("Martin Luk", "Asymmetric 5:1 Momentum Swing", "trader_martinluk"),
         ("Top-500 Swing Agent", "2–7 Day Liquid Swing Ideas", "trader_top500swing"),
         ("High Momentum / High Beta Agent", "Fast-Mover Momentum + Beta/Volatility", "trader_highmomentumbeta"),
+        ("Superstock Agent", "Explosive Leader / Early Supertrend Candidate", "trader_superstock"),
     ]
 
     preview_cols = st.columns(3)
@@ -392,7 +406,7 @@ with legendary_tab:
             if frame.empty:
                 st.write("No current matches.")
             else:
-                preferred = ["ticker","company_name","price","momentum_grade","setup_match","legendary_score","stage","theme",
+                preferred = ["ticker","company_name","price","superstock_grade","superstock_action","momentum_grade","setup_match","legendary_score","stage","theme",
                              "market_hunt_score","rs20_vs_spy","rsi14","rsi_state","atr_pct","adr20_pct","entry_trigger","entry_model",
                              "stop","effective_target","effective_rr","runway_to_next_resistance_pct",
                              "catalyst_status","intraday_rvol","setup_reason"]
