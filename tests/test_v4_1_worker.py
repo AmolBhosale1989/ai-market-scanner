@@ -10,6 +10,7 @@ from scanner.v4.health import CycleMetric, HealthRecorder
 from scanner.v4.source import CandidateSourceResult, FallbackCandidateSource
 from scanner.v4.store import FileEventStore
 from scanner.v4.worker import ContinuousMomentumWorker, WorkerSettings, select_poll_batch
+from scanner.v4_worker import build_worker, parser
 
 
 def candidates():
@@ -90,6 +91,20 @@ def test_yahoo_adapter_counts_empty_responses_as_provider_errors(monkeypatch):
     assert result.errors == 2
 
 
+def test_cli_defaults_to_audit_only_even_when_telegram_secrets_exist(monkeypatch, tmp_path):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "secret")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+    args = parser().parse_args([
+        "--candidate-source", "local",
+        "--state-dir", str(tmp_path / "state"),
+        "--output-dir", str(tmp_path / "output"),
+    ])
+    worker = build_worker(args)
+    assert [sink.name for sink in worker.alerts.sinks] == ["audit-file"]
+    assert worker.health.cycles_file.parent == tmp_path / "state"
+    assert worker.health.mirror_cycles_file.parent == tmp_path / "output"
+
+
 def test_alert_router_deduplicates_per_sink(tmp_path):
     sink = RecordingSink()
     router = AlertRouter(tmp_path / "dispatch.json", [sink])
@@ -151,6 +166,7 @@ def test_worker_cycle_writes_health_state_and_deduplicated_alerts(tmp_path):
         health=HealthRecorder(output / "cycles.csv", output / "health.json"),
         settings=WorkerSettings(hot_limit=2, warm_limit=2, warm_batch_size=0),
         output_dir=output,
+        runtime_state_file=state / "runtime.json",
     )
     first = worker.run_cycle()
     second = worker.run_cycle()
@@ -160,6 +176,19 @@ def test_worker_cycle_writes_health_state_and_deduplicated_alerts(tmp_path):
     assert len(sink.alerts) == 2
     assert (output / "v4_live_snapshot.csv").exists()
     assert json.loads((output / "health.json").read_text())["cycles_recorded"] == 2
+    assert json.loads((state / "runtime.json").read_text())["cycle_index"] == 2
+
+    restarted = ContinuousMomentumWorker(
+        source=StaticSource(),
+        adapter=StaticAdapter(),
+        engine=MomentumEngine(FileEventStore(state)),
+        alerts=AlertRouter(state / "dispatch.json", [sink]),
+        health=HealthRecorder(output / "cycles.csv", output / "health.json"),
+        settings=WorkerSettings(hot_limit=2, warm_limit=2, warm_batch_size=0),
+        output_dir=output,
+        runtime_state_file=state / "runtime.json",
+    )
+    assert restarted.cycle_index == 2
 
 
 def test_stop_request_prevents_new_worker_cycle(tmp_path):

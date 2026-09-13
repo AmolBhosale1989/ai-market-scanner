@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 import math
+import os
 from pathlib import Path
 import signal
+import tempfile
 import threading
 import time
 
@@ -61,6 +64,7 @@ class ContinuousMomentumWorker:
         health: HealthRecorder,
         settings: WorkerSettings | None = None,
         output_dir: Path = OUTPUT_DIR,
+        runtime_state_file: Path | None = None,
     ):
         self.source = source
         self.adapter = adapter
@@ -69,9 +73,48 @@ class ContinuousMomentumWorker:
         self.health = health
         self.settings = settings or WorkerSettings()
         self.output_dir = Path(output_dir)
+        self.runtime_state_file = Path(runtime_state_file) if runtime_state_file else None
         self.stop_requested = threading.Event()
-        self.cycle_index = 0
-        self.consecutive_failures = 0
+        runtime_state = self._load_runtime_state()
+        self.cycle_index = int(runtime_state.get("cycle_index", 0))
+        self.consecutive_failures = int(runtime_state.get("consecutive_failures", 0))
+
+    def _load_runtime_state(self) -> dict:
+        if self.runtime_state_file is None or not self.runtime_state_file.exists():
+            return {}
+        try:
+            value = json.loads(self.runtime_state_file.read_text())
+            return value if isinstance(value, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    def _save_runtime_state(self) -> None:
+        if self.runtime_state_file is None:
+            return
+        self.runtime_state_file.parent.mkdir(parents=True, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(
+            prefix=f".{self.runtime_state_file.name}.",
+            dir=self.runtime_state_file.parent,
+            text=True,
+        )
+        try:
+            with os.fdopen(fd, "w") as handle:
+                json.dump(
+                    {
+                        "cycle_index": self.cycle_index,
+                        "consecutive_failures": self.consecutive_failures,
+                        "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+                    },
+                    handle,
+                    indent=2,
+                    sort_keys=True,
+                )
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self.runtime_state_file)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
 
     def request_stop(self, *_args) -> None:
         self.stop_requested.set()
@@ -167,19 +210,23 @@ class ContinuousMomentumWorker:
         )
         self.health.record(metric)
         self.cycle_index += 1
+        self._save_runtime_state()
         return metric
 
     def next_interval(self, metric: CycleMetric) -> int:
         if metric.success:
             self.consecutive_failures = 0
-            return (
+            interval = (
                 self.settings.market_interval_seconds
                 if metric.market_open
                 else self.settings.off_hours_interval_seconds
             )
-        self.consecutive_failures += 1
-        backoff = self.settings.failure_backoff_initial_seconds * (2 ** (self.consecutive_failures - 1))
-        return min(backoff, self.settings.failure_backoff_max_seconds)
+        else:
+            self.consecutive_failures += 1
+            backoff = self.settings.failure_backoff_initial_seconds * (2 ** (self.consecutive_failures - 1))
+            interval = min(backoff, self.settings.failure_backoff_max_seconds)
+        self._save_runtime_state()
+        return interval
 
     def run_forever(self, max_cycles: int | None = None) -> int:
         self.install_signal_handlers()

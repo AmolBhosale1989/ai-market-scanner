@@ -20,8 +20,11 @@ def build_worker(args) -> ContinuousMomentumWorker:
     source = local if args.candidate_source == "local" else FallbackCandidateSource(
         HttpCandidateSource(args.scan_data_base_url), local
     )
-    sinks = [FileAlertSink(output_dir / "v4_alerts.ndjson")]
-    telegram = TelegramAlertSink.from_environment()
+    sinks = [FileAlertSink(
+        state_dir / "v4_alerts.ndjson",
+        mirror_path=output_dir / "v4_alerts.ndjson",
+    )]
+    telegram = TelegramAlertSink.from_environment() if args.telegram_alerts else None
     if telegram is not None:
         sinks.append(telegram)
     return ContinuousMomentumWorker(
@@ -30,10 +33,13 @@ def build_worker(args) -> ContinuousMomentumWorker:
         engine=MomentumEngine(FileEventStore(state_dir)),
         alerts=AlertRouter(state_dir / "v4_alert_dispatch.json", sinks),
         health=HealthRecorder(
-            output_dir / "v4_worker_cycles.csv",
-            output_dir / "v4_worker_health.json",
+            state_dir / "v4_worker_cycles.csv",
+            state_dir / "v4_worker_health.json",
+            mirror_cycles_file=output_dir / "v4_worker_cycles.csv",
+            mirror_summary_file=output_dir / "v4_worker_health.json",
         ),
         output_dir=output_dir,
+        runtime_state_file=state_dir / "v4_worker_runtime.json",
         settings=WorkerSettings(
             hot_limit=args.hot_limit,
             warm_limit=args.warm_limit,
@@ -67,6 +73,11 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--market-interval", type=int, default=60)
     value.add_argument("--off-hours-interval", type=int, default=900)
     value.add_argument("--max-workers", type=int, default=8)
+    value.add_argument(
+        "--telegram-alerts",
+        action="store_true",
+        help="Enable Telegram delivery. Default is audit-only even when secrets exist.",
+    )
     value.add_argument("--max-source-age", type=int, default=43_200)
     value.add_argument("--min-provider-coverage", type=float, default=0.80)
     value.add_argument("--failure-backoff-initial", type=int, default=300)

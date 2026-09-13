@@ -53,10 +53,19 @@ def age_seconds(value: str, now: datetime | None = None) -> float | None:
 
 
 class HealthRecorder:
-    def __init__(self, cycles_file: Path, summary_file: Path, max_cycles: int = 2000):
+    def __init__(
+        self,
+        cycles_file: Path,
+        summary_file: Path,
+        max_cycles: int = 2000,
+        mirror_cycles_file: Path | None = None,
+        mirror_summary_file: Path | None = None,
+    ):
         self.cycles_file = Path(cycles_file)
         self.summary_file = Path(summary_file)
         self.max_cycles = max_cycles
+        self.mirror_cycles_file = Path(mirror_cycles_file) if mirror_cycles_file else None
+        self.mirror_summary_file = Path(mirror_summary_file) if mirror_summary_file else None
 
     def record(self, metric: CycleMetric) -> dict:
         self.cycles_file.parent.mkdir(parents=True, exist_ok=True)
@@ -69,6 +78,9 @@ class HealthRecorder:
             frame = pd.DataFrame()
         frame = pd.concat([frame, pd.DataFrame([asdict(metric)])], ignore_index=True).tail(self.max_cycles)
         frame.to_csv(self.cycles_file, index=False)
+        if self.mirror_cycles_file:
+            self.mirror_cycles_file.parent.mkdir(parents=True, exist_ok=True)
+            frame.to_csv(self.mirror_cycles_file, index=False)
 
         market = frame[frame["market_open"].fillna(False).astype(bool)]
         uptime = float(market["success"].fillna(False).astype(bool).mean() * 100) if len(market) else None
@@ -97,4 +109,7 @@ class HealthRecorder:
             },
         }
         self.summary_file.write_text(json.dumps(summary, indent=2, allow_nan=False))
+        if self.mirror_summary_file:
+            self.mirror_summary_file.parent.mkdir(parents=True, exist_ok=True)
+            self.mirror_summary_file.write_text(json.dumps(summary, indent=2, allow_nan=False))
         return summary

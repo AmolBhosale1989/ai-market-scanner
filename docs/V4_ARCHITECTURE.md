@@ -98,10 +98,16 @@ options flow, microstructure, state transitions and outcomes.
   bounded exponential backoff after failures or rate limits.
 - Routes actionable transitions once per channel. Failed channels remain
   retryable without duplicating successful deliveries.
+- Defaults to audit-only alerting. Telegram delivery requires the explicit
+  `--telegram-alerts` switch even when credentials are present.
 - Handles `SIGTERM`/`SIGINT` by refusing a new cycle, finishing the active one,
   flushing state/health and exiting normally.
 - Runs every 60 seconds during an open NYSE session and every 15 minutes outside
   market hours by default.
+- Persists the cycle counter so separate GitHub Actions invocations rotate
+  through WARM candidates instead of repeatedly checking the first batch.
+- Keeps the authoritative alert audit and health history in persistent state,
+  while mirroring current evidence into dashboard outputs.
 
 The optional Render template is `render.v4-worker.yaml`. It is deliberately
 separate from the production `render.yaml`, has `autoDeployTrigger: off`, and must

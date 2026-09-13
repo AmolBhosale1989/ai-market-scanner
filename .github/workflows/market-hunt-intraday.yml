@@ -44,6 +44,12 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m scanner.intraday --limit 20
+      - name: Run V4.1 audit-only shadow cycle
+        continue-on-error: true
+        run: >-
+          python -m scanner.v4_worker --once --candidate-source local
+          --hot-limit 20 --warm-limit 80 --warm-batch-size 10
+          --warm-every-cycles 5 --max-workers 8
       - name: Save updated monitor state
         if: always()
         uses: actions/cache/save@v4
@@ -72,7 +78,7 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
           mkdir -p /tmp/market-hunt-scan-data/dashboard-data
-          for f in recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json; do
+          for f in recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json v4_monitor_shortlist.csv v4_live_snapshot.csv v4_transitions.csv v4_alerts.ndjson v4_worker_cycles.csv v4_worker_health.json; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
@@ -102,4 +108,10 @@ jobs:
             outputs/probability_calibration.csv
             outputs/monitor_health.csv
             outputs/product_feed.json
+            outputs/v4_monitor_shortlist.csv
+            outputs/v4_live_snapshot.csv
+            outputs/v4_transitions.csv
+            outputs/v4_alerts.ndjson
+            outputs/v4_worker_cycles.csv
+            outputs/v4_worker_health.json
           if-no-files-found: warn

@@ -56,4 +56,8 @@ jobs:
             .state/v4/v4_events.ndjson
             .state/v4/v4_signal_state.json
             .state/v4/v4_alert_dispatch.json
+            .state/v4/v4_worker_runtime.json
+            .state/v4/v4_alerts.ndjson
+            .state/v4/v4_worker_cycles.csv
+            .state/v4/v4_worker_health.json
           if-no-files-found: warn

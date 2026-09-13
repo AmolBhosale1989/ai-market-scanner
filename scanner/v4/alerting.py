@@ -79,13 +79,18 @@ class AlertSink(Protocol):
 class FileAlertSink:
     name = "audit-file"
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, mirror_path: Path | None = None):
         self.path = Path(path)
+        self.mirror_path = Path(mirror_path) if mirror_path else None
 
     def send(self, alert: Alert) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a") as handle:
-            handle.write(json.dumps(asdict(alert), sort_keys=True) + "\n")
+        line = json.dumps(asdict(alert), sort_keys=True) + "\n"
+        for path in [self.path, self.mirror_path]:
+            if path is None:
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a") as handle:
+                handle.write(line)
 
 
 class TelegramAlertSink:
