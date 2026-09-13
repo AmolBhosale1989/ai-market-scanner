@@ -6,6 +6,7 @@ on:
       - 'scanner/v4/**'
       - 'scanner/v5/**'
       - 'scanner/v4_model_monitor.py'
+      - 'scanner/v4_cutover.py'
       - 'scanner/v5_model.py'
       - '.github/workflows/market-hunt-v4-outcomes.yml'
   schedule:
