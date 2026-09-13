@@ -122,6 +122,29 @@ def number(value, default=0):
 def columns(frame, preferred):
     return [name for name in preferred if name in frame.columns]
 
+def add_opportunity_context(frame):
+    """Add readable RSI/volume states for opportunity tables without changing scan logic."""
+    if frame is None or frame.empty:
+        return frame
+    out = frame.copy()
+
+    if "rsi14" in out.columns:
+        rsi = pd.to_numeric(out["rsi14"], errors="coerce")
+        out["rsi_state"] = pd.Series("NEUTRAL / RESET", index=out.index)
+        out.loc[rsi.between(55, 72, inclusive="both"), "rsi_state"] = "MOMENTUM SWEET SPOT"
+        out.loc[rsi.gt(72) & rsi.le(80), "rsi_state"] = "STRONG / EXTENDED WATCH"
+        out.loc[rsi.lt(45), "rsi_state"] = "WEAK MOMENTUM"
+
+    if "rvol" in out.columns:
+        vol = pd.to_numeric(out["rvol"], errors="coerce")
+        out["volume_vs_20ma"] = vol.round(2)
+        out["swing_volume_state"] = pd.Series("NORMAL VOLUME", index=out.index)
+        out.loc[vol.lt(0.90), "swing_volume_state"] = "LOW-VOLUME PULLBACK"
+        out.loc[vol.ge(1.30), "swing_volume_state"] = "VOLUME EXPANSION"
+        out.loc[vol.ge(2.00), "swing_volume_state"] = "STRONG VOLUME EXPANSION"
+
+    return out
+
 files = {
     "scan_meta":"scan_metadata.csv", "live_meta":"live_metadata.csv", "health":"scan_health.csv",
     "live":"intraday_live.csv", "transitions":"state_transitions.csv", "themes":"trending_themes.csv",
@@ -222,10 +245,11 @@ with overview:
                      hide_index=True,use_container_width=True)
 
 with opportunities:
-    leaders = data["leaders"]
+    leaders = add_opportunity_context(data["leaders"])
     st.subheader("Liquid market leaders")
     st.markdown('<div class="section-note">Widely followed stocks remain visible even without a trade setup. Gate failures are shown explicitly and never promoted to BUY.</div>', unsafe_allow_html=True)
     leader_cols=["ticker","company_name","gate_price","price","leader_status","stage","market_hunt_score",
+                 "rsi14","rsi_state","volume_vs_20ma","swing_volume_state",
                  "avg_share_volume20","median_dollar_volume20","adr20_pct","atr_pct",
                  "catalyst_status","effective_rr","runway_to_next_resistance_pct","pattern"]
     if leaders.empty:
@@ -233,11 +257,13 @@ with opportunities:
     else:
         st.dataframe(leaders[columns(leaders,leader_cols)],hide_index=True,use_container_width=True)
 
-    recommendations = data["recommendations"]
+    recommendations = add_opportunity_context(data["recommendations"])
     st.subheader("Live-confirmed recommendations")
     st.markdown('<div class="section-note">Only stocks passing liquidity, volatility, catalyst, spread, runway, R/R and live VWAP/ORB/RVOL gates appear here.</div>', unsafe_allow_html=True)
-    recommendation_cols=["ticker","company_name","live_price","stage","theme","market_hunt_score","catalyst_status",
-                         "catalyst_score","intraday_rvol","bid_ask_spread_pct","entry_trigger","stop",
+    recommendation_cols=["ticker","company_name","live_price","stage","theme","market_hunt_score",
+                         "rsi14","rsi_state","volume_vs_20ma","swing_volume_state",
+                         "live_above_vwap","volume_vs_9ma","opening_30m_rvol","opening_volume_spike_2x",
+                         "catalyst_status","catalyst_score","intraday_rvol","bid_ask_spread_pct","entry_trigger","stop",
                          "effective_target","effective_rr","live_trade_action"]
     if recommendations.empty:
         st.info("No actionable recommendation currently passes every gate.")
@@ -246,6 +272,7 @@ with opportunities:
         st.download_button("Download recommendations", recommendations.to_csv(index=False), "market_hunt_recommendations.csv", "text/csv", use_container_width=True)
 
     picks = data["watchlist"] if not data["watchlist"].empty else data["picks"]
+    picks = add_opportunity_context(picks)
     st.subheader("Research watchlist")
     st.markdown('<div class="section-note">FORMING, DISCOVER and waiting setups are research candidates—not trade recommendations.</div>', unsafe_allow_html=True)
     if picks.empty: st.info("No watchlist results are available yet.")
@@ -259,6 +286,7 @@ with opportunities:
         selected = st.multiselect("Stage", stages, default=stages)
         if selected and "stage" in view: view = view[view["stage"].astype(str).isin(selected)]
         priority=["ticker","company_name","price","stage","theme","theme_state","market_hunt_score","final_decision",
+                  "rsi14","rsi_state","volume_vs_20ma","swing_volume_state",
                   "avg_share_volume20","median_dollar_volume20","atr_pct","adr20_pct",
                   "market_regime_state","catalyst_status","entry_trigger","entry_model","entry_condition","stop","stop_basis",
                   "risk_pct","effective_target","effective_rr","target_5","target_8","target_10",
