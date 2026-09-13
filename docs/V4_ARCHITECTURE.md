@@ -1,6 +1,6 @@
 # Market Hunt V4 Architecture
 
-Status: **V4.3 catalyst-intelligence implementation / shadow mode**. V3 remains
+Status: **V4.4 options/microstructure implementation / shadow mode**. V3 remains
 the production path until the validation gates below pass. V4 never enables
 broker execution.
 
@@ -32,7 +32,7 @@ flowchart TD
 | --- | --- | --- |
 | Discovery | Full-universe quality gates, themes, structures and 10% capability | Reuses proven V3 |
 | Candidate routing | HOT/WARM tiers with a bounded live-data budget | Implemented |
-| Event ingestion | Normalize bars, quotes, catalysts, options and tape | Candidate, price, SEC, news and earnings-calendar adapters implemented |
+| Event ingestion | Normalize bars, quotes, catalysts, options and tape | Candidate, price, SEC, news, earnings-calendar, options and bar-microstructure shadow adapters implemented |
 | Live momentum | Deterministic WATCH → ARMED → TRIGGERED → CONFIRMED lifecycle | Continuous shadow worker implemented |
 | State/event storage | Idempotent append-only events plus current signal state | File shadow adapter implemented |
 | Catalyst intelligence | SEC/news classification and magnitude | V4.3 bounded polling and conservative veto layer implemented |
@@ -73,7 +73,7 @@ options flow, microstructure, state transitions and outcomes.
 | 4.1 | Continuous live adapter and alert router | Implemented in shadow; ≥95% market-hours uptime and p95 event-lag evidence still required |
 | 4.2 | Outcome ledger and replayable backtester | Implemented in shadow; sample accumulation and calibration still required |
 | 4.3 | SEC/news event adapters | Implemented in shadow; false-positive evidence must accumulate before alerts |
-| 4.4 | Options/microstructure adapters | Provider/licensing approved; missing-data behavior tested |
+| 4.4 | Options/microstructure adapters | Shadow implementation complete; missing-data behavior tested. Production promotion still requires provider/licensing approval |
 | 4.5 | Calibrated ranking model | Adequate out-of-sample signals and improvement over frozen baseline |
 | 4.6 | Production cutover | Shadow agreement, alert precision and rollback drill pass |
 
@@ -127,6 +127,12 @@ python -m scanner.v4_worker --once --catalysts
 
 # Continuous V4.3 shadow worker with catalyst ingestion
 python -m scanner.v4_worker --catalysts
+
+# One V4.4 cycle with bounded options + bar-derived microstructure evidence
+python -m scanner.v4_worker --once --catalysts --options-microstructure --options-limit 8
+
+# Continuous V4.4 shadow worker (research evidence only)
+python -m scanner.v4_worker --catalysts --options-microstructure --options-limit 8
 ```
 
 The worker writes snapshots, transitions, alert audit records, per-cycle
@@ -199,3 +205,30 @@ The shadow worker writes `v4_catalyst_events.csv` and
 `v4_catalyst_health.json`. Catalyst alerts and broker actions remain disabled;
 V4.3 changes candidate state only when retained high-confidence negative
 evidence sets the existing risk veto.
+
+
+## V4.4 options and microstructure evidence
+
+V4.4 adds a provider-neutral `OPTIONS_FLOW` and `MICROSTRUCTURE` event path.
+The initial free shadow adapter is deliberately bounded and opt-in. It polls the
+nearest available Yahoo options expiration and derives a lightweight intraday
+microstructure proxy from one-minute bars for only the configured candidate
+batch.
+
+The options snapshot records call/put volume and open interest, call/put volume
+ratio, volume-weighted implied volatility, and counts of contracts whose volume
+is unusually large relative to open interest. The microstructure snapshot records
+five-minute volume acceleration, five-minute price pressure, last-bar close
+location, and last-bar dollar volume.
+
+These fields are **not execution-grade order-flow data**. Yahoo does not provide
+a licensed consolidated options-flow feed or full depth-of-book through this
+adapter. Accordingly, V4.4 evidence is appended to the event store and written to
+`v4_options_microstructure.csv` plus
+`v4_options_microstructure_health.json`, but it does not change signal state,
+send alerts, or place orders.
+
+Missing chains, missing bars and provider failures are explicit. They never
+fabricate bullish confirmation and they do not fail the primary momentum cycle.
+Production use remains gated on approval of a commercial provider and its
+licensing/data rights.
