@@ -204,14 +204,17 @@ files = {
     "social_queue":"social_content_queue.csv",
     "social_calendar":"social_content_calendar.csv",
     "v81_operational":"v8_1_operational_health.csv",
+    "v82_scorecard":"v8_2_evidence_scorecard.csv",
     "v9_readiness":"v9_readiness.csv",
+    "v91_pilot_candidates":"v9_1_pilot_candidates.csv",
     "v4_options_microstructure":"v4_options_microstructure.csv",
 }
 json_files = [
     "v4_6_cutover_evaluation.json", "v4_5_model.json", "v5_model.json",
     "v6_model.json", "v7_allocation_health.json", "v7_1_evidence_health.json",
     "v7_2_criteria_proposal.json", "v7_3_challenger_health.json",
-    "social_engine_health.json", "v8_1_operational_health.json", "v9_readiness.json",
+    "social_engine_health.json", "v8_1_operational_health.json", "v8_2_evidence_scorecard.json",
+    "v9_readiness.json", "v9_1_pilot_health.json",
 ]
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -234,7 +237,9 @@ v72_proposal, v72_proposal_source = load_json("v7_2_criteria_proposal.json")
 v73_health, v73_health_source = load_json("v7_3_challenger_health.json")
 social_health, social_health_source = load_json("social_engine_health.json")
 v81_health, v81_health_source = load_json("v8_1_operational_health.json")
+v82_scorecard, v82_scorecard_source = load_json("v8_2_evidence_scorecard.json")
 v9_readiness, v9_readiness_source = load_json("v9_readiness.json")
+v91_pilot, v91_pilot_source = load_json("v9_1_pilot_health.json")
 
 # Resilience fallback: if the full-scan publisher is delayed or GitHub Actions
 # is queued, derive legendary-agent lists from the latest published deep-scan
@@ -759,6 +764,20 @@ with system:
     elif v81_health.get("collecting_checks"):
         st.info("Operational evidence collecting: " + ", ".join(map(str, v81_health["collecting_checks"])))
     st.caption(f"Health probe: {v81_health.get('health_endpoint', '/_stcore/health')} · source: {v81_health_source}")
+    st.subheader("V8.2 evidence maturity")
+    s1,s2,s3,s4=st.columns(4)
+    s1.metric("Evidence state", str(v82_scorecard.get("status", "COLLECTING")))
+    s2.metric("Observations", int(number(v82_scorecard.get("observations"))))
+    s3.metric("Mature samples", int(number(v82_scorecard.get("mature_samples"))))
+    s4.metric("V9 progress", f'{number(v82_scorecard.get("progress_pct", {}).get("v9_220")):.1f}%')
+    next_milestone = v82_scorecard.get("next_milestone", {})
+    st.caption(
+        f'Next milestone: {next_milestone.get("name", "MONITORING")} · '
+        f'{int(number(next_milestone.get("remaining")))} mature samples remaining · '
+        f'source: {v82_scorecard_source}'
+    )
+    if v82_scorecard.get("failed_checks"):
+        st.error("Evidence scorecard failures: " + ", ".join(map(str, v82_scorecard["failed_checks"])))
     st.subheader("V9 readiness (manual review only)")
     r1,r2,r3=st.columns(3)
     r1.metric("Readiness state", str(v9_readiness.get("status", "BLOCKED_BY_V8_VALIDATION")))
@@ -767,6 +786,15 @@ with system:
     if v9_readiness.get("failed_gates"):
         st.warning("V9 remains blocked by: " + ", ".join(map(str, v9_readiness["failed_gates"])))
     st.caption(f"No automatic activation; explicit manual approval is always required · source: {v9_readiness_source}")
+    st.subheader("V9.1 bounded pilot rehearsal")
+    p1,p2,p3=st.columns(3)
+    p1.metric("Pilot state", str(v91_pilot.get("status", "BLOCKED_PAPER_REHEARSAL")))
+    p2.metric("Review candidates", int(number(v91_pilot.get("review_candidates"))))
+    p3.metric("Orders generated", int(number(v91_pilot.get("orders_generated"))))
+    pilot_candidates = data["v91_pilot_candidates"]
+    if not pilot_candidates.empty:
+        st.dataframe(pilot_candidates, hide_index=True, use_container_width=True)
+    st.caption(f"Paper-only, manual review, no broker integration · source: {v91_pilot_source}")
     tradable=data["tradable"]
     if not tradable.empty:
         passed=int(tradable["tradable"].sum()) if "tradable" in tradable else len(tradable)
