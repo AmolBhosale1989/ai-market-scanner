@@ -36,6 +36,19 @@ not apply a production change, activate a model, enable broker execution or
 send live orders. Missing or immature evidence reports
 `BLOCKED_BY_V8_VALIDATION`.
 
+## V8.2 evidence maturity and V9.1 pilot rehearsal
+
+V8.2 publishes a transparent evidence scorecard with observation coverage,
+mature forward samples, freshness checks and progress toward the 30-, 100- and
+220-sample milestones. It never extrapolates a win rate from unresolved rows or
+permits a performance claim before mature outcomes exist.
+
+V9.1 prepares a maximum two-candidate paper-rehearsal packet only after V8.2 and
+every V9 readiness gate pass. The packet deliberately excludes share/order
+instructions, caps the review policy at 0.25% risk per position and always
+requires manual approval. Broker execution, automatic activation and live
+orders remain disabled.
+
 Market Hunt V3 uses a broad exchange-listed master universe as the discovery perimeter, filters to a liquid tradable universe, ranks themes, finds early technical structures and monitors actionable names intraday.
 
 ## Hard trade-quality gates
