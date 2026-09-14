@@ -1,2 +1,2 @@
 generated_at_utc,gate_status,ready_for_real_money,closed_signals,min_closed_signals,win_rate_pct,min_win_rate_pct,avg_r_multiple,min_avg_r_multiple,profit_factor_r,min_profit_factor_r,usable_calibration_buckets,min_usable_calibration_buckets,monitor_status,failed_checks,live_test_max_risk_per_trade_pct,live_test_max_open_positions,live_test_broker_orders_enabled
-2026-09-14T14:07:40.090903+00:00,PAPER_VALIDATION,False,0,30,0.0,45.0,0.0,0.25,0.0,1.2,0,1,UNAVAILABLE,"sample_size,win_rate,expectancy,profit_factor,calibration,monitor_healthy",0.5,2,False
+2026-09-14T14:08:17.446375+00:00,PAPER_VALIDATION,False,0,30,0.0,45.0,0.0,0.25,0.0,1.2,0,1,UNAVAILABLE,"sample_size,win_rate,expectancy,profit_factor,calibration,monitor_healthy",0.5,2,False
