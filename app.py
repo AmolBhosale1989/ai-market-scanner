@@ -343,6 +343,83 @@ with overview:
 
 with opportunities:
     premarket = data["premarket"]
+    live = data["live"]
+    momentum_signals = data["momentum_signals"]
+    rotation_leaders = data["rotation_leaders"]
+
+    st.subheader("Current Live Opportunities")
+    st.markdown('<div class="section-note">This section updates from the live 15-minute engines. It prioritizes current momentum BUYs, near-entry setups, rotation leaders and live-confirmed base-scan names before the slower full-scan list below.</div>', unsafe_allow_html=True)
+
+    live_parts = []
+    if not momentum_signals.empty:
+        ms = momentum_signals.copy()
+        ms["opportunity_source"] = "FAST_MOMENTUM"
+        ms["opportunity_state"] = ms.get("signal", "")
+        ms["current_price"] = pd.to_numeric(ms.get("price"), errors="coerce")
+        ms["live_score"] = (
+            pd.to_numeric(ms.get("theme_rotation_score"), errors="coerce").fillna(0) * 0.45
+            + pd.to_numeric(ms.get("rel_vs_spy_pct"), errors="coerce").fillna(0).clip(lower=0, upper=10) * 4
+            + pd.to_numeric(ms.get("intraday_rvol"), errors="coerce").fillna(0).clip(lower=0, upper=5) * 3
+        )
+        sig_bonus = ms["opportunity_state"].map({
+            "MOMENTUM BUY": 30,
+            "WATCH / NEAR ENTRY": 18,
+            "EXTENDED / WAIT RETEST": 8,
+            "NO SIGNAL": 0,
+        }).fillna(0)
+        ms["live_score"] = (ms["live_score"] + sig_bonus).clip(0, 100)
+        live_parts.append(ms)
+
+    if not rotation_leaders.empty:
+        rl = rotation_leaders.copy()
+        if "rotation_leader" in rl.columns:
+            rl = rl[rl["rotation_leader"].astype(str).str.lower().isin(["true","1","yes"])]
+        if not rl.empty:
+            rl["opportunity_source"] = "ROTATION"
+            rl["opportunity_state"] = rl.get("theme_rotation_state", "ROTATION")
+            rl["current_price"] = pd.to_numeric(rl.get("last"), errors="coerce")
+            rl["live_score"] = (
+                pd.to_numeric(rl.get("rotation_leader_score"), errors="coerce").fillna(0) * 0.55
+                + pd.to_numeric(rl.get("theme_rotation_score"), errors="coerce").fillna(0) * 0.35
+                + pd.to_numeric(rl.get("rel_vs_spy_pct"), errors="coerce").fillna(0).clip(lower=0, upper=10)
+            ).clip(0,100)
+            live_parts.append(rl)
+
+    if not live.empty:
+        lv = live.copy()
+        lv["opportunity_source"] = "LIVE_MONITOR"
+        lv["opportunity_state"] = lv.get("monitor_state", "")
+        lv["current_price"] = pd.to_numeric(lv.get("live_price"), errors="coerce")
+        lv["live_score"] = (
+            pd.to_numeric(lv.get("live_confirmation_score"), errors="coerce").fillna(0) * 0.65
+            + pd.to_numeric(lv.get("market_hunt_score"), errors="coerce").fillna(0) * 0.35
+        ).clip(0,100)
+        live_parts.append(lv)
+
+    if live_parts:
+        unified = pd.concat(live_parts, ignore_index=True, sort=False)
+        unified["ticker"] = unified["ticker"].astype(str)
+        priority = {
+            "MOMENTUM BUY": 5,
+            "LIVE_CONFIRMED": 5,
+            "TRIGGERED": 4,
+            "WATCH / NEAR ENTRY": 3,
+            "ROTATION_LEADER": 3,
+            "STRONG_ROTATION": 2,
+            "EXTENDED / WAIT RETEST": 1,
+        }
+        unified["_priority"] = unified["opportunity_state"].map(priority).fillna(0)
+        unified = unified.sort_values(["_priority","live_score"], ascending=[False,False])
+        unified = unified.drop_duplicates(subset=["ticker"], keep="first")
+        unified = unified.drop(columns=["_priority"], errors="ignore")
+        live_cols=["ticker","theme","opportunity_source","opportunity_state","current_price",
+                   "day_change_pct","move_30m_pct","rel_vs_spy_pct","intraday_rvol",
+                   "live_confirmation_score","live_score","entry","entry_trigger","stop",
+                   "target_5pct","target_8pct","last_bar_et","checked_at_et"]
+        st.dataframe(unified[columns(unified,live_cols)].head(50), hide_index=True, use_container_width=True)
+    else:
+        st.info("No live opportunity data has been published yet.")
+
     st.subheader("Fresh live / pre-market discoveries")
     st.markdown('<div class="section-note">These are newly detected movers from the broad tradable universe. They are discovery candidates first; full Market Hunt technical/catalyst validation may follow separately.</div>', unsafe_allow_html=True)
     if premarket.empty:
