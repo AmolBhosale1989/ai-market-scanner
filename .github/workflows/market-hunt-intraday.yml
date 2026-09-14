@@ -2,7 +2,7 @@ name: Market Hunt Intraday Monitor
 
 on:
   schedule:
-    - cron: '*/15 12-22 * * 1-5'
+    - cron: '*/15 8-22 * * 1-5'  # 04:00-18:45 ET during US daylight-saving time
   workflow_dispatch:
 
 concurrency:
