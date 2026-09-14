@@ -13,6 +13,7 @@ on:
       - 'scanner/v6_model.py'
       - 'scanner/v7_allocator.py'
       - 'scanner/v7_criteria_optimizer.py'
+      - 'scanner/v7_challenger.py'
       - 'scanner/v4_evidence.py'
       - '.github/workflows/market-hunt-v4-outcomes.yml'
   schedule:
@@ -52,6 +53,10 @@ jobs:
           git fetch origin scan-data:refs/remotes/origin/scan-data
           git worktree add --detach /tmp/market-hunt-evidence origin/scan-data
           python -m scanner.v4_evidence --state-dir .state/v4 --import-dir /tmp/market-hunt-evidence
+          if [ -f /tmp/market-hunt-evidence/evidence-state/v7_3_challenger_state.json ]; then
+            mkdir -p .state/v4
+            cp /tmp/market-hunt-evidence/evidence-state/v7_3_challenger_state.json .state/v4/v7_3_challenger_state.json
+          fi
           git worktree remove --force /tmp/market-hunt-evidence
       - name: Verify deterministic replay
         run: python -m scanner.v4_outcomes --verify-replay
@@ -75,6 +80,8 @@ jobs:
         run: python -m scanner.v4_evidence --state-dir .state/v4 --output-dir outputs --health
       - name: Evaluate bounded V7.2 criteria proposals
         run: python -m scanner.v7_criteria_optimizer --state-dir .state/v4 --output-dir outputs
+      - name: Evaluate prospective V7.3 challenger
+        run: python -m scanner.v7_challenger --state-dir .state/v4 --output-dir outputs
       - name: Evaluate V4.6 gates and enforce automatic rollback
         run: python -m scanner.v4_cutover --evaluate --enforce-safety
       - name: Save enriched V4 signal history
@@ -94,12 +101,12 @@ jobs:
           rm -rf /tmp/market-hunt-scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
           mkdir -p /tmp/market-hunt-scan-data/dashboard-data /tmp/market-hunt-scan-data/evidence-state
-          for f in v4_outcomes.csv v4_outcome_summary.csv v4_5_model.json v4_5_validation.csv v4_5_ranked_candidates.csv v4_shadow_observations.csv v4_shadow_strategy_summary.csv v4_shadow_daily_comparison.csv v4_shadow_breakdowns.csv v4_shadow_validation_health.json v4_model_monitor.json v4_model_monitor.csv v4_6_cutover_evaluation.json v5_model.json v5_validation.csv v5_ranked_candidates.csv v6_model.json v6_validation.csv v6_ranked_candidates.csv v7_paper_portfolio.csv v7_allocation_health.json v7_1_evidence_health.json v7_2_criteria_proposal.json v7_2_criteria_validation.csv v7_2_criteria_grid.csv; do
+          for f in v4_outcomes.csv v4_outcome_summary.csv v4_5_model.json v4_5_validation.csv v4_5_ranked_candidates.csv v4_shadow_observations.csv v4_shadow_strategy_summary.csv v4_shadow_daily_comparison.csv v4_shadow_breakdowns.csv v4_shadow_validation_health.json v4_model_monitor.json v4_model_monitor.csv v4_6_cutover_evaluation.json v5_model.json v5_validation.csv v5_ranked_candidates.csv v6_model.json v6_validation.csv v6_ranked_candidates.csv v7_paper_portfolio.csv v7_allocation_health.json v7_1_evidence_health.json v7_2_criteria_proposal.json v7_2_criteria_validation.csv v7_2_criteria_grid.csv v7_3_challenger_health.json v7_3_challenger_comparison.csv; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
           done
-          for f in v4_outcomes.json v4_shadow_observations.json; do
+          for f in v4_outcomes.json v4_shadow_observations.json v7_3_challenger_state.json; do
             if [ -f ".state/v4/$f" ]; then
               cp ".state/v4/$f" "/tmp/market-hunt-scan-data/evidence-state/$f"
             fi
@@ -147,4 +154,7 @@ jobs:
             outputs/v7_2_criteria_proposal.json
             outputs/v7_2_criteria_validation.csv
             outputs/v7_2_criteria_grid.csv
+            .state/v4/v7_3_challenger_state.json
+            outputs/v7_3_challenger_health.json
+            outputs/v7_3_challenger_comparison.csv
           if-no-files-found: warn
