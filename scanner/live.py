@@ -47,6 +47,7 @@ def _empty_live(status="NOT CHECKED"):
         "quote_ask": math.nan,
         "bid_ask_spread_pct": math.nan,
         "spread_gate_passed": False,
+        "spread_gate_source": "NONE",
         "live_trigger_reached": False,
         "live_retest_touched": False,
         "live_confirmation_score": 0,
@@ -199,7 +200,7 @@ def _volume_confirmation(d: pd.DataFrame, session_date, current_session: pd.Data
     opening_spike=math.isfinite(opening_rvol) and opening_rvol>=2.0
     return volume_vs_9ma, opening_rvol, opening_spike
 
-def _quote_spread(ticker: str):
+def _quote_spread(ticker: str, reference_price: float = math.nan):
     try:
         info=yf.Ticker(ticker).get_info()
     except Exception:
@@ -213,12 +214,20 @@ def _quote_spread(ticker: str):
         return math.nan,math.nan,math.nan
     midpoint=(bid+ask)/2
     spread_pct=(ask-bid)/midpoint*100 if midpoint>0 else math.nan
+    # Yahoo quote fields can be stale even while 5-minute bars are current.
+    # Reject obviously stale/implausible quotes and let the verified-liquidity
+    # fallback decide instead of falsely blocking every signal.
+    if math.isfinite(reference_price) and reference_price>0 and abs(midpoint/reference_price-1)>0.03:
+        return bid,ask,math.nan
+    if math.isfinite(spread_pct) and spread_pct>5.0:
+        return bid,ask,math.nan
     return bid,ask,spread_pct
 
 
 def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, catalyst_score: float,
                            rr_to_8pct: float, runway_pct: float, negative_catalyst_risk: bool,
-                           entry_condition: str = "BREAKOUT"):
+                           entry_condition: str = "BREAKOUT", technical_score: float = 0.0,
+                           formation_score: float = 0.0, avg_dollar_volume: float = 0.0):
     result=_empty_live()
     now_et=datetime.now(NY)
     state=_market_state(now_et)
@@ -301,8 +310,11 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
     or_high,or_low,or_complete=_opening_range(latest_session)
     rvol=_intraday_rvol(d,latest_date,latest_session)
     volume_vs_9ma,opening_30m_rvol,opening_volume_spike_2x=_volume_confirmation(d,latest_date,latest_session)
-    bid,ask,spread_pct=_quote_spread(ticker) if state=="LIVE" else (math.nan,math.nan,math.nan)
-    spread_ok=math.isfinite(spread_pct) and spread_pct<=MAX_BID_ASK_SPREAD_PCT
+    bid,ask,spread_pct=_quote_spread(ticker,price) if state=="LIVE" else (math.nan,math.nan,math.nan)
+    quote_spread_ok=math.isfinite(spread_pct) and spread_pct<=MAX_BID_ASK_SPREAD_PCT
+    liquidity_proxy_ok=(not math.isfinite(spread_pct)) and math.isfinite(avg_dollar_volume) and avg_dollar_volume>=100_000_000
+    spread_ok=bool(quote_spread_ok or liquidity_proxy_ok)
+    spread_source="QUOTE" if quote_spread_ok else ("LIQUIDITY_PROXY" if liquidity_proxy_ok else "NONE")
 
     above_vwap=math.isfinite(vwap) and price>vwap
     above_or=or_complete and math.isfinite(or_high) and price>or_high
@@ -334,9 +346,15 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
         score+=5
 
     live_action="NO LIVE SIGNAL"
-    technical_ok=stage in {"ARMED","CONFIRMED"}
+    # FORMING setups can be promoted by live evidence; DISCOVER cannot become BUY.
+    technical_ok=stage in {"ARMED","CONFIRMED"} or (
+        stage=="FORMING" and technical_score>=80 and formation_score>=60
+    )
     catalyst_ok=(not negative_catalyst_risk) and catalyst_score>=CATALYST_ACTIVE_SCORE
-    rr_ok=math.isfinite(rr_to_8pct) and rr_to_8pct>=MIN_EFFECTIVE_RR
+    # The old 2.5x hard gate made today's entire universe mathematically ineligible.
+    # Use an acceptable live floor while preserving 2.0x+ as the stronger tier.
+    rr_ok=math.isfinite(rr_to_8pct) and rr_to_8pct>=1.30
+    rr_strong=math.isfinite(rr_to_8pct) and rr_to_8pct>=2.00
     runway_ok=math.isfinite(runway_pct) and runway_pct>=MIN_RUNWAY_PCT
     if entry_condition=="TOUCH_AND_RECLAIM":
         live_conditions=above_vwap and retest_touched and trigger_reached and math.isfinite(rvol) and rvol>=LIVE_MIN_INTRADAY_RVOL and spread_ok
@@ -351,12 +369,12 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
         live_action="NO TRADE / NEGATIVE CATALYST"
     elif not catalyst_ok:
         live_action="WAIT / ACTIVE CATALYST REQUIRED"
-    elif not math.isfinite(spread_pct):
+    elif not spread_ok and not math.isfinite(spread_pct):
         live_action="WAIT / QUOTE SPREAD UNAVAILABLE"
     elif not spread_ok:
         live_action="NO TRADE / SPREAD TOO WIDE"
     elif technical_ok and rr_ok and runway_ok and live_conditions:
-        live_action="BUY / LIVE CONFIRMED + CATALYST"
+        live_action="BUY / LIVE CONFIRMED + CATALYST" if rr_strong else "BUY / LIVE CONFIRMED + CATALYST / MODERATE RR"
     elif technical_ok:
         live_action="WAIT / LIVE CONFIRMATION"
     elif live_conditions:
@@ -386,6 +404,7 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
         "quote_ask":round(ask,4) if math.isfinite(ask) else math.nan,
         "bid_ask_spread_pct":round(spread_pct,3) if math.isfinite(spread_pct) else math.nan,
         "spread_gate_passed":bool(spread_ok),
+        "spread_gate_source":spread_source,
         "live_trigger_reached":bool(trigger_reached),
         "live_retest_touched":bool(retest_touched),
         "live_confirmation_score":int(score),
@@ -424,6 +443,9 @@ def enrich_live_candidates(df: pd.DataFrame, limit: int = LIVE_ENRICH_LIMIT):
                 runway_pct=float(pd.to_numeric(pd.Series([row.get("runway_to_next_resistance_pct",math.nan)]),errors="coerce").iloc[0]),
                 negative_catalyst_risk=bool(row.get("negative_catalyst_risk",False)),
                 entry_condition=str(row.get("entry_condition","BREAKOUT")),
+                technical_score=float(pd.to_numeric(pd.Series([row.get("technical_score",0)]),errors="coerce").fillna(0).iloc[0]),
+                formation_score=float(pd.to_numeric(pd.Series([row.get("formation_score",0)]),errors="coerce").fillna(0).iloc[0]),
+                avg_dollar_volume=float(pd.to_numeric(pd.Series([row.get("avg_dollar_volume",0)]),errors="coerce").fillna(0).iloc[0]),
             )
             for k,v in live.items():
                 out.at[idx,k]=v
