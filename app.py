@@ -193,6 +193,8 @@ files = {
     "v6_ranked":"v6_ranked_candidates.csv",
     "v6_validation":"v6_validation.csv",
     "v7_portfolio":"v7_paper_portfolio.csv",
+    "v72_validation":"v7_2_criteria_validation.csv",
+    "v72_grid":"v7_2_criteria_grid.csv",
     "v4_options_microstructure":"v4_options_microstructure.csv",
 }
 data, sources = {}, {}
@@ -204,6 +206,7 @@ v5_model, v5_model_source = load_json("v5_model.json")
 v6_model, v6_model_source = load_json("v6_model.json")
 v7_health, v7_health_source = load_json("v7_allocation_health.json")
 evidence_health, evidence_health_source = load_json("v7_1_evidence_health.json")
+v72_proposal, v72_proposal_source = load_json("v7_2_criteria_proposal.json")
 
 # Resilience fallback: if the full-scan publisher is delayed or GitHub Actions
 # is queued, derive legendary-agent lists from the latest published deep-scan
@@ -226,7 +229,7 @@ if data["legendary"].empty and not data["candidates"].empty:
         st.warning(f"Legendary-agent fallback could not run: {exc}")
 
 st.markdown("""<div class="hero"><div class="hero-grid"><div>
-<div class="eyebrow">AI MARKET INTELLIGENCE · V3 LIVE · V4–V6 SHADOW · V7 PAPER</div>
+<div class="eyebrow">AI MARKET INTELLIGENCE · V3 LIVE · V4–V6 SHADOW · V7 PAPER · V7.2 CRITERIA SHADOW</div>
 <h1>Market Hunt</h1>
 <p>Discover liquid U.S. swing opportunities, momentum leaders, catalyst-driven setups and multi-agent consensus from one research command center.</p>
 </div><div class="hero-mark">⚡</div></div></div>""", unsafe_allow_html=True)
@@ -515,7 +518,7 @@ with event_tab:
         st.dataframe(events[columns(events,preferred)].head(100),hide_index=True,use_container_width=True)
 
 with v4_tab:
-    st.subheader("V4–V7 research intelligence")
+    st.subheader("V4–V7.2 research intelligence")
     st.markdown('<div class="section-note">V3 remains primary. These rankings and probabilities are evidence-only until every production gate passes.</div>', unsafe_allow_html=True)
     monitor_frame = data["v4_model_monitor"]
     monitor_row = monitor_frame.iloc[0] if not monitor_frame.empty else {}
@@ -530,10 +533,12 @@ with v4_tab:
     k2.metric("V4.5 model", model_status)
     k3.metric("Model health", monitor_status)
     k4.metric("Cutover", cutover_status)
-    k5,k6,k7 = st.columns(3)
+    v72_status = str(v72_proposal.get("status", "COLLECTING"))
+    k5,k6,k7,k8 = st.columns(4)
     k5.metric("V5 adaptive", v5_status)
     k6.metric("V6 uncertainty", v6_status)
     k7.metric("V7 paper plan", v7_status)
+    k8.metric("V7.2 criteria", v72_status)
     evidence_status = str(evidence_health.get("status", "COLLECTING"))
     mature_evidence = int(number(evidence_health.get("mature_training_samples")))
     e1,e2,e3,e4 = st.columns(4)
@@ -617,6 +622,23 @@ with v4_tab:
             v7_cols = ["v7_allocation_rank","ticker","company_name","sector","theme","v6_robust_score","v6_confidence","v7_paper_shares","v7_entry","v7_stop","v7_position_notional","v7_position_risk","v7_position_risk_pct","v7_cumulative_risk_pct","v7_action"]
             st.dataframe(v7_portfolio[columns(v7_portfolio, v7_cols)], hide_index=True, use_container_width=True)
 
+    with st.expander("V7.2 bounded criteria optimizer"):
+        st.caption("Shadow proposal only. It cannot change production criteria or enable broker execution.")
+        proposed = v72_proposal.get("recommended_change", {})
+        if v72_status == "PROPOSAL_ELIGIBLE" and proposed:
+            st.warning(
+                "Manual review candidate: "
+                f"{proposed.get('criterion')} {proposed.get('operator')} {proposed.get('proposed_value')}. "
+                "No production change has been applied."
+            )
+        else:
+            st.write(v72_proposal.get("reason", "Waiting for sufficient mature point-in-time evidence."))
+        if not data["v72_validation"].empty:
+            st.dataframe(data["v72_validation"], hide_index=True, use_container_width=True)
+        if not data["v72_grid"].empty:
+            st.caption("Allowlisted one-parameter candidates evaluated on the training window")
+            st.dataframe(data["v72_grid"], hide_index=True, use_container_width=True)
+
 with validation:
     performance, setup, calibration, gate = data["performance"], data["performance_setup"], data["calibration"], data["gate"]
     st.subheader("Forward validation")
@@ -648,7 +670,7 @@ with validation:
 
 with system:
     st.subheader("Pipeline and data health")
-    st.write("5k+ universe → liquidity gate → themes → technical structure → D/W/M levels → runway and R/R → catalysts → live VWAP/ORB/RVOL → V4 calibration/monitoring → V5 adaptive ranking → V6 uncertainty/abstention → V7 paper risk allocation → guarded cutover")
+    st.write("5k+ universe → liquidity gate → themes → technical structure → D/W/M levels → runway and R/R → catalysts → live VWAP/ORB/RVOL → V4 calibration/monitoring → V5 adaptive ranking → V6 uncertainty/abstention → V7 paper risk allocation → V7.2 bounded criteria proposals → guarded cutover")
     status_rows=pd.DataFrame([{"dataset":key,"rows":len(data[key]),"source":sources[key]} for key in files])
     st.dataframe(status_rows,hide_index=True,use_container_width=True)
     tradable=data["tradable"]

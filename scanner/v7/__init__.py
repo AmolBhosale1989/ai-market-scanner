@@ -1,4 +1,4 @@
-"""Market Hunt V7 portfolio-aware paper allocation and risk governance."""
+"""Market Hunt V7 paper allocation, risk governance, and bounded criteria research."""
 
 from .allocator import AllocationSettings, allocate_paper_portfolio
 

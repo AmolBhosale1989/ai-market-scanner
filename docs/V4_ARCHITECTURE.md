@@ -406,3 +406,31 @@ durable and cached records before resolution, then republishes the merged ledger
 `v7_1_evidence_health.json` monitors snapshot freshness, daily capture volume,
 stalled forward resolution and the 30/100/220-sample milestones. A degraded or
 still-collecting evidence pipeline is an explicit V4.6 cutover failure.
+
+## V7.2 bounded criteria optimizer
+
+V7.2 evaluates whether sustained underperformance justifies changing one
+candidate-admission threshold. It does not edit Python, environment variables,
+workflow configuration, hard tradability gates, signal state, alerts or orders.
+The only searchable parameters are a committed allowlist of point-in-time fields
+and threshold values. This prevents arbitrary self-modification and makes every
+candidate proposal reproducible.
+
+The optimizer requires at least 220 mature outcomes by default. Complete market
+sessions are assigned wholly to either the older training window or the newer
+holdout window. V7.2 chooses at most one threshold using training data, then
+evaluates that frozen choice exactly once on the untouched holdout. Gates cover
+sample size, retained opportunity count, multi-target precision, expectancy,
+false breakouts and aggregate utility. If the baseline already meets the desired
++5% precision, no change is proposed.
+
+New point-in-time snapshots prospectively retain technical score, catalyst score,
+intraday RVOL, R/R, resistance runway, relative strength, volatility and liquidity
+features required for these comparisons. Missing historical fields are never
+backfilled from future data.
+
+The outputs are `v7_2_criteria_proposal.json`,
+`v7_2_criteria_validation.csv` and `v7_2_criteria_grid.csv`. Even a proposal that
+passes every holdout gate remains `shadow_only`, `production_applied: false`,
+`activation_allowed: false` and `manual_review_required: true`. V7.2 has no code
+path that applies its recommendation to production or enables broker execution.
