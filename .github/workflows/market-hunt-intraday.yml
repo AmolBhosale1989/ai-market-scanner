@@ -39,6 +39,19 @@ jobs:
           key: market-hunt-state-missing-${{ github.run_id }}
           restore-keys: |
             market-hunt-state-
+      - name: Ensure live inputs from published scan data
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs
+          git fetch origin scan-data:refs/remotes/origin/scan-data
+          for f in latest_scan.csv tradable_universe.csv all_candidates.csv trending_themes.csv; do
+            if [ ! -s "outputs/$f" ]; then
+              git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
+            fi
+          done
+          test -s outputs/latest_scan.csv
+          test -s outputs/tradable_universe.csv
       - name: Restore durable evidence ledgers
         shell: bash
         run: |
