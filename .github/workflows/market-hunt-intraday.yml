@@ -6,16 +6,13 @@ on:
       - '.github/workflows/market-hunt-intraday.yml'
       - 'scanner/intraday.py'
       - 'scanner/live.py'
-      - 'scanner/theme_live.py'
-      - 'scanner/sector_rotation.py'
-      - 'scanner/premarket.py'
   schedule:
     - cron: '*/15 8-22 * * 1-5'
   workflow_dispatch:
 
 concurrency:
-  group: market-hunt-intraday
-  cancel-in-progress: false
+  group: market-hunt-intraday-critical
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -23,19 +20,16 @@ permissions:
 jobs:
   intraday-monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
       - name: Restore latest full-scan cache
         uses: actions/cache/restore@v4
         with:
@@ -43,7 +37,6 @@ jobs:
           key: market-hunt-base-missing-${{ github.run_id }}
           restore-keys: |
             market-hunt-base-
-
       - name: Restore prior monitor state
         uses: actions/cache/restore@v4
         with:
@@ -51,7 +44,6 @@ jobs:
           key: market-hunt-state-missing-${{ github.run_id }}
           restore-keys: |
             market-hunt-state-
-
       - name: Ensure live inputs from published scan data
         shell: bash
         run: |
@@ -64,15 +56,11 @@ jobs:
             fi
           done
           test -s outputs/latest_scan.csv
-          test -s outputs/tradable_universe.csv
-
-      # CRITICAL PATH: do this first and publish immediately.
       - name: Run live state monitor
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m scanner.intraday --limit 30
-
       - name: Publish critical live data
         shell: bash
         run: |
@@ -96,76 +84,16 @@ jobs:
             git pull --rebase origin scan-data
             git push origin scan-data
           fi
-
       - name: Save updated monitor state
         if: always()
         uses: actions/cache/save@v4
         with:
           path: .state
           key: market-hunt-state-${{ github.run_id }}
-
-      - name: Refresh live themes
-        continue-on-error: true
-        shell: bash
-        run: timeout 240s python -m scanner.theme_live
-
-      - name: Run broad premarket discovery
-        continue-on-error: true
-        shell: bash
-        run: timeout 300s python -m scanner.premarket --batch-size 80 --top-n 100
-
-      - name: Run live sector rotation engine
-        continue-on-error: true
-        shell: bash
-        run: timeout 300s python -m scanner.sector_rotation
-
-      - name: Publish optional live intelligence
-        if: always()
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "market-hunt-bot"
-          git config user.email "market-hunt-bot@users.noreply.github.com"
-          rm -rf /tmp/market-hunt-intel
-          git fetch origin scan-data:scan-data
-          git worktree add /tmp/market-hunt-intel scan-data
-          mkdir -p /tmp/market-hunt-intel/dashboard-data
-          for f in trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv premarket_discovery.csv premarket_health.csv; do
-            if [ -f "outputs/$f" ]; then
-              cp "outputs/$f" "/tmp/market-hunt-intel/dashboard-data/$f"
-            fi
-          done
-          printf "updated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-intel/dashboard-data/intelligence_metadata.csv
-          cd /tmp/market-hunt-intel
-          git add dashboard-data
-          if ! git diff --cached --quiet; then
-            git commit -m "Update intraday intelligence [skip ci]"
-            git pull --rebase origin scan-data
-            git push origin scan-data
-          fi
-
-      - name: Run V4.1 audit-only shadow cycle
-        continue-on-error: true
-        shell: bash
-        run: timeout 300s python -m scanner.v4_worker --once --candidate-source local --hot-limit 20 --warm-limit 80 --warm-batch-size 10 --warm-every-cycles 5 --max-workers 8 --catalysts --options-microstructure --options-limit 8
-
-      - name: Add alerts to job summary
-        if: always()
-        shell: bash
-        run: |
-          echo "## Market Hunt Intraday" >> "$GITHUB_STEP_SUMMARY"
-          if [ -s outputs/live_alerts.txt ]; then
-            echo "New actionable state transitions:" >> "$GITHUB_STEP_SUMMARY"
-            cat outputs/live_alerts.txt >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "No new actionable state transitions." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Upload intraday outputs
+      - name: Upload live outputs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: market-hunt-intraday-${{ github.run_id }}
+          name: market-hunt-live-${{ github.run_id }}
           path: outputs/
           if-no-files-found: warn
