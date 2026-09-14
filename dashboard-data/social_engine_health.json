@@ -1,0 +1,17 @@
+{
+  "drafts_generated": 2,
+  "drafts_rejected_by_policy": 0,
+  "external_actions_taken": 0,
+  "generated_at_utc": "2026-09-14T09:32:04.353432+00:00",
+  "publish_authorized": false,
+  "reason": "human approval required before scheduling or publishing",
+  "schema_version": "1.0.0-approval-first",
+  "settings": {
+    "approval_required": true,
+    "max_chars": 270,
+    "max_setup_posts": 1,
+    "platform": "X"
+  },
+  "source_scan_status": "PASS",
+  "status": "DRAFTS_READY"
+}

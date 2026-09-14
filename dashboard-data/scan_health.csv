@@ -1,2 +1,2 @@
 status,master_universe_symbols,prefilter_fetched_symbols,prefilter_data_coverage,tradable_symbols,tradable_pct_of_master,deep_scan_symbols,deep_scan_pct_of_tradable,deep_scan_limit,deep_fetched_symbols,deep_data_coverage,analyzable_symbols,analyzable_coverage,technical_candidate_rows,min_prefilter_coverage_required,min_deep_analyzable_coverage_required
-PASS,5335,5335,1.0,929,0.1741,929,1.0,1500,929,1.0,899,0.9677,870,0.75,0.8
+PASS,5336,5335,0.9998,930,0.1743,930,1.0,1500,930,1.0,900,0.9677,871,0.75,0.8
