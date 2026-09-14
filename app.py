@@ -420,13 +420,58 @@ with opportunities:
     else:
         st.info("No live opportunity data has been published yet.")
 
-    st.subheader("Fresh live / pre-market discoveries")
-    st.markdown('<div class="section-note">These are newly detected movers from the broad tradable universe. They are discovery candidates first; full Market Hunt technical/catalyst validation may follow separately.</div>', unsafe_allow_html=True)
-    if premarket.empty:
-        st.info("No fresh pre-market discoveries are published yet.")
+    st.subheader("Fresh Market Discoveries")
+    st.markdown('<div class="section-note">Fresh discoveries now combine pre-market movers, current rotation leaders and fast momentum signals so this table continues updating after the opening bell.</div>', unsafe_allow_html=True)
+    fresh_parts = []
+    if not premarket.empty:
+        pm = premarket.copy()
+        pm["discovery_source"] = "PREMARKET"
+        pm["current_price"] = pd.to_numeric(pm.get("premarket_price"), errors="coerce")
+        pm["day_change_pct"] = pd.to_numeric(pm.get("premarket_gap_pct"), errors="coerce")
+        pm["discovery_score"] = pd.to_numeric(pm.get("premarket_score"), errors="coerce").fillna(0)
+        pm["last_update_et"] = pm.get("premarket_last_bar_et", "")
+        fresh_parts.append(pm)
+    if not rotation_leaders.empty:
+        rl = rotation_leaders.copy()
+        if "rotation_leader" in rl.columns:
+            rl = rl[rl["rotation_leader"].astype(str).str.lower().isin(["true","1","yes"])]
+        if not rl.empty:
+            rl["discovery_source"] = "LIVE_ROTATION"
+            rl["current_price"] = pd.to_numeric(rl.get("last"), errors="coerce")
+            rl["discovery_score"] = (
+                pd.to_numeric(rl.get("rotation_leader_score"), errors="coerce").fillna(0) * 0.55
+                + pd.to_numeric(rl.get("theme_rotation_score"), errors="coerce").fillna(0) * 0.45
+            ).clip(0,100)
+            rl["last_update_et"] = rl.get("last_bar_et", "")
+            fresh_parts.append(rl)
+    if not momentum_signals.empty:
+        ms = momentum_signals.copy()
+        ms["discovery_source"] = "FAST_MOMENTUM"
+        ms["current_price"] = pd.to_numeric(ms.get("price"), errors="coerce")
+        ms["discovery_score"] = (
+            pd.to_numeric(ms.get("theme_rotation_score"), errors="coerce").fillna(0) * 0.45
+            + pd.to_numeric(ms.get("rel_vs_spy_pct"), errors="coerce").fillna(0).clip(lower=0,upper=10) * 4
+            + pd.to_numeric(ms.get("intraday_rvol"), errors="coerce").fillna(0).clip(lower=0,upper=5) * 3
+        )
+        ms["discovery_score"] += ms.get("signal", pd.Series("", index=ms.index)).map({
+            "MOMENTUM BUY": 30,
+            "WATCH / NEAR ENTRY": 18,
+            "EXTENDED / WAIT RETEST": 8,
+        }).fillna(0)
+        ms["discovery_score"] = ms["discovery_score"].clip(0,100)
+        ms["last_update_et"] = ms.get("last_bar_et", "")
+        fresh_parts.append(ms)
+
+    if fresh_parts:
+        fresh = pd.concat(fresh_parts, ignore_index=True, sort=False)
+        fresh["ticker"] = fresh["ticker"].astype(str)
+        fresh = fresh.sort_values("discovery_score", ascending=False)
+        fresh = fresh.drop_duplicates(subset=["ticker"], keep="first")
+        fresh_cols=["ticker","company_name","theme","discovery_source","signal","current_price","day_change_pct",
+                    "move_30m_pct","rel_vs_spy_pct","intraday_rvol","discovery_score","last_update_et"]
+        st.dataframe(fresh[columns(fresh,fresh_cols)].head(100), hide_index=True, use_container_width=True)
     else:
-        pm_cols=["premarket_rank","ticker","company_name","exchange","premarket_price","premarket_gap_pct","premarket_volume","premarket_dollar_volume","premarket_score","premarket_last_bar_et"]
-        st.dataframe(premarket[columns(premarket,pm_cols)].head(100), hide_index=True, use_container_width=True)
+        st.info("No fresh market discoveries are published yet.")
 
     candidates = add_opportunity_context(data["candidates"])
     st.subheader("Broad ranked opportunities")
@@ -449,7 +494,58 @@ with opportunities:
             broad = broad[pd.to_numeric(broad["max_up_day_30d_pct"], errors="coerce").ge(10.0)]
         if "market_hunt_score" in broad.columns:
             broad["market_hunt_score"] = pd.to_numeric(broad["market_hunt_score"], errors="coerce")
-            broad = broad.sort_values("market_hunt_score", ascending=False)
+
+        # Overlay current-session intelligence onto the slower full-scan ranking.
+        broad["live_overlay_score"] = 0.0
+        broad["live_overlay_state"] = ""
+        broad["live_overlay_source"] = ""
+        broad["current_price"] = pd.to_numeric(broad.get("price"), errors="coerce")
+
+        if not rotation_leaders.empty:
+            rl_map = rotation_leaders.copy()
+            rl_map["ticker"] = rl_map["ticker"].astype(str)
+            rl_map = rl_map.drop_duplicates("ticker", keep="first").set_index("ticker")
+            broad["rotation_score_live"] = broad["ticker"].astype(str).map(pd.to_numeric(rl_map.get("theme_rotation_score"), errors="coerce") if "theme_rotation_score" in rl_map else pd.Series(dtype=float))
+            broad["rotation_leader_score_live"] = broad["ticker"].astype(str).map(pd.to_numeric(rl_map.get("rotation_leader_score"), errors="coerce") if "rotation_leader_score" in rl_map else pd.Series(dtype=float))
+            broad["day_change_pct_live"] = broad["ticker"].astype(str).map(pd.to_numeric(rl_map.get("day_change_pct"), errors="coerce") if "day_change_pct" in rl_map else pd.Series(dtype=float))
+            broad["rel_vs_spy_live"] = broad["ticker"].astype(str).map(pd.to_numeric(rl_map.get("rel_vs_spy_pct"), errors="coerce") if "rel_vs_spy_pct" in rl_map else pd.Series(dtype=float))
+            broad["current_price"] = broad["ticker"].astype(str).map(pd.to_numeric(rl_map.get("last"), errors="coerce") if "last" in rl_map else pd.Series(dtype=float)).combine_first(broad["current_price"])
+            rot_overlay = (
+                broad["rotation_score_live"].fillna(0) * 0.10
+                + broad["rotation_leader_score_live"].fillna(0) * 0.10
+                + broad["rel_vs_spy_live"].fillna(0).clip(lower=0,upper=10) * 1.0
+            )
+            broad["live_overlay_score"] += rot_overlay
+
+        if not momentum_signals.empty:
+            ms_map = momentum_signals.copy()
+            ms_map["ticker"] = ms_map["ticker"].astype(str)
+            ms_map = ms_map.drop_duplicates("ticker", keep="first").set_index("ticker")
+            broad["momentum_signal"] = broad["ticker"].astype(str).map(ms_map.get("signal", pd.Series(dtype=object)))
+            broad["momentum_rvol"] = broad["ticker"].astype(str).map(pd.to_numeric(ms_map.get("intraday_rvol"), errors="coerce") if "intraday_rvol" in ms_map else pd.Series(dtype=float))
+            broad["current_price"] = broad["ticker"].astype(str).map(pd.to_numeric(ms_map.get("price"), errors="coerce") if "price" in ms_map else pd.Series(dtype=float)).combine_first(broad["current_price"])
+            sig_bonus = broad["momentum_signal"].map({
+                "MOMENTUM BUY": 25,
+                "WATCH / NEAR ENTRY": 15,
+                "EXTENDED / WAIT RETEST": 5,
+            }).fillna(0)
+            broad["live_overlay_score"] += sig_bonus + broad["momentum_rvol"].fillna(0).clip(lower=0,upper=5) * 2
+
+        if not live.empty:
+            lv_map = live.copy()
+            lv_map["ticker"] = lv_map["ticker"].astype(str)
+            lv_map = lv_map.drop_duplicates("ticker", keep="first").set_index("ticker")
+            broad["live_state"] = broad["ticker"].astype(str).map(lv_map.get("monitor_state", pd.Series(dtype=object)))
+            broad["live_confirmation_score_current"] = broad["ticker"].astype(str).map(pd.to_numeric(lv_map.get("live_confirmation_score"), errors="coerce") if "live_confirmation_score" in lv_map else pd.Series(dtype=float))
+            broad["current_price"] = broad["ticker"].astype(str).map(pd.to_numeric(lv_map.get("live_price"), errors="coerce") if "live_price" in lv_map else pd.Series(dtype=float)).combine_first(broad["current_price"])
+            state_bonus = broad["live_state"].map({"LIVE_CONFIRMED":25,"TRIGGERED":15,"ARMED":8}).fillna(0)
+            broad["live_overlay_score"] += state_bonus + broad["live_confirmation_score_current"].fillna(0) * 0.10
+
+        broad["current_opportunity_score"] = (
+            broad["market_hunt_score"].fillna(0) * 0.70
+            + broad["live_overlay_score"].clip(0,30)
+        ).clip(0,100)
+        broad = broad.sort_values(["current_opportunity_score","market_hunt_score"], ascending=[False,False])
 
         q1, q2, q3 = st.columns([2,1,1])
         with q1:
@@ -467,7 +563,7 @@ with opportunities:
         if broad_selected and "stage" in broad_view:
             broad_view = broad_view[broad_view["stage"].astype(str).isin(broad_selected)]
 
-        broad_cols = ["ticker","company_name","price","stage","market_hunt_score","technical_score","formation_score",
+        broad_cols = ["ticker","company_name","current_price","price","stage","current_opportunity_score","market_hunt_score","momentum_signal","live_state","day_change_pct_live","rel_vs_spy_live","momentum_rvol","technical_score","formation_score",
                       "rs20_vs_spy","rsi14","rsi_state","volume_vs_20ma","swing_volume_state",
                       "max_up_day_30d_pct","ten_pct_up_days_30d","explosive_move_30d","atr_pct","adr20_pct",
                       "avg_dollar_volume","catalyst_status","catalyst_score","entry_trigger","entry_model","stop",
