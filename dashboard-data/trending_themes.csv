@@ -1,19 +1,19 @@
 theme,etf,theme_score,theme_state,ret5_pct,ret20_pct,ret60_pct,rel5_vs_spy,rel20_vs_spy,rel60_vs_spy,theme_rank
-Energy,XLE,98.2,LEADING,0.8,6.68,18.51,1.95,8.43,16.39,1
-Gold Miners,GDX,85.3,LEADING,-4.33,10.0,11.3,-3.18,11.75,9.18,2
-Oil Services,OIH,77.9,LEADING,-2.13,2.46,3.56,-0.98,4.21,1.44,3
-Genomics,ARKG,75.8,LEADING,-3.47,2.8,30.62,-2.33,4.54,28.5,4
-Semiconductors,SMH,72.0,NEUTRAL,2.88,-3.5,-7.71,4.03,-1.75,-9.83,5
-Copper & Mining,COPX,67.3,STRONG,-2.98,3.52,-1.07,-1.83,5.27,-3.19,6
-Cannabis,MSOS,61.8,STRONG,-4.04,2.15,-1.66,-2.89,3.9,-3.78,7
-Biotechnology,XBI,61.2,STRONG,-4.98,-0.42,15.53,-3.83,1.33,13.4,8
-Regional Banks,KRE,60.9,NEUTRAL,-1.3,-4.95,2.54,-0.15,-3.2,0.42,9
-Clean Energy,ICLN,59.8,NEUTRAL,1.64,-2.4,-13.93,2.79,-0.65,-16.05,10
-Cloud Computing,SKYY,58.1,NEUTRAL,-3.32,-6.18,17.11,-2.18,-4.43,14.98,11
-Cybersecurity,HACK,57.3,NEUTRAL,-1.46,-9.84,14.59,-0.31,-8.09,12.46,12
-Fintech,FINX,48.7,WEAK,-6.33,-3.54,4.9,-5.18,-1.8,2.78,13
-Infrastructure,PAVE,46.5,WEAK,-1.12,-7.25,-7.39,0.03,-5.51,-9.52,14
-Uranium & Nuclear,URA,40.2,WEAK,-4.75,-3.8,-9.07,-3.6,-2.05,-11.19,15
-AI & Robotics,BOTZ,38.4,WEAK,-1.48,-6.72,-6.82,-0.33,-4.97,-8.94,16
-Homebuilders,XHB,33.4,WEAK,-3.73,-10.11,-10.23,-2.58,-8.36,-12.35,17
-Defense & Aerospace,ITA,32.6,WEAK,-3.08,-12.29,-8.56,-1.94,-10.54,-10.69,18
+Energy,XLE,100.0,LEADING,2.9,6.48,21.45,4.35,8.71,18.74,1
+Cybersecurity,HACK,81.6,NEUTRAL,0.98,-5.37,17.25,2.42,-3.14,14.54,2
+Genomics,ARKG,78.4,LEADING,-3.75,4.42,29.48,-2.31,6.65,26.78,3
+Cloud Computing,SKYY,68.0,NEUTRAL,-1.87,-4.11,20.18,-0.42,-1.88,17.47,4
+Gold Miners,GDX,65.1,STRONG,-5.79,3.93,10.85,-4.35,6.16,8.14,5
+Oil Services,OIH,65.1,STRONG,-2.56,-1.12,4.91,-1.11,1.11,2.2,6
+Biotechnology,XBI,63.5,STRONG,-4.33,-0.44,12.55,-2.88,1.79,9.84,7
+Regional Banks,KRE,61.6,NEUTRAL,-1.71,-5.07,4.59,-0.27,-2.84,1.88,8
+Cannabis,MSOS,55.3,NEUTRAL,-7.05,2.59,-0.42,-5.6,4.82,-3.12,9
+Fintech,FINX,50.2,NEUTRAL,-6.33,-3.54,4.9,-4.88,-1.32,2.2,10
+Copper & Mining,COPX,49.5,WEAK,-6.79,-1.4,-2.27,-5.35,0.83,-4.98,11
+Clean Energy,ICLN,38.1,WEAK,-2.19,-4.55,-15.13,-0.74,-2.32,-17.83,12
+Infrastructure,PAVE,35.0,WEAK,-4.08,-9.69,-8.58,-2.63,-7.47,-11.29,13
+Semiconductors,SMH,33.8,WEAK,-4.7,-8.08,-13.4,-3.26,-5.85,-16.11,14
+AI & Robotics,BOTZ,29.3,WEAK,-3.95,-8.51,-8.09,-2.5,-6.28,-10.8,15
+Homebuilders,XHB,27.6,WEAK,-5.87,-10.85,-9.32,-4.42,-8.62,-12.02,16
+Defense & Aerospace,ITA,25.3,WEAK,-4.41,-14.84,-11.18,-2.97,-12.61,-13.88,17
+Uranium & Nuclear,URA,23.7,WEAK,-9.03,-6.74,-11.04,-7.58,-4.52,-13.74,18
