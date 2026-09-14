@@ -247,19 +247,25 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
         return pd.DataFrame()
 
     base=pd.read_csv(source)
-    watch=base[base["stage"].isin(["ARMED","CONFIRMED"])].copy()
+    # Always monitor the strongest current candidates, not only ARMED/CONFIRMED.
+    # BUY permission remains restricted downstream to fully qualified setups,
+    # but FORMING/DISCOVER names must still receive live VWAP/ORB/RVOL updates.
+    watch=base[base["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
     if watch.empty:
-        print("No ARMED/CONFIRMED candidates to monitor.")
+        print("No active candidates to monitor.")
         now=datetime.now(NY).isoformat(timespec="seconds")
+        empty=pd.DataFrame()
+        empty.to_csv(OUTPUT_DIR/"intraday_live.csv",index=False)
         build_performance_reports()
         build_empirical_calibration()
-        _write_monitor_health(pd.DataFrame(),now,0,bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip()),False)
-        _write_recommendations(pd.DataFrame())
+        _write_monitor_health(empty,now,0,bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip()),False)
+        _write_recommendations(empty)
         build_product_feed()
-        return watch
+        return empty
 
     sort_col="market_hunt_score" if "market_hunt_score" in watch.columns else "final_score"
-    watch=watch.sort_values(sort_col,ascending=False).head(limit).copy()
+    watch["live_stage_priority"]=watch["stage"].map({"CONFIRMED":4,"ARMED":3,"FORMING":2,"DISCOVER":1}).fillna(0)
+    watch=watch.sort_values(["live_stage_priority",sort_col],ascending=[False,False]).head(limit).copy()
     live=enrich_live_candidates(watch,limit=limit)
 
     prior=_load_state()
