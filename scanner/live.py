@@ -359,6 +359,8 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
         live_action="BUY / LIVE CONFIRMED + CATALYST"
     elif technical_ok:
         live_action="WAIT / LIVE CONFIRMATION"
+    elif live_conditions:
+        live_action="EARLY LIVE / WATCH"
     else:
         live_action="WATCH / NOT ARMED"
 
@@ -405,8 +407,8 @@ def enrich_live_candidates(df: pd.DataFrame, limit: int = LIVE_ENRICH_LIMIT):
         out[col]=value
 
     # Advanced setups first. FORMING names are not promoted to live BUY.
-    eligible=out[out["stage"].isin(["CONFIRMED","ARMED","FORMING"])].copy()
-    eligible["live_stage_priority"]=eligible["stage"].map({"CONFIRMED":3,"ARMED":2,"FORMING":1}).fillna(0)
+    eligible=out[out["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
+    eligible["live_stage_priority"]=eligible["stage"].map({"CONFIRMED":4,"ARMED":3,"FORMING":2,"DISCOVER":1}).fillna(0)
     eligible=eligible.sort_values(
         ["live_stage_priority","final_score"],ascending=[False,False]
     ).head(limit)
