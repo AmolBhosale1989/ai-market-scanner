@@ -1,0 +1,178 @@
+from __future__ import annotations
+
+import math
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+import pandas as pd
+import yfinance as yf
+
+from .config import OUTPUT_DIR
+
+NY = ZoneInfo("America/New_York")
+
+
+def _extract(raw: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    if raw is None or raw.empty:
+        return pd.DataFrame()
+    if isinstance(raw.columns, pd.MultiIndex):
+        if ticker in raw.columns.get_level_values(0):
+            d = raw[ticker].copy()
+        elif ticker in raw.columns.get_level_values(-1):
+            d = raw.xs(ticker, axis=1, level=-1).copy()
+        else:
+            return pd.DataFrame()
+    else:
+        d = raw.copy()
+    need={"High","Low","Close","Volume"}
+    if not need.issubset(d.columns):
+        return pd.DataFrame()
+    idx=pd.DatetimeIndex(d.index)
+    if idx.tz is None:
+        idx=idx.tz_localize("UTC")
+    d.index=idx.tz_convert(NY)
+    return d.dropna(subset=["Close"]).sort_index()
+
+
+def _vwap(d: pd.DataFrame) -> float:
+    vol=pd.to_numeric(d["Volume"],errors="coerce").fillna(0)
+    denom=float(vol.sum())
+    if denom<=0:
+        return math.nan
+    typical=(d["High"]+d["Low"]+d["Close"])/3
+    return float((typical*vol).sum()/denom)
+
+
+def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float:
+    if today.empty:
+        return math.nan
+    bars=len(today)
+    cur=float(pd.to_numeric(today["Volume"],errors="coerce").fillna(0).sum())
+    prior_dates=sorted({x for x in d.index.date if x<session_date},reverse=True)[:3]
+    comps=[]
+    for dt in prior_dates:
+        s=d[d.index.date==dt].between_time("09:30","16:00").iloc[:bars]
+        if s.empty:
+            continue
+        v=float(pd.to_numeric(s["Volume"],errors="coerce").fillna(0).sum())
+        if v>0:
+            comps.append(v)
+    if not comps or cur<=0:
+        return math.nan
+    base=sum(comps)/len(comps)
+    return cur/base if base>0 else math.nan
+
+
+def run(limit: int = 40):
+    src=OUTPUT_DIR/"rotation_leaders.csv"
+    if not src.exists():
+        return pd.DataFrame()
+    leaders=pd.read_csv(src)
+    if leaders.empty:
+        return pd.DataFrame()
+
+    mask=leaders.get("rotation_leader",pd.Series(False,index=leaders.index)).astype(str).str.lower().isin(["true","1","yes"])
+    leaders=leaders[mask].copy()
+    if leaders.empty:
+        return pd.DataFrame()
+
+    leaders=leaders.sort_values(["theme_rotation_score","rotation_leader_score"],ascending=[False,False]).head(limit)
+    tickers=leaders["ticker"].astype(str).tolist()
+    try:
+        raw=yf.download(tickers=tickers,period="5d",interval="5m",auto_adjust=True,
+                        progress=False,group_by="ticker",threads=True,prepost=True,timeout=45)
+    except TypeError:
+        raw=yf.download(tickers=tickers,period="5d",interval="5m",auto_adjust=True,
+                        progress=False,group_by="ticker",threads=True,prepost=True)
+
+    now=datetime.now(NY)
+    rows=[]
+    for _,meta in leaders.iterrows():
+        ticker=str(meta["ticker"])
+        d=_extract(raw,ticker)
+        if d.empty:
+            continue
+        today=d[d.index.date==now.date()].between_time("09:30","16:00")
+        if today.empty:
+            continue
+
+        price=float(today["Close"].iloc[-1])
+        vwap=_vwap(today)
+        orb=today.between_time("09:30","09:59")
+        or_high=float(orb["High"].max()) if not orb.empty else math.nan
+        recent_low=float(today["Low"].tail(3).min()) if len(today)>=3 else float(today["Low"].min())
+        rvol=_same_time_rvol(d,today,now.date())
+        day=float(meta.get("day_change_pct",math.nan))
+        rel=float(meta.get("rel_vs_spy_pct",math.nan))
+        move30=float(meta.get("move_30m_pct",math.nan))
+        theme_score=float(meta.get("theme_rotation_score",0))
+
+        above_vwap=math.isfinite(vwap) and price>vwap
+        above_or=math.isfinite(or_high) and price>or_high
+        liquid_dollars=float(meta.get("intraday_volume",0))*price
+        liquidity_ok=liquid_dollars>=20_000_000
+        early_zone=math.isfinite(day) and 1.5<=day<=8.0
+        extended=math.isfinite(day) and day>8.0
+        momentum_ok=(theme_score>=70 and rel>=1.0 and move30>0 and above_vwap and
+                     (above_or or price>=float(today["High"].tail(4).max())*0.997) and
+                     math.isfinite(rvol) and rvol>=1.20 and liquidity_ok)
+
+        stop_anchor=min(vwap,recent_low) if math.isfinite(vwap) else recent_low
+        stop=stop_anchor*0.997 if math.isfinite(stop_anchor) else math.nan
+        risk_pct=(price/stop-1)*100 if math.isfinite(stop) and stop>0 else math.nan
+        risk_ok=math.isfinite(risk_pct) and 0.3<=risk_pct<=4.0
+
+        if momentum_ok and early_zone and risk_ok:
+            signal="MOMENTUM BUY"
+            reason="ROTATION + VWAP + ORB + RVOL"
+        elif extended and momentum_ok:
+            signal="EXTENDED / WAIT RETEST"
+            reason="STRONG ROTATION BUT MOVE ALREADY >8%"
+        elif momentum_ok:
+            signal="WATCH / NEAR ENTRY"
+            reason="LIVE MOMENTUM PRESENT; ENTRY/RISK FILTER NOT READY"
+        else:
+            signal="NO SIGNAL"
+            reason="LIVE MOMENTUM CONDITIONS INCOMPLETE"
+
+        rows.append({
+            "ticker":ticker,
+            "theme":meta.get("theme",""),
+            "signal":signal,
+            "reason":reason,
+            "price":round(price,2),
+            "day_change_pct":round(day,2) if math.isfinite(day) else math.nan,
+            "move_30m_pct":round(move30,2) if math.isfinite(move30) else math.nan,
+            "rel_vs_spy_pct":round(rel,2) if math.isfinite(rel) else math.nan,
+            "theme_rotation_score":round(theme_score,1),
+            "intraday_rvol":round(rvol,2) if math.isfinite(rvol) else math.nan,
+            "vwap":round(vwap,2) if math.isfinite(vwap) else math.nan,
+            "opening_range_high":round(or_high,2) if math.isfinite(or_high) else math.nan,
+            "above_vwap":above_vwap,
+            "above_or_high":above_or,
+            "entry":round(price,2),
+            "stop":round(stop,2) if math.isfinite(stop) else math.nan,
+            "risk_pct":round(risk_pct,2) if math.isfinite(risk_pct) else math.nan,
+            "target_5pct":round(price*1.05,2),
+            "target_8pct":round(price*1.08,2),
+            "last_bar_et":today.index[-1].isoformat(),
+        })
+
+    out=pd.DataFrame(rows)
+    if not out.empty:
+        rank={"MOMENTUM BUY":0,"WATCH / NEAR ENTRY":1,"EXTENDED / WAIT RETEST":2,"NO SIGNAL":3}
+        out["_rank"]=out["signal"].map(rank).fillna(9)
+        out=out.sort_values(["_rank","theme_rotation_score","rel_vs_spy_pct"],ascending=[True,False,False]).drop(columns=["_rank"])
+    out.to_csv(OUTPUT_DIR/"momentum_signals.csv",index=False)
+    pd.DataFrame([{
+        "updated_at_et":now.isoformat(timespec="seconds"),
+        "leaders_evaluated":len(out),
+        "momentum_buys":int(out["signal"].eq("MOMENTUM BUY").sum()) if not out.empty else 0,
+        "extended_waits":int(out["signal"].eq("EXTENDED / WAIT RETEST").sum()) if not out.empty else 0,
+        "mode":"FAST_ROTATION_MOMENTUM",
+    }]).to_csv(OUTPUT_DIR/"momentum_health.csv",index=False)
+    return out
+
+
+if __name__=="__main__":
+    run()
