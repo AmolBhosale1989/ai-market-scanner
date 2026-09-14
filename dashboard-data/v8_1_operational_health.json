@@ -1,0 +1,42 @@
+{
+  "block_model_promotion": false,
+  "checks": {
+    "broker_execution_lock": {
+      "passed": true,
+      "present": true
+    },
+    "durable_evidence": {
+      "v4_outcomes.json": {
+        "present": true,
+        "records": 0,
+        "valid": true
+      },
+      "v4_shadow_observations.json": {
+        "present": true,
+        "records": 20,
+        "valid": true
+      }
+    },
+    "social_approval_lock": {
+      "passed": true,
+      "present": true
+    },
+    "verified_scan": {
+      "passed": true,
+      "present": true
+    }
+  },
+  "collecting_checks": [],
+  "expected_workflows_utc": {
+    "daily_broad_scan": "12:30 Monday-Friday",
+    "forward_validation": "22:30 Monday-Friday",
+    "intraday_monitor": "every 15 minutes, 12:00-22:59 Monday-Friday",
+    "outcome_resolution": "22:45 Monday-Friday"
+  },
+  "failed_checks": [],
+  "generated_at_utc": "2026-09-14T13:00:54.334181+00:00",
+  "health_endpoint": "/_stcore/health",
+  "safe_to_serve": true,
+  "schema_version": "8.1.0",
+  "status": "HEALTHY"
+}

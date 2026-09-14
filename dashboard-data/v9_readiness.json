@@ -1,0 +1,31 @@
+{
+  "automatic_activation_allowed": false,
+  "broker_execution_enabled": false,
+  "checks": {
+    "broker_lock": true,
+    "evidence_pipeline": false,
+    "mature_evidence": false,
+    "paper_allocator": true,
+    "paper_validation": false,
+    "prospective_challenger": false,
+    "v4_cutover_evidence": false,
+    "v8_operational_health": true,
+    "v8_safe_to_serve": true
+  },
+  "eligible_for_manual_review": false,
+  "failed_gates": [
+    "evidence_pipeline",
+    "mature_evidence",
+    "prospective_challenger",
+    "v4_cutover_evidence",
+    "paper_validation"
+  ],
+  "generated_at_utc": "2026-09-14T13:00:54.769478+00:00",
+  "live_orders_enabled": false,
+  "manual_approval_required": true,
+  "mature_evidence": 0,
+  "minimum_mature_evidence": 220,
+  "production_applied": false,
+  "schema_version": "9.0.0-readiness-only",
+  "status": "BLOCKED_BY_V8_VALIDATION"
+}
