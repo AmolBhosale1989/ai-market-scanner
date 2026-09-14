@@ -9,6 +9,13 @@ from .config import OUTPUT_DIR, THEME_PROFILE_LIMIT, THEME_BONUS_MAX
 from .data import download_history
 from .indicators import add_indicators
 
+STATIC_THEME_MEMBERS = {
+    "Cybersecurity": {"CRWD","PANW","FTNT","ZS","S","CYBR","OKTA","TENB","RBRK","VRNS","QLYS","GEN","CHKP"},
+    "Semiconductors": {"NVDA","AMD","AVGO","MU","MRVL","ARM","INTC","QCOM","TSM","ASML","LRCX","AMAT","KLAC","MPWR","ON"},
+    "Cloud Computing": {"SNOW","DDOG","NET","MDB","NOW","CRM","ORCL","AMZN","MSFT","GTLB","ESTC"},
+    "Biotechnology": {"MRNA","BMRN","VRTX","REGN","ALNY","NBIX","IONS","CRSP","BEAM","NTLA","IOVA"},
+}
+
 THEMES = {
     "Semiconductors": {"etf":"SMH","industries":["semiconductors","semiconductor equipment"],"keywords":["semiconductor","chip","integrated circuit"]},
     "AI & Robotics": {"etf":"BOTZ","industries":[],"keywords":["artificial intelligence","robotics","automation","machine learning"]},
@@ -134,14 +141,22 @@ def enrich_candidate_themes(df: pd.DataFrame, theme_table: pd.DataFrame, limit: 
     for idx,row in eligible.iterrows():
         ticker=str(row["ticker"])
         try:
-            obj=yf.Ticker(ticker)
-            try:
-                info=obj.get_info()
-            except Exception:
-                info=obj.info
-            if not isinstance(info,dict):
-                continue
-            matched=_match_theme(info,theme_table)
+            matched=None
+            for static_theme,members in STATIC_THEME_MEMBERS.items():
+                if ticker in members:
+                    row_match=_theme_row(static_theme,theme_table)
+                    if row_match:
+                        matched={**row_match,"confidence":1.0,"source":"STATIC_CONSTITUENT","reason":"verified theme membership"}
+                    break
+            if matched is None:
+                obj=yf.Ticker(ticker)
+                try:
+                    info=obj.get_info()
+                except Exception:
+                    info=obj.info
+                if not isinstance(info,dict):
+                    continue
+                matched=_match_theme(info,theme_table)
             if not matched:
                 continue
 
