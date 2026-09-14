@@ -169,7 +169,7 @@ def add_opportunity_context(frame):
 
 files = {
     "scan_meta":"scan_metadata.csv", "live_meta":"live_metadata.csv", "health":"scan_health.csv",
-    "live":"intraday_live.csv", "transitions":"state_transitions.csv", "themes":"trending_themes.csv",
+    "live":"intraday_live.csv", "premarket":"premarket_discovery.csv", "theme_health":"theme_health.csv", "transitions":"state_transitions.csv", "themes":"trending_themes.csv",
     "recommendations":"recommended_trades.csv", "leaders":"liquid_leaders.csv", "watchlist":"watchlist.csv",
     "picks":"latest_scan.csv", "tradable":"tradable_universe.csv", "candidates":"all_candidates.csv",
     "events":"upcoming_events.csv", "event_status":"event_status.csv", "journal":"paper_journal.csv",
@@ -320,6 +320,15 @@ with overview:
                      hide_index=True,use_container_width=True)
 
 with opportunities:
+    premarket = data["premarket"]
+    st.subheader("Fresh live / pre-market discoveries")
+    st.markdown('<div class="section-note">These are newly detected movers from the broad tradable universe. They are discovery candidates first; full Market Hunt technical/catalyst validation may follow separately.</div>', unsafe_allow_html=True)
+    if premarket.empty:
+        st.info("No fresh pre-market discoveries are published yet.")
+    else:
+        pm_cols=["premarket_rank","ticker","company_name","exchange","premarket_price","premarket_gap_pct","premarket_volume","premarket_dollar_volume","premarket_score","premarket_last_bar_et"]
+        st.dataframe(premarket[columns(premarket,pm_cols)].head(100), hide_index=True, use_container_width=True)
+
     candidates = add_opportunity_context(data["candidates"])
     st.subheader("Broad ranked opportunities")
     st.markdown('<div class="section-note">This is generated from the full deep-scanned U.S. candidate universe—not a preset ticker list. It includes liquid FORMING, DISCOVER, ARMED and CONFIRMED setups ranked by Market Hunt score, and requires at least one +10% close-to-close day in the last 30 trading sessions.</div>', unsafe_allow_html=True)
@@ -521,7 +530,14 @@ with legendary_tab:
                 )
 
 with live_tab:
-    live, transitions, journal = data["live"], data["transitions"], data["journal"]
+    live, premarket, transitions, journal = data["live"], data["premarket"], data["transitions"], data["journal"]
+    st.subheader("Fresh market discoveries")
+    if not premarket.empty:
+        pm_cols=["premarket_rank","ticker","company_name","premarket_price","premarket_gap_pct","premarket_volume","premarket_dollar_volume","premarket_score","premarket_last_bar_et"]
+        st.dataframe(premarket[columns(premarket,pm_cols)].head(100),hide_index=True,use_container_width=True)
+    else:
+        st.info("Fresh pre-market discovery output is not available yet.")
+
     st.subheader("Intraday confirmation")
     st.markdown('<div class="section-note">VWAP, opening range and RVOL update research states; no broker orders are placed.</div>', unsafe_allow_html=True)
     if not live.empty:
