@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 
 
-SCHEMA_VERSION = "9.0.0-readiness-only"
+SCHEMA_VERSION = "9.1.0-readiness-only"
 MIN_MATURE_EVIDENCE = 220
 
 
@@ -26,6 +26,7 @@ def evaluate_v9_readiness(output_dir: Path, now: datetime | None = None) -> dict
     output_dir = Path(output_dir)
     now = now or datetime.now(timezone.utc)
     operational = _json(output_dir / "v8_1_operational_health.json")
+    scorecard = _json(output_dir / "v8_2_evidence_scorecard.json")
     evidence = _json(output_dir / "v7_1_evidence_health.json")
     challenger = _json(output_dir / "v7_3_challenger_health.json")
     cutover = _json(output_dir / "v4_6_cutover_evaluation.json")
@@ -36,6 +37,8 @@ def evaluate_v9_readiness(output_dir: Path, now: datetime | None = None) -> dict
     checks = {
         "v8_operational_health": operational.get("status") == "HEALTHY",
         "v8_safe_to_serve": operational.get("safe_to_serve") is True,
+        "v8_evidence_scorecard": scorecard.get("status") == "V9_REVIEW_READY"
+        and scorecard.get("block_v9_review") is False,
         "evidence_pipeline": evidence.get("status") == "HEALTHY",
         "mature_evidence": mature >= MIN_MATURE_EVIDENCE,
         "prospective_challenger": challenger.get("status") == "CHALLENGER_VALIDATED",
@@ -90,4 +93,3 @@ if __name__ == "__main__":
     parser.add_argument("--output-dir", default="outputs")
     args = parser.parse_args()
     run(Path(args.output_dir))
-
