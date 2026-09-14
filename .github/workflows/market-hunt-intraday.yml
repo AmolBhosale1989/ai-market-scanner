@@ -190,12 +190,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p outputs .state/v4
+          printf "status,started_at_utc,workflow_run_id,source_commit\nSTARTED,%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > outputs/v4_job_health.csv
           git fetch origin scan-data:refs/remotes/origin/scan-data
           for f in latest_scan.csv all_candidates.csv intraday_live.csv trending_themes.csv sector_rotation.csv rotation_leaders.csv momentum_signals.csv; do
             git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
           done
           test -s outputs/latest_scan.csv
       - name: Restore durable V4 evidence
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -222,7 +224,7 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-v4-live scan-data
           mkdir -p /tmp/market-hunt-v4-live/dashboard-data
-          for f in v4_monitor_shortlist.csv v4_live_snapshot.csv v4_transitions.csv v4_alerts.ndjson v4_worker_cycles.csv v4_worker_health.json v4_catalyst_events.csv v4_catalyst_health.json v4_options_microstructure.csv v4_options_microstructure_health.json; do
+          for f in v4_job_health.csv v4_monitor_shortlist.csv v4_live_snapshot.csv v4_transitions.csv v4_alerts.ndjson v4_worker_cycles.csv v4_worker_health.json v4_catalyst_events.csv v4_catalyst_health.json v4_options_microstructure.csv v4_options_microstructure_health.json; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-v4-live/dashboard-data/$f"
             fi
