@@ -48,6 +48,8 @@ jobs:
           git worktree add --detach /tmp/market-hunt-evidence origin/scan-data
           python -m scanner.v4_evidence --state-dir .state/v4 --import-dir /tmp/market-hunt-evidence
           git worktree remove --force /tmp/market-hunt-evidence
+      - name: Run broad premarket discovery
+        run: python -m scanner.premarket --batch-size 80 --top-n 100
       - name: Run live state monitor
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -88,7 +90,7 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
           mkdir -p /tmp/market-hunt-scan-data/dashboard-data /tmp/market-hunt-scan-data/evidence-state
-          for f in recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json v4_monitor_shortlist.csv v4_live_snapshot.csv v4_transitions.csv v4_alerts.ndjson v4_worker_cycles.csv v4_worker_health.json v4_outcomes.csv v4_outcome_summary.csv v4_catalyst_events.csv v4_catalyst_health.json v4_options_microstructure.csv v4_options_microstructure_health.json; do
+          for f in recommended_trades.csv premarket_discovery.csv premarket_health.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json v4_monitor_shortlist.csv v4_live_snapshot.csv v4_transitions.csv v4_alerts.ndjson v4_worker_cycles.csv v4_worker_health.json v4_outcomes.csv v4_outcome_summary.csv v4_catalyst_events.csv v4_catalyst_health.json v4_options_microstructure.csv v4_options_microstructure_health.json; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
@@ -115,6 +117,8 @@ jobs:
         with:
           name: market-hunt-intraday-${{ github.run_id }}
           path: |
+            outputs/premarket_discovery.csv
+            outputs/premarket_health.csv
             outputs/intraday_live.csv
             outputs/state_transitions.csv
             outputs/live_alerts.txt
