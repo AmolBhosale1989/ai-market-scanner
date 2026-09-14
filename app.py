@@ -207,6 +207,10 @@ files = {
     "v82_scorecard":"v8_2_evidence_scorecard.csv",
     "v9_readiness":"v9_readiness.csv",
     "v91_pilot_candidates":"v9_1_pilot_candidates.csv",
+    "v4_live_meta":"v4_live_metadata.csv",
+    "v4_monitor_shortlist":"v4_monitor_shortlist.csv",
+    "v4_live_snapshot":"v4_live_snapshot.csv",
+    "v4_worker_cycles":"v4_worker_cycles.csv",
     "v4_options_microstructure":"v4_options_microstructure.csv",
 }
 json_files = [
@@ -602,6 +606,28 @@ with event_tab:
         st.dataframe(events[columns(events,preferred)].head(100),hide_index=True,use_container_width=True)
 
 with v4_tab:
+    st.subheader("Current V4 Live Intelligence")
+    v4_live_meta = data["v4_live_meta"]
+    v4_shortlist = data["v4_monitor_shortlist"]
+    v4_snapshot = data["v4_live_snapshot"]
+    v4_cycles = data["v4_worker_cycles"]
+    v4_stamp = str(v4_live_meta.iloc[0].get("updated_at_utc","Waiting for V4 live cycle")) if not v4_live_meta.empty else "Waiting for V4 live cycle"
+    st.caption(f"Intraday V4 refresh · {v4_stamp} UTC")
+
+    if not v4_snapshot.empty:
+        live_cols=["ticker","stage","live_price","entry_trigger","live_vwap","opening_range_high","intraday_rvol",
+                   "live_confirmation_score","theme","catalyst_status","live_trade_action","checked_at_et"]
+        st.dataframe(v4_snapshot[columns(v4_snapshot,live_cols)].head(40),hide_index=True,use_container_width=True)
+    elif not v4_shortlist.empty:
+        short_cols=["ticker","stage","market_hunt_score","technical_score","catalyst_score","theme","entry_trigger","stop","effective_target","effective_rr"]
+        st.dataframe(v4_shortlist[columns(v4_shortlist,short_cols)].head(40),hide_index=True,use_container_width=True)
+    else:
+        st.info("V4 live worker has not published its first intraday snapshot yet.")
+
+    if not v4_cycles.empty:
+        with st.expander("V4 live worker cycle history"):
+            st.dataframe(v4_cycles.tail(50).iloc[::-1],hide_index=True,use_container_width=True)
+
     st.subheader("V4–V7.3 research intelligence")
     st.markdown('<div class="section-note">V3 remains primary. These rankings and probabilities are evidence-only until every production gate passes.</div>', unsafe_allow_html=True)
     monitor_frame = data["v4_model_monitor"]
