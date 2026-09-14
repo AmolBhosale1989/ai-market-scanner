@@ -149,6 +149,10 @@ def test_snapshot_captures_v5_v6_and_v7_paper_rankings(tmp_path):
     frame["v6_p15_probability"] = 20
     frame["v6_confidence"] = "HIGH"
     frame["v6_decision"] = "RANK"
+    frame["technical_score"] = [88, 77, 66]
+    frame["catalyst_score"] = [45, 30, 20]
+    frame["intraday_rvol"] = [2.0, 1.5, 1.2]
+    frame["runway_to_next_resistance_pct"] = [12, 9, 6]
     store = ledger(tmp_path)
     captured = store.record_snapshot(
         frame,
@@ -162,6 +166,10 @@ def test_snapshot_captures_v5_v6_and_v7_paper_rankings(tmp_path):
     assert captured["selected_v6"].sum() == 2
     assert captured["selected_v7"].sum() == 1
     assert captured.loc["A", "v6_confidence"] == "HIGH"
+    assert captured.loc["A", "technical_score"] == 88
+    assert captured.loc["A", "catalyst_score"] == 45
+    assert captured.loc["A", "intraday_rvol"] == 2.0
+    assert captured.loc["A", "runway_to_next_resistance_pct"] == 12
 
 
 def test_ten_session_return_resolves_without_changing_five_session_labels(tmp_path):
