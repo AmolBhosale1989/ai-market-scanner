@@ -1,0 +1,84 @@
+name: Market Hunt Intraday Intelligence
+
+on:
+  push:
+    paths:
+      - '.github/workflows/market-hunt-intelligence.yml'
+      - 'scanner/theme_live.py'
+      - 'scanner/sector_rotation.py'
+      - 'scanner/premarket.py'
+      - 'scanner/themes.py'
+  schedule:
+    - cron: '*/15 8-22 * * 1-5'
+  workflow_dispatch:
+
+concurrency:
+  group: market-hunt-intraday-intelligence
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  intraday-intelligence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Restore latest broad inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs
+          git fetch origin scan-data:refs/remotes/origin/scan-data
+          for f in tradable_universe.csv latest_scan.csv all_candidates.csv trending_themes.csv; do
+            git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
+          done
+          test -s outputs/tradable_universe.csv
+      - name: Refresh live themes
+        continue-on-error: true
+        run: timeout 180s python -m scanner.theme_live
+      - name: Run live sector rotation
+        continue-on-error: true
+        run: timeout 180s python -m scanner.sector_rotation
+      - name: Run broad premarket discovery
+        continue-on-error: true
+        run: timeout 240s python -m scanner.premarket --batch-size 80 --top-n 100
+      - name: Publish intelligence data
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "market-hunt-bot"
+          git config user.email "market-hunt-bot@users.noreply.github.com"
+          rm -rf /tmp/market-hunt-intel
+          git fetch origin scan-data:scan-data
+          git worktree add /tmp/market-hunt-intel scan-data
+          mkdir -p /tmp/market-hunt-intel/dashboard-data
+          for f in trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv premarket_discovery.csv premarket_health.csv; do
+            if [ -f "outputs/$f" ]; then
+              cp "outputs/$f" "/tmp/market-hunt-intel/dashboard-data/$f"
+            fi
+          done
+          printf "updated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-intel/dashboard-data/intelligence_metadata.csv
+          cd /tmp/market-hunt-intel
+          git add dashboard-data
+          if ! git diff --cached --quiet; then
+            git commit -m "Update intraday intelligence [skip ci]"
+            git pull --rebase origin scan-data
+            git push origin scan-data
+          fi
+      - name: Upload intelligence outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-hunt-intelligence-${{ github.run_id }}
+          path: outputs/
+          if-no-files-found: warn
