@@ -1,0 +1,41 @@
+{
+  "checked_at_utc": "2026-09-14T14:47:23.427290+00:00",
+  "events": 8,
+  "negative_veto_events": 2,
+  "providers": [
+    {
+      "duration_ms": 19438,
+      "errors": 4,
+      "events": 3,
+      "nasdaq_fallbacks": 0,
+      "provider": "SEC_EDGAR",
+      "relay_errors": 4,
+      "relay_fallbacks": 21,
+      "requested": 30,
+      "resolved": 25,
+      "search_errors": 25,
+      "search_fallbacks": 0,
+      "submissions_errors": 25,
+      "ticker_map_source": "SEC_CIK_MAPPER_GITHUB",
+      "unresolved": 5
+    },
+    {
+      "duration_ms": 1463,
+      "errors": 0,
+      "events": 5,
+      "provider": "YAHOO_NEWS",
+      "requested": 20
+    },
+    {
+      "errors": 0,
+      "events": 0,
+      "provider": "EVENT_CALENDAR",
+      "requested": 0,
+      "status": "NOT_AVAILABLE"
+    }
+  ],
+  "retained_active_events": 8,
+  "review_required_events": 7,
+  "source_lag_p95_seconds": 220839.6,
+  "status": "DEGRADED"
+}

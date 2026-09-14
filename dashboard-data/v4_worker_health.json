@@ -1,0 +1,29 @@
+{
+  "status": "HEALTHY",
+  "generated_at_utc": "2026-09-14T14:47:50.220387+00:00",
+  "cycles_recorded": 1,
+  "market_open_cycles": 1,
+  "market_hours_uptime_pct": 100.0,
+  "event_lag_p95_ms": 170063.4,
+  "provider_duration_p95_ms": 4246.0,
+  "last_cycle": {
+    "cycle_started_at_utc": "2026-09-14T14:47:23.173837+00:00",
+    "cycle_completed_at_utc": "2026-09-14T14:47:50.216692+00:00",
+    "success": true,
+    "market_open": true,
+    "source_name": "local-scan-output",
+    "source_degraded": false,
+    "source_age_seconds": null,
+    "candidates": 100,
+    "polled": 30,
+    "received": 30,
+    "provider_coverage_pct": 100.0,
+    "provider_errors": 0,
+    "provider_duration_ms": 4246,
+    "event_lag_p95_ms": 170063.4,
+    "transitions": 30,
+    "alert_deliveries": 19,
+    "alert_failures": 0,
+    "detail": "ranking=V3_PRIMARY_V4_SHADOW; catalysts=8 new=8 status=DEGRADED; v4.4_events=16 new=16 status=OK"
+  }
+}

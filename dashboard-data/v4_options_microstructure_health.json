@@ -1,0 +1,14 @@
+{
+  "completed_at_utc": "2026-09-14T14:47:45.813434+00:00",
+  "duration_ms": 1436,
+  "errors": 0,
+  "execution_grade": false,
+  "microstructure_available": 8,
+  "missing_data_is_nonfatal": true,
+  "options_available": 8,
+  "provider": "yahoo-shadow",
+  "received": 8,
+  "requested": 8,
+  "started_at_utc": "2026-09-14T14:47:44.377130+00:00",
+  "status": "OK"
+}
