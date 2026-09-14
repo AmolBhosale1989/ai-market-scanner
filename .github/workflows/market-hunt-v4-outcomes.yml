@@ -16,7 +16,9 @@ on:
       - 'scanner/v7_challenger.py'
       - 'scanner/v4_evidence.py'
       - 'scanner/v8_operations.py'
+      - 'scanner/v8_scorecard.py'
       - 'scanner/v9_readiness.py'
+      - 'scanner/v9_pilot.py'
       - '.github/workflows/market-hunt-v4-outcomes.yml'
   schedule:
     - cron: '45 22 * * 1-5'
@@ -94,8 +96,12 @@ jobs:
         run: python -m scanner.v4_cutover --evaluate --enforce-safety
       - name: Evaluate V8.1 operational health and safety locks
         run: python -m scanner.v8_operations --state-dir .state/v4 --output-dir outputs
+      - name: Build V8.2 evidence maturity scorecard
+        run: python -m scanner.v8_scorecard --output-dir outputs
       - name: Evaluate fail-closed V9 production readiness
         run: python -m scanner.v9_readiness --output-dir outputs
+      - name: Build V9.1 bounded paper-pilot rehearsal
+        run: python -m scanner.v9_pilot --output-dir outputs
       - name: Save enriched V4 signal history
         if: always()
         uses: actions/cache/save@v4
@@ -113,7 +119,7 @@ jobs:
           rm -rf /tmp/market-hunt-scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
           mkdir -p /tmp/market-hunt-scan-data/dashboard-data /tmp/market-hunt-scan-data/evidence-state
-          for f in v4_outcomes.csv v4_outcome_summary.csv v4_5_model.json v4_5_validation.csv v4_5_ranked_candidates.csv v4_shadow_observations.csv v4_shadow_strategy_summary.csv v4_shadow_daily_comparison.csv v4_shadow_breakdowns.csv v4_shadow_validation_health.json v4_model_monitor.json v4_model_monitor.csv v4_6_cutover_evaluation.json v5_model.json v5_validation.csv v5_ranked_candidates.csv v6_model.json v6_validation.csv v6_ranked_candidates.csv v7_paper_portfolio.csv v7_allocation_health.json v7_1_evidence_health.json v7_2_criteria_proposal.json v7_2_criteria_validation.csv v7_2_criteria_grid.csv v7_3_challenger_health.json v7_3_challenger_comparison.csv v8_1_operational_health.json v8_1_operational_health.csv v9_readiness.json v9_readiness.csv; do
+          for f in v4_outcomes.csv v4_outcome_summary.csv v4_5_model.json v4_5_validation.csv v4_5_ranked_candidates.csv v4_shadow_observations.csv v4_shadow_strategy_summary.csv v4_shadow_daily_comparison.csv v4_shadow_breakdowns.csv v4_shadow_validation_health.json v4_model_monitor.json v4_model_monitor.csv v4_6_cutover_evaluation.json v5_model.json v5_validation.csv v5_ranked_candidates.csv v6_model.json v6_validation.csv v6_ranked_candidates.csv v7_paper_portfolio.csv v7_allocation_health.json v7_1_evidence_health.json v7_2_criteria_proposal.json v7_2_criteria_validation.csv v7_2_criteria_grid.csv v7_3_challenger_health.json v7_3_challenger_comparison.csv v8_1_operational_health.json v8_1_operational_health.csv v8_2_evidence_scorecard.json v8_2_evidence_scorecard.csv v9_readiness.json v9_readiness.csv v9_1_pilot_health.json v9_1_pilot_candidates.csv; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
@@ -171,6 +177,10 @@ jobs:
             outputs/v7_3_challenger_comparison.csv
             outputs/v8_1_operational_health.json
             outputs/v8_1_operational_health.csv
+            outputs/v8_2_evidence_scorecard.json
+            outputs/v8_2_evidence_scorecard.csv
             outputs/v9_readiness.json
             outputs/v9_readiness.csv
+            outputs/v9_1_pilot_health.json
+            outputs/v9_1_pilot_candidates.csv
           if-no-files-found: warn
