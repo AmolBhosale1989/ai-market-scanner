@@ -434,3 +434,22 @@ The outputs are `v7_2_criteria_proposal.json`,
 passes every holdout gate remains `shadow_only`, `production_applied: false`,
 `activation_allowed: false` and `manual_review_required: true`. V7.2 has no code
 path that applies its recommendation to production or enables broker execution.
+
+## V7.3 prospective challenger validation
+
+V7.3 converts an eligible V7.2 recommendation into an immutable challenger and
+tests it only on sessions observed after registration. The registration boundary
+is the later of the proposal creation date and the newest stored observation, so
+the challenger cannot reuse its training or holdout evidence as proof.
+
+The frozen challenger must accumulate at least 10 future market sessions, 100
+baseline observations and 30 selected observations. It is then compared with the
+unchanged baseline on +5%, +10% and +15% precision, expectancy, false breakouts,
+aggregate utility and opportunity retention. A completed result is immutable;
+additional observations do not rewrite the original verdict.
+
+The durable state is `v7_3_challenger_state.json`. Published outputs are
+`v7_3_challenger_health.json` and `v7_3_challenger_comparison.csv`. A validated
+challenger still requires manual review and always reports `shadow_only: true`,
+`production_applied: false`, `activation_allowed: false` and
+`broker_execution_enabled: false`.

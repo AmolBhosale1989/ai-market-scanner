@@ -195,6 +195,9 @@ files = {
     "v7_portfolio":"v7_paper_portfolio.csv",
     "v72_validation":"v7_2_criteria_validation.csv",
     "v72_grid":"v7_2_criteria_grid.csv",
+    "v73_comparison":"v7_3_challenger_comparison.csv",
+    "social_queue":"social_content_queue.csv",
+    "social_calendar":"social_content_calendar.csv",
     "v4_options_microstructure":"v4_options_microstructure.csv",
 }
 data, sources = {}, {}
@@ -207,6 +210,8 @@ v6_model, v6_model_source = load_json("v6_model.json")
 v7_health, v7_health_source = load_json("v7_allocation_health.json")
 evidence_health, evidence_health_source = load_json("v7_1_evidence_health.json")
 v72_proposal, v72_proposal_source = load_json("v7_2_criteria_proposal.json")
+v73_health, v73_health_source = load_json("v7_3_challenger_health.json")
+social_health, social_health_source = load_json("social_engine_health.json")
 
 # Resilience fallback: if the full-scan publisher is delayed or GitHub Actions
 # is queued, derive legendary-agent lists from the latest published deep-scan
@@ -229,7 +234,7 @@ if data["legendary"].empty and not data["candidates"].empty:
         st.warning(f"Legendary-agent fallback could not run: {exc}")
 
 st.markdown("""<div class="hero"><div class="hero-grid"><div>
-<div class="eyebrow">AI MARKET INTELLIGENCE · V3 LIVE · V4–V6 SHADOW · V7 PAPER · V7.2 CRITERIA SHADOW</div>
+<div class="eyebrow">AI MARKET INTELLIGENCE · V3 LIVE · V4–V6 SHADOW · V7 PAPER · V7.2–V7.3 CRITERIA RESEARCH</div>
 <h1>Market Hunt</h1>
 <p>Discover liquid U.S. swing opportunities, momentum leaders, catalyst-driven setups and multi-agent consensus from one research command center.</p>
 </div><div class="hero-mark">⚡</div></div></div>""", unsafe_allow_html=True)
@@ -256,8 +261,8 @@ m3.metric("Tradable", f'{int(number(h.get("tradable_symbols"))):,}')
 m4.metric("Analyzable", f'{number(h.get("analyzable_coverage"))*100:.1f}%')
 m5.metric("Live alerts", f'{int(number(mh.get("alerts_generated"))):,}')
 
-overview, opportunities, legendary_tab, live_tab, event_tab, v4_tab, validation, system = st.tabs(
-    ["Overview", "Opportunities", "Legendary setups", "Live monitor", "Events", "V4 Intelligence", "Validation", "System"]
+overview, opportunities, legendary_tab, live_tab, event_tab, v4_tab, social_tab, validation, system = st.tabs(
+    ["Overview", "Opportunities", "Legendary setups", "Live monitor", "Events", "V4 Intelligence", "Social Studio", "Validation", "System"]
 )
 
 with overview:
@@ -518,7 +523,7 @@ with event_tab:
         st.dataframe(events[columns(events,preferred)].head(100),hide_index=True,use_container_width=True)
 
 with v4_tab:
-    st.subheader("V4–V7.2 research intelligence")
+    st.subheader("V4–V7.3 research intelligence")
     st.markdown('<div class="section-note">V3 remains primary. These rankings and probabilities are evidence-only until every production gate passes.</div>', unsafe_allow_html=True)
     monitor_frame = data["v4_model_monitor"]
     monitor_row = monitor_frame.iloc[0] if not monitor_frame.empty else {}
@@ -534,11 +539,13 @@ with v4_tab:
     k3.metric("Model health", monitor_status)
     k4.metric("Cutover", cutover_status)
     v72_status = str(v72_proposal.get("status", "COLLECTING"))
-    k5,k6,k7,k8 = st.columns(4)
+    v73_status = str(v73_health.get("status", "WAITING_FOR_PROPOSAL"))
+    k5,k6,k7,k8,k9 = st.columns(5)
     k5.metric("V5 adaptive", v5_status)
     k6.metric("V6 uncertainty", v6_status)
     k7.metric("V7 paper plan", v7_status)
     k8.metric("V7.2 criteria", v72_status)
+    k9.metric("V7.3 challenger", v73_status)
     evidence_status = str(evidence_health.get("status", "COLLECTING"))
     mature_evidence = int(number(evidence_health.get("mature_training_samples")))
     e1,e2,e3,e4 = st.columns(4)
@@ -639,6 +646,51 @@ with v4_tab:
             st.caption("Allowlisted one-parameter candidates evaluated on the training window")
             st.dataframe(data["v72_grid"], hide_index=True, use_container_width=True)
 
+    with st.expander("V7.3 prospective challenger"):
+        st.caption("Future-only shadow validation. Historical observations cannot validate a newly registered challenger.")
+        active = v73_health.get("active_challenger") or {}
+        if active:
+            change = active.get("change", {})
+            st.write(
+                f"{active.get('challenger_id', 'challenger')} · starts after "
+                f"{active.get('start_after_session', 'registration')} · "
+                f"{change.get('criterion')} {change.get('operator')} {change.get('proposed_value')}"
+            )
+        st.write(v73_health.get("reason", "Waiting for a V7.2 holdout-passing proposal."))
+        c1,c2,c3 = st.columns(3)
+        c1.metric("Future sessions", int(number(v73_health.get("future_sessions"))))
+        c2.metric("Baseline samples", int(number(v73_health.get("baseline_samples"))))
+        c3.metric("Challenger samples", int(number(v73_health.get("challenger_samples"))))
+        if not data["v73_comparison"].empty:
+            st.dataframe(data["v73_comparison"], hide_index=True, use_container_width=True)
+
+with social_tab:
+    st.subheader("Market Hunt Social Studio")
+    st.markdown(
+        '<div class="section-note">Verified-scan drafts for X. Nothing in this queue is authorized, scheduled or published automatically.</div>',
+        unsafe_allow_html=True,
+    )
+    queue = data["social_queue"]
+    s1,s2,s3,s4 = st.columns(4)
+    s1.metric("Engine", str(social_health.get("status", "WAITING")))
+    s2.metric("Drafts", int(number(social_health.get("drafts_generated"))))
+    s3.metric("Approved", 0)
+    s4.metric("External actions", int(number(social_health.get("external_actions_taken"))))
+    if bool(social_health.get("publish_authorized", False)):
+        st.error("Safety invariant failed: generated content must not be pre-authorized.")
+    if queue.empty:
+        st.info(social_health.get("reason", "Social drafts are waiting for the next healthy broad scan."))
+    else:
+        for _, row in queue.iterrows():
+            st.markdown(f"**{row.get('content_type', 'DRAFT')} · {row.get('suggested_slot_et', '')}**")
+            st.code(str(row.get("draft_text", "")), language=None)
+            st.caption(
+                f"{row.get('content_id', '')} · {row.get('status', '')} · source: "
+                f"{row.get('source_dataset', '')}"
+            )
+        with st.expander("Calendar and approval queue"):
+            st.dataframe(data["social_calendar"], hide_index=True, use_container_width=True)
+
 with validation:
     performance, setup, calibration, gate = data["performance"], data["performance_setup"], data["calibration"], data["gate"]
     st.subheader("Forward validation")
@@ -670,7 +722,7 @@ with validation:
 
 with system:
     st.subheader("Pipeline and data health")
-    st.write("5k+ universe → liquidity gate → themes → technical structure → D/W/M levels → runway and R/R → catalysts → live VWAP/ORB/RVOL → V4 calibration/monitoring → V5 adaptive ranking → V6 uncertainty/abstention → V7 paper risk allocation → V7.2 bounded criteria proposals → guarded cutover")
+    st.write("5k+ universe → liquidity gate → themes → technical structure → D/W/M levels → runway and R/R → catalysts → live VWAP/ORB/RVOL → V4 calibration/monitoring → V5 adaptive ranking → V6 uncertainty/abstention → V7 paper risk allocation → V7.2 bounded proposals → V7.3 prospective challengers → guarded cutover")
     status_rows=pd.DataFrame([{"dataset":key,"rows":len(data[key]),"source":sources[key]} for key in files])
     st.dataframe(status_rows,hide_index=True,use_container_width=True)
     tradable=data["tradable"]
