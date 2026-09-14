@@ -1,4 +1,5 @@
 name: Market Hunt Intraday Intelligence
+# immediate validation trigger
 
 on:
   push:
