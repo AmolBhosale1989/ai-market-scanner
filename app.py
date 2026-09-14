@@ -169,7 +169,7 @@ def add_opportunity_context(frame):
 
 files = {
     "scan_meta":"scan_metadata.csv", "live_meta":"live_metadata.csv", "health":"scan_health.csv",
-    "live":"intraday_live.csv", "premarket":"premarket_discovery.csv", "theme_health":"theme_health.csv", "transitions":"state_transitions.csv", "themes":"trending_themes.csv",
+    "live":"intraday_live.csv", "premarket":"premarket_discovery.csv", "theme_health":"theme_health.csv", "sector_rotation":"sector_rotation.csv", "rotation_leaders":"rotation_leaders.csv", "transitions":"state_transitions.csv", "themes":"trending_themes.csv",
     "recommendations":"recommended_trades.csv", "leaders":"liquid_leaders.csv", "watchlist":"watchlist.csv",
     "picks":"latest_scan.csv", "tradable":"tradable_universe.csv", "candidates":"all_candidates.csv",
     "events":"upcoming_events.csv", "event_status":"event_status.csv", "journal":"paper_journal.csv",
@@ -297,6 +297,7 @@ with overview:
     st.subheader("Today at a glance")
     st.markdown('<div class="section-note">Only evidence-backed rows published by the production workflows are displayed.</div>', unsafe_allow_html=True)
     themes, recommendations, leaders, watchlist, live = data["themes"], data["recommendations"], data["leaders"], data["watchlist"], data["live"]
+    sector_rotation, rotation_leaders = data["sector_rotation"], data["rotation_leaders"]
     a,b,c,d,e = st.columns(5)
     a.metric("Live recommendations", len(recommendations))
     b.metric("Tracked leaders", len(leaders))
@@ -314,6 +315,16 @@ with overview:
                         f'<br><span class="muted">{decision} · score {score:.1f} · R/R {rr:.2f}×</span></div>', unsafe_allow_html=True)
     else:
         st.info("No stock currently passes every recommendation gate. Preliminary setups remain in the research watchlist.")
+    if not sector_rotation.empty:
+        st.subheader("Live sector rotation")
+        rot_cols=["rotation_rank","theme","etf","etf_change_pct","rel_vs_spy_pct","breadth_pct","rotation_score","rotation_state","updated_at_et"]
+        st.dataframe(sector_rotation[columns(sector_rotation,rot_cols)].head(10),hide_index=True,use_container_width=True)
+    if not rotation_leaders.empty:
+        hot=rotation_leaders[rotation_leaders.get("rotation_leader",False).astype(str).str.lower().isin(["true","1","yes"])] if "rotation_leader" in rotation_leaders else rotation_leaders
+        if not hot.empty:
+            st.subheader("Rotation leaders")
+            lead_cols=["rotation_rank","ticker","theme","last","day_change_pct","move_30m_pct","rel_vs_spy_pct","theme_rotation_state","rotation_leader_score","last_bar_et"]
+            st.dataframe(hot[columns(hot,lead_cols)].head(25),hide_index=True,use_container_width=True)
     if not themes.empty:
         st.subheader("Leading themes")
         st.dataframe(themes.head(10)[columns(themes,["theme_rank","theme","etf","theme_score","theme_state","ret5_pct","ret20_pct","rel5_vs_spy","rel20_vs_spy"])],
