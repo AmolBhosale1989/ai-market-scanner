@@ -5,5 +5,7 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0
-    healthCheckPath: /
+    # Streamlit's lightweight built-in health endpoint does not wait for the
+    # dashboard's remote evidence bundle to finish loading.
+    healthCheckPath: /_stcore/health
     autoDeploy: true
