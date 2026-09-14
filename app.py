@@ -736,6 +736,9 @@ with opportunities:
                            key="download_broad_opportunities")
 
     superstocks = add_live_table_context(data["trader_superstock"], live, momentum_signals, rotation_leaders)
+    if not superstocks.empty:
+        superstocks["_live_priority"] = superstocks["display_state"].map({"STRONG BUY":3,"TRIGGERED":2,"FORMING":1}).fillna(0)
+        superstocks = superstocks.sort_values(["_live_priority","legendary_score"], ascending=[False,False]).drop(columns=["_live_priority"], errors="ignore")
     st.subheader("Superstock candidates")
     st.markdown('<div class="section-note">Explosive liquid leaders with at least one +10% day in the last 30 sessions, ranked for outsized-move potential. A+ is a research priority, not an automatic trade.</div>', unsafe_allow_html=True)
     if superstocks.empty:
@@ -748,6 +751,9 @@ with opportunities:
         st.dataframe(superstocks[columns(superstocks,super_cols)].head(25), hide_index=True, use_container_width=True)
 
     brown = add_live_table_context(data["trader_brownmoose"], live, momentum_signals, rotation_leaders)
+    if not brown.empty:
+        brown["_live_priority"] = brown["display_state"].map({"STRONG BUY":3,"TRIGGERED":2,"FORMING":1}).fillna(0)
+        brown = brown.sort_values(["_live_priority","legendary_score"], ascending=[False,False]).drop(columns=["_live_priority"], errors="ignore")
     st.subheader("Brownmoose-style staged setups")
     st.markdown('<div class="section-note">Research approximation from observed subscriber examples: B1/B2 entries are mapped from EMA/support confluence, while T1/T2/T3 come from overhead resistance. No automatic orders are placed.</div>', unsafe_allow_html=True)
     if brown.empty:
@@ -760,6 +766,9 @@ with opportunities:
         st.dataframe(brown[columns(brown,brown_cols)].head(25), hide_index=True, use_container_width=True)
 
     venu = add_live_table_context(data["trader_venu"], live, momentum_signals, rotation_leaders)
+    if not venu.empty:
+        venu["_live_priority"] = venu["display_state"].map({"STRONG BUY":3,"TRIGGERED":2,"FORMING":1}).fillna(0)
+        venu = venu.sort_values(["_live_priority","legendary_score"], ascending=[False,False]).drop(columns=["_live_priority"], errors="ignore")
     st.subheader("Venu-style leaders")
     st.markdown('<div class="section-note">Research approximation with two modes: longer-horizon Position Leaders and tactical Rotation Swings. Theme leadership, catalyst/fundamental proxy, relative strength, trend alignment and pullback/breakout quality drive ranking.</div>', unsafe_allow_html=True)
     if venu.empty:
@@ -783,7 +792,14 @@ with opportunities:
     else:
         st.dataframe(leaders[columns(leaders,leader_cols)],hide_index=True,use_container_width=True)
 
-    recommendations = add_live_table_context(add_opportunity_context(data["recommendations"]), live, momentum_signals, rotation_leaders)
+    strict_recommendations = add_live_table_context(add_opportunity_context(data["recommendations"]), live, momentum_signals, rotation_leaders)
+    momentum_recommendations = pd.DataFrame()
+    if not momentum_signals.empty and "signal" in momentum_signals.columns:
+        momentum_recommendations = momentum_signals[momentum_signals["signal"].astype(str).eq("MOMENTUM BUY")].copy()
+        momentum_recommendations = add_live_table_context(momentum_recommendations, live, momentum_signals, rotation_leaders)
+    recommendations = pd.concat([strict_recommendations, momentum_recommendations], ignore_index=True, sort=False) if (not strict_recommendations.empty or not momentum_recommendations.empty) else pd.DataFrame()
+    if not recommendations.empty and "ticker" in recommendations.columns:
+        recommendations = recommendations.drop_duplicates("ticker", keep="first")
     st.subheader("Live-confirmed recommendations / Strong Buy")
     st.markdown('<div class="section-note">Only stocks passing liquidity, volatility, catalyst, spread, runway, R/R and live VWAP/ORB/RVOL gates appear here.</div>', unsafe_allow_html=True)
     recommendation_cols=["ticker","company_name","current_price","live_price","display_state","stage","momentum_signal","live_state","day_change_pct_live","rel_vs_spy_live","theme","market_hunt_score",
@@ -797,7 +813,13 @@ with opportunities:
         st.dataframe(recommendations[columns(recommendations,recommendation_cols)],hide_index=True,use_container_width=True)
         st.download_button("Download recommendations", recommendations.to_csv(index=False), "market_hunt_recommendations.csv", "text/csv", use_container_width=True)
 
-    picks = data["watchlist"] if not data["watchlist"].empty else data["picks"]
+    base_picks = data["watchlist"] if not data["watchlist"].empty else data["picks"]
+    v4_live_picks = data["v4_live_snapshot"]
+    picks_parts = [x for x in [base_picks, v4_live_picks] if x is not None and not x.empty]
+    picks = pd.concat(picks_parts, ignore_index=True, sort=False) if picks_parts else pd.DataFrame()
+    if not picks.empty and "ticker" in picks.columns:
+        picks["ticker"] = picks["ticker"].astype(str)
+        picks = picks.drop_duplicates("ticker", keep="last")
     picks = add_live_table_context(add_opportunity_context(picks), live, momentum_signals, rotation_leaders)
     st.subheader("Research watchlist")
     st.markdown('<div class="section-note">Deep-scan FORMING/DISCOVER setups are overlaid with current live prices. When live confirmation and momentum gates align, the display state upgrades to STRONG BUY without changing the underlying historical stage.</div>', unsafe_allow_html=True)
@@ -808,9 +830,17 @@ with opportunities:
         if query:
             mask = view.astype(str).apply(lambda col: col.str.contains(query,case=False,na=False)).any(axis=1)
             view = view[mask]
-        stages = sorted(view["stage"].dropna().astype(str).unique()) if "stage" in view else []
-        selected = st.multiselect("Stage", stages, default=stages)
-        if selected and "stage" in view: view = view[view["stage"].astype(str).isin(selected)]
+        f1, f2 = st.columns(2)
+        with f1:
+            stages = sorted(view["stage"].dropna().astype(str).unique()) if "stage" in view else []
+            selected = st.multiselect("Historical stage", stages, default=stages)
+        with f2:
+            actions = sorted(view["display_state"].dropna().astype(str).unique()) if "display_state" in view else []
+            selected_actions = st.multiselect("Live action", actions, default=actions)
+        if selected and "stage" in view:
+            view = view[view["stage"].astype(str).isin(selected)]
+        if selected_actions and "display_state" in view:
+            view = view[view["display_state"].astype(str).isin(selected_actions)]
         priority=["ticker","company_name","current_price","price","display_state","stage","momentum_signal","live_state","day_change_pct_live","rel_vs_spy_live","live_intraday_rvol","theme","theme_state","market_hunt_score","final_decision",
                   "rsi14","rsi_state","volume_vs_20ma","swing_volume_state",
                   "avg_share_volume20","median_dollar_volume20","atr_pct","adr20_pct",
