@@ -1,0 +1,41 @@
+{
+  "block_v9_review": true,
+  "checks": {
+    "daily_capture_complete": true,
+    "evidence_not_degraded": true,
+    "operational_health": true,
+    "resolution_progressing": true,
+    "snapshot_current": true
+  },
+  "detail": "forward outcomes are accumulating; no performance conclusion is permitted yet",
+  "failed_checks": [],
+  "generated_at_utc": "2026-09-14T13:30:35.504580+00:00",
+  "latest_snapshot_candidates": 20,
+  "latest_snapshot_session": "2026-09-11",
+  "mature_samples": 0,
+  "next_milestone": {
+    "current": 0,
+    "name": "MONITORING",
+    "remaining": 30,
+    "required": 30
+  },
+  "observation_days": 1,
+  "observations": 20,
+  "performance_claim_allowed": false,
+  "progress_pct": {
+    "monitoring_30": 0.0,
+    "v5_100": 0.0,
+    "v9_220": 0.0
+  },
+  "schema_version": "8.2.0",
+  "settings": {
+    "maximum_snapshot_age_days": 4,
+    "minimum_daily_candidates": 10,
+    "monitoring_samples": 30,
+    "v5_samples": 100,
+    "v9_samples": 220
+  },
+  "snapshot_age_calendar_days": 3,
+  "status": "HEALTHY_COLLECTING",
+  "unresolved_observations": 20
+}
