@@ -1,13 +1,21 @@
 name: Market Hunt Intraday Monitor
 
 on:
+  push:
+    paths:
+      - '.github/workflows/market-hunt-intraday.yml'
+      - 'scanner/intraday.py'
+      - 'scanner/live.py'
+      - 'scanner/theme_live.py'
+      - 'scanner/sector_rotation.py'
+      - 'scanner/premarket.py'
   schedule:
-    - cron: '*/15 8-22 * * 1-5'  # 04:00-18:45 ET during US daylight-saving time
+    - cron: '*/15 8-22 * * 1-5'
   workflow_dispatch:
 
 concurrency:
   group: market-hunt-intraday
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -19,26 +27,31 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Restore latest full-scan shortlist
+
+      - name: Restore latest full-scan cache
         uses: actions/cache/restore@v4
         with:
           path: outputs
           key: market-hunt-base-missing-${{ github.run_id }}
           restore-keys: |
             market-hunt-base-
-      - name: Restore prior state history
+
+      - name: Restore prior monitor state
         uses: actions/cache/restore@v4
         with:
           path: .state
           key: market-hunt-state-missing-${{ github.run_id }}
           restore-keys: |
             market-hunt-state-
+
       - name: Ensure live inputs from published scan data
         shell: bash
         run: |
@@ -52,35 +65,91 @@ jobs:
           done
           test -s outputs/latest_scan.csv
           test -s outputs/tradable_universe.csv
-      - name: Restore durable evidence ledgers
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf /tmp/market-hunt-evidence
-          git fetch origin scan-data:refs/remotes/origin/scan-data
-          git worktree add --detach /tmp/market-hunt-evidence origin/scan-data
-          python -m scanner.v4_evidence --state-dir .state/v4 --import-dir /tmp/market-hunt-evidence
-          git worktree remove --force /tmp/market-hunt-evidence
-      - name: Refresh live themes
-        continue-on-error: true
-        run: python -m scanner.theme_live
-      - name: Run live sector rotation engine
-        continue-on-error: true
-        run: python -m scanner.sector_rotation
-      - name: Run broad premarket discovery
-        continue-on-error: true
-        run: python -m scanner.premarket --batch-size 80 --top-n 100
+
+      # CRITICAL PATH: do this first and publish immediately.
       - name: Run live state monitor
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -m scanner.intraday --limit 20
+        run: python -m scanner.intraday --limit 30
+
+      - name: Publish critical live data
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "market-hunt-bot"
+          git config user.email "market-hunt-bot@users.noreply.github.com"
+          rm -rf /tmp/market-hunt-live
+          git fetch origin scan-data:scan-data
+          git worktree add /tmp/market-hunt-live scan-data
+          mkdir -p /tmp/market-hunt-live/dashboard-data
+          for f in recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json; do
+            if [ -f "outputs/$f" ]; then
+              cp "outputs/$f" "/tmp/market-hunt-live/dashboard-data/$f"
+            fi
+          done
+          printf "updated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live/dashboard-data/live_metadata.csv
+          cd /tmp/market-hunt-live
+          git add dashboard-data
+          if ! git diff --cached --quiet; then
+            git commit -m "Update critical live dashboard data [skip ci]"
+            git pull --rebase origin scan-data
+            git push origin scan-data
+          fi
+
       - name: Save updated monitor state
         if: always()
         uses: actions/cache/save@v4
         with:
           path: .state
           key: market-hunt-state-${{ github.run_id }}
+
+      - name: Refresh live themes
+        continue-on-error: true
+        shell: bash
+        run: timeout 240s python -m scanner.theme_live
+
+      - name: Run broad premarket discovery
+        continue-on-error: true
+        shell: bash
+        run: timeout 300s python -m scanner.premarket --batch-size 80 --top-n 100
+
+      - name: Run live sector rotation engine
+        continue-on-error: true
+        shell: bash
+        run: timeout 300s python -m scanner.sector_rotation
+
+      - name: Publish optional live intelligence
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "market-hunt-bot"
+          git config user.email "market-hunt-bot@users.noreply.github.com"
+          rm -rf /tmp/market-hunt-intel
+          git fetch origin scan-data:scan-data
+          git worktree add /tmp/market-hunt-intel scan-data
+          mkdir -p /tmp/market-hunt-intel/dashboard-data
+          for f in trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv premarket_discovery.csv premarket_health.csv; do
+            if [ -f "outputs/$f" ]; then
+              cp "outputs/$f" "/tmp/market-hunt-intel/dashboard-data/$f"
+            fi
+          done
+          printf "updated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-intel/dashboard-data/intelligence_metadata.csv
+          cd /tmp/market-hunt-intel
+          git add dashboard-data
+          if ! git diff --cached --quiet; then
+            git commit -m "Update intraday intelligence [skip ci]"
+            git pull --rebase origin scan-data
+            git push origin scan-data
+          fi
+
+      - name: Run V4.1 audit-only shadow cycle
+        continue-on-error: true
+        shell: bash
+        run: timeout 300s python -m scanner.v4_worker --once --candidate-source local --hot-limit 20 --warm-limit 80 --warm-batch-size 10 --warm-every-cycles 5 --max-workers 8 --catalysts --options-microstructure --options-limit 8
+
       - name: Add alerts to job summary
         if: always()
         shell: bash
@@ -92,77 +161,11 @@ jobs:
           else
             echo "No new actionable state transitions." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Publish live monitor data for dashboard
-        if: success()
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "market-hunt-bot"
-          git config user.email "market-hunt-bot@users.noreply.github.com"
-          rm -rf /tmp/market-hunt-scan-data
-          git fetch origin scan-data:scan-data
-          git worktree add /tmp/market-hunt-scan-data scan-data
-          mkdir -p /tmp/market-hunt-scan-data/dashboard-data /tmp/market-hunt-scan-data/evidence-state
-          for f in recommended_trades.csv trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv premarket_discovery.csv premarket_health.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json v4_monitor_shortlist.csv v4_live_snapshot.csv v4_transitions.csv v4_alerts.ndjson v4_worker_cycles.csv v4_worker_health.json v4_outcomes.csv v4_outcome_summary.csv v4_catalyst_events.csv v4_catalyst_health.json v4_options_microstructure.csv v4_options_microstructure_health.json; do
-            if [ -f "outputs/$f" ]; then
-              cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
-            fi
-          done
-          for f in v4_outcomes.json v4_shadow_observations.json; do
-            if [ -f ".state/v4/$f" ]; then
-              cp ".state/v4/$f" "/tmp/market-hunt-scan-data/evidence-state/$f"
-            fi
-          done
-          printf "updated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-scan-data/dashboard-data/live_metadata.csv
-          cd /tmp/market-hunt-scan-data
-          git add dashboard-data evidence-state
-          if git diff --cached --quiet; then
-            echo "Live dashboard data unchanged."
-          else
-            git commit -m "Update live dashboard data [skip ci]"
-            git pull --rebase origin scan-data
-            git push origin scan-data
-          fi
 
-      - name: Run V4.1 audit-only shadow cycle
-        continue-on-error: true
-        run: >-
-          python -m scanner.v4_worker --once --candidate-source local
-          --hot-limit 20 --warm-limit 80 --warm-batch-size 10
-          --warm-every-cycles 5 --max-workers 8 --catalysts
-          --options-microstructure --options-limit 8
-      - name: Upload intraday monitor outputs
+      - name: Upload intraday outputs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: market-hunt-intraday-${{ github.run_id }}
-          path: |
-            outputs/trending_themes.csv
-            outputs/theme_health.csv
-            outputs/sector_rotation.csv
-            outputs/rotation_leaders.csv
-            outputs/sector_rotation_health.csv
-            outputs/premarket_discovery.csv
-            outputs/premarket_health.csv
-            outputs/intraday_live.csv
-            outputs/state_transitions.csv
-            outputs/live_alerts.txt
-            outputs/paper_journal.csv
-            outputs/performance_summary.csv
-            outputs/performance_by_setup.csv
-            outputs/probability_calibration.csv
-            outputs/monitor_health.csv
-            outputs/product_feed.json
-            outputs/v4_monitor_shortlist.csv
-            outputs/v4_live_snapshot.csv
-            outputs/v4_transitions.csv
-            outputs/v4_alerts.ndjson
-            outputs/v4_worker_cycles.csv
-            outputs/v4_worker_health.json
-            outputs/v4_outcomes.csv
-            outputs/v4_outcome_summary.csv
-            outputs/v4_catalyst_events.csv
-            outputs/v4_catalyst_health.json
-            outputs/v4_options_microstructure.csv
-            outputs/v4_options_microstructure_health.json
+          path: outputs/
           if-no-files-found: warn
