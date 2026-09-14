@@ -169,3 +169,76 @@ jobs:
           name: market-hunt-intelligence-${{ github.run_id }}
           path: outputs/
           if-no-files-found: warn
+
+  v4-live-intelligence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    concurrency:
+      group: market-hunt-v4-live
+      cancel-in-progress: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Restore current market inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs .state/v4
+          git fetch origin scan-data:refs/remotes/origin/scan-data
+          for f in latest_scan.csv all_candidates.csv intraday_live.csv trending_themes.csv sector_rotation.csv rotation_leaders.csv momentum_signals.csv; do
+            git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
+          done
+          test -s outputs/latest_scan.csv
+      - name: Restore durable V4 evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/market-hunt-v4-evidence
+          git fetch origin scan-data:refs/remotes/origin/scan-data
+          git worktree add --detach /tmp/market-hunt-v4-evidence origin/scan-data
+          python -m scanner.v4_evidence --state-dir .state/v4 --import-dir /tmp/market-hunt-v4-evidence || true
+          git worktree remove --force /tmp/market-hunt-v4-evidence
+      - name: Run V4 live worker
+        continue-on-error: true
+        run: >-
+          timeout 300s python -m scanner.v4_worker --once --candidate-source local
+          --hot-limit 20 --warm-limit 80 --warm-batch-size 10
+          --warm-every-cycles 5 --max-workers 8 --catalysts
+          --options-microstructure --options-limit 8
+      - name: Publish V4 live intelligence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "market-hunt-bot"
+          git config user.email "market-hunt-bot@users.noreply.github.com"
+          rm -rf /tmp/market-hunt-v4-live
+          git fetch origin scan-data:scan-data
+          git worktree add /tmp/market-hunt-v4-live scan-data
+          mkdir -p /tmp/market-hunt-v4-live/dashboard-data
+          for f in v4_monitor_shortlist.csv v4_live_snapshot.csv v4_transitions.csv v4_alerts.ndjson v4_worker_cycles.csv v4_worker_health.json v4_catalyst_events.csv v4_catalyst_health.json v4_options_microstructure.csv v4_options_microstructure_health.json; do
+            if [ -f "outputs/$f" ]; then
+              cp "outputs/$f" "/tmp/market-hunt-v4-live/dashboard-data/$f"
+            fi
+          done
+          printf "updated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-v4-live/dashboard-data/v4_live_metadata.csv
+          cd /tmp/market-hunt-v4-live
+          git add dashboard-data
+          if ! git diff --cached --quiet; then
+            git commit -m "Update V4 live intelligence [skip ci]"
+            git pull --rebase origin scan-data
+            git push origin scan-data
+          fi
+      - name: Upload V4 live outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-hunt-v4-live-${{ github.run_id }}
+          path: outputs/v4_*
+          if-no-files-found: warn
