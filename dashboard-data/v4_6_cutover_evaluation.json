@@ -3,15 +3,17 @@
   "alert_samples": 0,
   "eligible": false,
   "event_lag_p95_ms": null,
+  "evidence_health_status": "COLLECTING",
   "failed_gates": [
     "V4_5_MODEL_STATUS",
     "MODEL_MONITOR",
+    "EVIDENCE_PIPELINE",
     "ALERT_SAMPLE_SIZE",
     "ALERT_PRECISION",
     "MARKET_UPTIME",
     "EVENT_LAG"
   ],
-  "generated_at_utc": "2026-09-13T21:27:27.506572+00:00",
+  "generated_at_utc": "2026-09-14T02:41:26.766676+00:00",
   "market_hours_uptime_pct": null,
   "model_monitor_status": "COLLECTING",
   "rollback_drill_passed": true,
