@@ -2,7 +2,7 @@
   "block_model_promotion": true,
   "detail": "forward evidence is accumulating normally",
   "failed_checks": [],
-  "generated_at_utc": "2026-09-14T02:59:08.922367+00:00",
+  "generated_at_utc": "2026-09-14T03:03:52.654513+00:00",
   "latest_snapshot_candidates": 20,
   "latest_snapshot_session": "2026-09-11",
   "mature_training_samples": 0,
