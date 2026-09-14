@@ -44,6 +44,13 @@ def _brier(actual: pd.Series, probability: pd.Series) -> float:
     return float(((probability[usable] - actual[usable]) ** 2).mean()) if usable.any() else math.nan
 
 
+def _whole_session_split(frame: pd.DataFrame, validation_rows: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if frame.empty or frame["_event_time"].nunique() < 2:
+        return pd.DataFrame(), pd.DataFrame()
+    boundary = frame.iloc[-validation_rows]["_event_time"]
+    return frame[frame["_event_time"] < boundary].copy(), frame[frame["_event_time"] >= boundary].copy()
+
+
 @dataclass(frozen=True)
 class AdaptiveSettings:
     min_total_samples: int = 100
@@ -115,7 +122,10 @@ def fit_adaptive_model(
 
     split = max(settings.min_validation_samples, int(math.ceil(len(frame) * settings.validation_fraction)))
     split = min(split, len(frame) - 1)
-    train, validation = frame.iloc[:-split].copy(), frame.iloc[-split:].copy()
+    train, validation = _whole_session_split(frame, split)
+    if train.empty or len(validation) < settings.min_validation_samples:
+        payload = {"schema_version": V5_SCHEMA, "model_version": "untrained", "promotion_status": "INSUFFICIENT_DATA", "samples": len(frame), "reason": "need complete chronological sessions across train and validation"}
+        return AdaptiveRegimeModel(payload), pd.DataFrame()
     base_settings = FitSettings(
         min_total_samples=max(30, min(60, len(train) // 2)),
         min_validation_samples=max(8, min(15, len(train) // 5)),

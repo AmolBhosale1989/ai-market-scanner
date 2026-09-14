@@ -15,7 +15,7 @@ import pandas as pd
 
 SHADOW_VALIDATION_SCHEMA = "4.shadow.1"
 TARGET_THRESHOLDS = (5, 10, 15)
-RETURN_HORIZONS = (1, 2, 3, 5)
+RETURN_HORIZONS = (1, 3, 5, 10)
 BREAKDOWN_COLUMNS = ("theme", "catalyst_type", "market_regime_state")
 
 
@@ -143,25 +143,39 @@ class ShadowValidationLedger:
         observed_at_utc: str = "",
         model_payload: Mapping[str, Any] | None = None,
         source_name: str = "",
+        v5_candidates: pd.DataFrame | None = None,
+        v6_candidates: pd.DataFrame | None = None,
+        v7_candidates: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         observations = self._load()
+        # A market-session snapshot is an immutable cohort. A retry may export
+        # or later resolve it, but must not append newly ranked symbols.
+        if any(str(record.get("as_of_session", "")) == str(as_of_session) for record in observations.values()):
+            self._export(observations)
+            return self._frame(observations)
         v3 = _rank(v3_candidates, "market_hunt_score")
         v45 = _rank(v45_candidates, "v45_calibrated_score")
         v3_top = v3.head(self.settings.top_k)
         v45_top = v45.head(self.settings.top_k)
+        v5_top = _rank(v5_candidates, "v5_adaptive_score").head(self.settings.top_k)
+        v6_top = _rank(v6_candidates, "v6_robust_score").head(self.settings.top_k)
+        v7_top = _rank(v7_candidates, "v6_robust_score").head(self.settings.top_k)
         v3_rows = {row["ticker"]: row for _, row in v3_top.iterrows()}
         v45_rows = {row["ticker"]: row for _, row in v45_top.iterrows()}
+        v5_rows = {row["ticker"]: row for _, row in v5_top.iterrows()}
+        v6_rows = {row["ticker"]: row for _, row in v6_top.iterrows()}
+        v7_rows = {row["ticker"]: row for _, row in v7_top.iterrows()}
         captured_at = observed_at_utc or datetime.now(timezone.utc).isoformat()
         model_payload = dict(model_payload or {})
 
-        for ticker in sorted(set(v3_rows) | set(v45_rows)):
+        for ticker in sorted(set(v3_rows) | set(v45_rows) | set(v5_rows) | set(v6_rows) | set(v7_rows)):
             key = f"{as_of_session}|{ticker}"
-            # A rerun must not rewrite the point-in-time ranking with later data.
-            if key in observations:
-                continue
             v3_row = v3_rows.get(ticker)
             v45_row = v45_rows.get(ticker)
-            source_row = v3_row if v3_row is not None else v45_row
+            v5_row = v5_rows.get(ticker)
+            v6_row = v6_rows.get(ticker)
+            v7_row = v7_rows.get(ticker)
+            source_row = next(row for row in (v3_row, v45_row, v5_row, v6_row, v7_row) if row is not None)
             assert source_row is not None
             record = {
                 "observation_id": key,
@@ -172,13 +186,29 @@ class ShadowValidationLedger:
                 "baseline_price": _number(_value(source_row, "price", "live_price")),
                 "selected_v3": v3_row is not None,
                 "selected_v45": v45_row is not None,
+                "selected_v5": v5_row is not None,
+                "selected_v6": v6_row is not None,
+                "selected_v7": v7_row is not None,
                 "v3_rank": int(v3_row["_shadow_rank"]) if v3_row is not None else None,
                 "v45_rank": int(v45_row["_shadow_rank"]) if v45_row is not None else None,
+                "v5_rank": int(v5_row["_shadow_rank"]) if v5_row is not None else None,
+                "v6_rank": int(v6_row["_shadow_rank"]) if v6_row is not None else None,
+                "v7_rank": int(v7_row["_shadow_rank"]) if v7_row is not None else None,
                 "market_hunt_score": _number(_value(source_row, "market_hunt_score")),
                 "v45_calibrated_score": _number(_value(v45_row, "v45_calibrated_score")) if v45_row is not None else None,
                 "v45_p5_probability": _number(_value(v45_row, "v45_p5_probability")) if v45_row is not None else None,
                 "v45_p10_probability": _number(_value(v45_row, "v45_p10_probability")) if v45_row is not None else None,
                 "v45_p15_probability": _number(_value(v45_row, "v45_p15_probability")) if v45_row is not None else None,
+                "v5_adaptive_score": _number(_value(v5_row, "v5_adaptive_score")) if v5_row is not None else None,
+                "v5_p5_probability": _number(_value(v5_row, "v5_p5_probability")) if v5_row is not None else None,
+                "v5_p10_probability": _number(_value(v5_row, "v5_p10_probability")) if v5_row is not None else None,
+                "v5_p15_probability": _number(_value(v5_row, "v5_p15_probability")) if v5_row is not None else None,
+                "v6_robust_score": _number(_value(v6_row, "v6_robust_score")) if v6_row is not None else None,
+                "v6_p5_probability": _number(_value(v6_row, "v6_p5_probability")) if v6_row is not None else None,
+                "v6_p10_probability": _number(_value(v6_row, "v6_p10_probability")) if v6_row is not None else None,
+                "v6_p15_probability": _number(_value(v6_row, "v6_p15_probability")) if v6_row is not None else None,
+                "v6_confidence": str(_value(v6_row, "v6_confidence") or "") if v6_row is not None else "",
+                "v6_decision": str(_value(v6_row, "v6_decision") or "") if v6_row is not None else "",
                 "v45_model_version": str(model_payload.get("model_version", "")),
                 "v45_model_status": str(model_payload.get("promotion_status", "")),
                 "stage": str(_value(source_row, "stage") or ""),
@@ -210,7 +240,7 @@ class ShadowValidationLedger:
         if frame.empty:
             return []
         resolved = pd.to_numeric(frame.get("daily_bars_resolved"), errors="coerce").fillna(0)
-        return sorted(frame.loc[resolved.lt(self.settings.forward_sessions), "ticker"].astype(str).unique())
+        return sorted(frame.loc[resolved.lt(max(RETURN_HORIZONS)), "ticker"].astype(str).unique())
 
     def resolve_histories(self, histories: Mapping[str, pd.DataFrame]) -> pd.DataFrame:
         observations = self._load()
@@ -227,7 +257,7 @@ class ShadowValidationLedger:
                 continue
             session = pd.Timestamp(record["as_of_session"]).date()
             future = frame[pd.DatetimeIndex(frame.index).date > session].sort_index()
-            available = min(len(future), self.settings.forward_sessions)
+            available = min(len(future), max(RETURN_HORIZONS))
             record["daily_bars_resolved"] = max(int(record.get("daily_bars_resolved", 0)), available)
             for horizon in RETURN_HORIZONS:
                 if len(future) >= horizon:
@@ -271,8 +301,16 @@ class ShadowValidationLedger:
 
     def _strategy_summary(self, frame: pd.DataFrame) -> pd.DataFrame:
         rows: list[dict[str, Any]] = []
-        for strategy, selector in (("V3", "selected_v3"), ("V4_5", "selected_v45")):
-            selected = frame[frame.get(selector, False).map(_truthy)].copy() if not frame.empty else frame
+        strategies = (
+            ("V3", "selected_v3", None),
+            ("V4_5", "selected_v45", "v45"),
+            ("V5", "selected_v5", "v5"),
+            ("V6", "selected_v6", "v6"),
+            ("V7_PAPER", "selected_v7", "v6"),
+        )
+        for strategy, selector, probability_prefix in strategies:
+            selected_flag = frame.get(selector, pd.Series(False, index=frame.index))
+            selected = frame[selected_flag.map(_truthy)].copy() if not frame.empty else frame
             mature = selected[
                 pd.to_numeric(selected.get("daily_bars_resolved"), errors="coerce")
                 .fillna(0).ge(self.settings.forward_sessions)
@@ -312,7 +350,9 @@ class ShadowValidationLedger:
             failures = mature.get("false_breakout", pd.Series(dtype=object)).map(_truthy)
             row["false_breakout_rate_pct"] = round(float(failures.mean() * 100), 2) if len(failures) else None
             for target in TARGET_THRESHOLDS:
-                probability = pd.to_numeric(mature.get(f"v45_p{target}_probability"), errors="coerce") / 100.0
+                probability_column = f"{probability_prefix}_p{target}_probability" if probability_prefix else ""
+                probability_source = mature.get(probability_column, pd.Series(index=mature.index, dtype=float))
+                probability = pd.to_numeric(probability_source, errors="coerce") / 100.0
                 actual = mature.get(f"forward_hit_{target}pct", pd.Series(index=mature.index, dtype=object)).map(_truthy).astype(float)
                 usable = probability.notna() & actual.notna()
                 row[f"p{target}_brier_score"] = round(float(((probability[usable] - actual[usable]) ** 2).mean()), 6) if usable.any() else None
@@ -330,6 +370,9 @@ class ShadowValidationLedger:
                 "as_of_session": session,
                 "v3_candidates": len(v3),
                 "v45_candidates": len(v45),
+                "v5_candidates": int(group.get("selected_v5", pd.Series(False, index=group.index)).map(_truthy).sum()),
+                "v6_candidates": int(group.get("selected_v6", pd.Series(False, index=group.index)).map(_truthy).sum()),
+                "v7_paper_candidates": int(group.get("selected_v7", pd.Series(False, index=group.index)).map(_truthy).sum()),
                 "overlap_candidates": len(v3 & v45),
                 "top_k_agreement_pct": round(len(v3 & v45) / denominator * 100, 2) if denominator else None,
                 "mature_candidates": int(mature.sum()),
@@ -340,8 +383,15 @@ class ShadowValidationLedger:
 
     def _breakdowns(self, frame: pd.DataFrame) -> pd.DataFrame:
         rows: list[dict[str, Any]] = []
-        for strategy, selector in (("V3", "selected_v3"), ("V4_5", "selected_v45")):
-            selected = frame[frame.get(selector, False).map(_truthy)].copy() if not frame.empty else frame
+        for strategy, selector in (
+            ("V3", "selected_v3"),
+            ("V4_5", "selected_v45"),
+            ("V5", "selected_v5"),
+            ("V6", "selected_v6"),
+            ("V7_PAPER", "selected_v7"),
+        ):
+            selected_flag = frame.get(selector, pd.Series(False, index=frame.index))
+            selected = frame[selected_flag.map(_truthy)].copy() if not frame.empty else frame
             mature = selected[
                 pd.to_numeric(selected.get("daily_bars_resolved"), errors="coerce")
                 .fillna(0).ge(self.settings.forward_sessions)
@@ -392,5 +442,6 @@ class ShadowValidationLedger:
                 "mature_observations": int(mature.sum()),
                 "top_k": self.settings.top_k,
                 "forward_sessions": self.settings.forward_sessions,
+                "maximum_resolution_sessions": max(RETURN_HORIZONS),
             }
             self.health_json.write_text(json.dumps(health, indent=2, sort_keys=True, allow_nan=False))

@@ -43,7 +43,9 @@ def _v3_candidates(output_dir: Path) -> pd.DataFrame:
 def evaluate(state_dir: Path, output_dir: Path):
     worker_health = _json(output_dir / "v4_worker_health.json") or _json(state_dir / "v4_worker_health.json")
     model_health = _json(output_dir / "v4_model_monitor.json")
+    evidence_health = _json(output_dir / "v7_1_evidence_health.json")
     worker_health["model_monitor_status"] = str(model_health.get("status", "UNKNOWN"))
+    worker_health["evidence_health_status"] = str(evidence_health.get("status", "UNKNOWN"))
     decision = evaluate_cutover(
         _v3_candidates(output_dir),
         _csv(output_dir / "v4_5_ranked_candidates.csv"),

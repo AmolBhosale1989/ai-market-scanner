@@ -50,6 +50,24 @@ def _stable_payload(value: Any) -> Any:
     return value
 
 
+def _whole_session_three_way(
+    frame: pd.DataFrame,
+    calibration_rows: int,
+    validation_rows: int,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    if frame.empty or frame["_event_time"].nunique() < 3:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    validation_boundary = frame.iloc[-validation_rows]["_event_time"]
+    before_validation = frame[frame["_event_time"] < validation_boundary].copy()
+    validation = frame[frame["_event_time"] >= validation_boundary].copy()
+    if len(before_validation) <= calibration_rows:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    calibration_boundary = before_validation.iloc[-calibration_rows]["_event_time"]
+    train = before_validation[before_validation["_event_time"] < calibration_boundary].copy()
+    calibration = before_validation[before_validation["_event_time"] >= calibration_boundary].copy()
+    return train, calibration, validation
+
+
 @dataclass(frozen=True)
 class UncertaintySettings:
     min_total_samples: int = 220
@@ -153,12 +171,9 @@ def fit_uncertainty_model(
 
     validation_size = max(settings.min_validation_samples, int(math.ceil(len(frame) * settings.validation_fraction)))
     calibration_size = max(settings.min_calibration_samples, int(math.ceil(len(frame) * settings.calibration_fraction)))
-    train_size = len(frame) - calibration_size - validation_size
-    if train_size < 100:
+    train, calibration, validation = _whole_session_three_way(frame, calibration_size, validation_size)
+    if len(train) < 100 or len(calibration) < settings.min_calibration_samples or len(validation) < settings.min_validation_samples:
         return _insufficient("need at least 100 earlier training samples after holdouts", len(frame))
-    train = frame.iloc[:train_size].copy()
-    calibration = frame.iloc[train_size:train_size + calibration_size].copy()
-    validation = frame.iloc[train_size + calibration_size:].copy()
 
     v5_settings = AdaptiveSettings(
         min_total_samples=100,

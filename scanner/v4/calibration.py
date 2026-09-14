@@ -73,6 +73,15 @@ def _brier(y: np.ndarray, p: np.ndarray) -> float:
     return float(np.mean((p - y) ** 2)) if len(y) else math.nan
 
 
+def _whole_session_split(frame: pd.DataFrame, validation_rows: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if frame.empty or frame["_event_time"].nunique() < 2:
+        return pd.DataFrame(), pd.DataFrame()
+    boundary = frame.iloc[-validation_rows]["_event_time"]
+    train = frame[frame["_event_time"] < boundary].copy()
+    validation = frame[frame["_event_time"] >= boundary].copy()
+    return train, validation
+
+
 @dataclass(frozen=True)
 class FitSettings:
     min_total_samples: int = 60
@@ -238,7 +247,17 @@ def fit_model(outcomes: pd.DataFrame, settings: FitSettings | None = None) -> tu
         int(math.ceil(len(frame) * settings.validation_fraction)),
     )
     split = min(split, len(frame) - 1)
-    train, validation = frame.iloc[:-split].copy(), frame.iloc[-split:].copy()
+    train, validation = _whole_session_split(frame, split)
+    if train.empty or len(validation) < settings.min_validation_samples:
+        payload = {
+            "schema_version": MODEL_SCHEMA,
+            "model_version": "untrained",
+            "promotion_status": "INSUFFICIENT_DATA",
+            "reason": "need at least two complete chronological sessions across train and validation",
+            "samples": len(frame),
+            "targets": {},
+        }
+        return CalibratedRankingModel(payload), pd.DataFrame()
 
     target_payloads: dict[str, Any] = {}
     metrics_rows: list[dict[str, Any]] = []

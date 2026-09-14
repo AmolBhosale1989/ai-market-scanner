@@ -8,6 +8,7 @@ from pathlib import Path
 from .config import OUTPUT_DIR
 from .data import download_history
 from .v4.calibration import fit_model, save_model
+from .v4.evidence import training_outcomes
 from .v4.outcomes import SignalOutcomeLedger
 from .v4.replay import verify_deterministic_replay
 from .v4.source import HttpCandidateSource
@@ -36,9 +37,7 @@ def resolve_daily(state_dir: Path, output_dir: Path):
 
 
 def fit_calibration(state_dir: Path, output_dir: Path):
-    ledger = build_ledger(state_dir, output_dir)
-    records = ledger.load_records()
-    outcomes = pd.DataFrame(list(records.values()))
+    outcomes = training_outcomes(state_dir, output_dir)
     model, validation = fit_model(outcomes)
     save_model(model, state_dir / "v4_5_model.json")
     output_dir.mkdir(parents=True, exist_ok=True)

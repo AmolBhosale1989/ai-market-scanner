@@ -382,3 +382,27 @@ are rejected with auditable reason counts.
 The V7 artifact is explicitly marked `paper_only`; its health payload always
 reports `broker_execution_enabled: false`. If V6 is not validated, V7 emits
 `HOLD_SHADOW` and no positions.
+
+## V7.1 durable evidence foundation
+
+The original intraday outcome ledger contains only candidates that transition
+to `TRIGGERED` or `LIVE_CONFIRMED`. That evidence remains useful for execution
+precision, but it cannot bootstrap a ranking model when no intraday transition
+has occurred. V7.1 therefore promotes the existing daily point-in-time shadow
+ledger to a first-class model-training source after—and only after—five later
+market sessions have resolved.
+
+Every daily snapshot stores the union of the top V3, V4.5, V5, V6 and V7-paper
+candidates without rewriting an existing session. Forward returns are resolved
+at 1, 3, 5 and 10 sessions; the five-session window supplies MFE, MAE, 5%/10%/15%
+hit labels, false-breakout classification and R-multiple. Model fitting excludes
+every unresolved row, preventing look-ahead leakage.
+
+Both the daily snapshot ledger and intraday-trigger ledger are versioned on the
+`scan-data` branch under `evidence-state/`. GitHub caches remain a speed
+optimization rather than the source of truth. Each scheduled evidence run merges
+durable and cached records before resolution, then republishes the merged ledgers.
+
+`v7_1_evidence_health.json` monitors snapshot freshness, daily capture volume,
+stalled forward resolution and the 30/100/220-sample milestones. A degraded or
+still-collecting evidence pipeline is an explicit V4.6 cutover failure.

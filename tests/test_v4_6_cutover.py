@@ -74,6 +74,15 @@ def test_v46_blocks_degraded_model_monitor():
     assert "MODEL_MONITOR" in decision.failed_gates
 
 
+def test_v46_blocks_unhealthy_evidence_pipeline():
+    v3, v45, out, model, health = decision_inputs()
+    health["evidence_health_status"] = "DEGRADED"
+    decision = evaluate_cutover(v3, v45, out, model, health)
+    assert not decision.eligible
+    assert decision.evidence_health_status == "DEGRADED"
+    assert "EVIDENCE_PIPELINE" in decision.failed_gates
+
+
 def test_v46_controller_refuses_activation_without_pass(tmp_path):
     v3, v45, out, model, health = decision_inputs()
     decision = evaluate_cutover(

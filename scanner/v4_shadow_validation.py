@@ -38,15 +38,21 @@ def build_ledger(state_dir: Path, output_dir: Path) -> ShadowValidationLedger:
     )
 
 
-def run(state_dir: Path, output_dir: Path, as_of_session: str = "") -> pd.DataFrame:
+def resolve_existing(state_dir: Path, output_dir: Path) -> pd.DataFrame:
     ledger = build_ledger(state_dir, output_dir)
     unresolved = ledger.unresolved_tickers()
     histories = download_batch(unresolved, period="3mo", interval="1d") if unresolved else {}
-    ledger.resolve_histories(histories)
+    return ledger.resolve_histories(histories)
 
+
+def record_current(state_dir: Path, output_dir: Path, as_of_session: str = "") -> pd.DataFrame:
+    ledger = build_ledger(state_dir, output_dir)
     source = HttpCandidateSource().load()
     v3 = source.frame
     v45 = _csv(output_dir / "v4_5_ranked_candidates.csv")
+    v5 = _csv(output_dir / "v5_ranked_candidates.csv")
+    v6 = _csv(output_dir / "v6_ranked_candidates.csv")
+    v7 = _csv(output_dir / "v7_paper_portfolio.csv")
     model = _json(state_dir / "v4_5_model.json") or _json(output_dir / "v4_5_model.json")
     session = as_of_session or infer_as_of_session(v3, source.source_timestamp_utc)
     frame = ledger.record_snapshot(
@@ -56,6 +62,9 @@ def run(state_dir: Path, output_dir: Path, as_of_session: str = "") -> pd.DataFr
         observed_at_utc=source.source_timestamp_utc,
         model_payload=model,
         source_name=source.source_name,
+        v5_candidates=v5,
+        v6_candidates=v6,
+        v7_candidates=v7,
     )
     print(
         f"V4 shadow validation: session={session} observations={len(frame)} "
@@ -64,10 +73,26 @@ def run(state_dir: Path, output_dir: Path, as_of_session: str = "") -> pd.DataFr
     return frame
 
 
+def run(state_dir: Path, output_dir: Path, as_of_session: str = "") -> pd.DataFrame:
+    resolve_existing(state_dir, output_dir)
+    return record_current(state_dir, output_dir, as_of_session)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Market Hunt V3 versus V4.5 daily shadow validation")
     parser.add_argument("--state-dir", default=".state/v4")
     parser.add_argument("--output-dir", default=str(OUTPUT_DIR))
     parser.add_argument("--as-of-session", default="")
+    parser.add_argument("--resolve-only", action="store_true")
+    parser.add_argument("--record-only", action="store_true")
     args = parser.parse_args()
-    run(Path(args.state_dir), Path(args.output_dir), args.as_of_session)
+    state_dir, output_dir = Path(args.state_dir), Path(args.output_dir)
+    if args.resolve_only and args.record_only:
+        parser.error("choose only one of --resolve-only or --record-only")
+    if args.resolve_only:
+        frame = resolve_existing(state_dir, output_dir)
+        print(f"V4 shadow resolution: observations={len(frame)}")
+    elif args.record_only:
+        record_current(state_dir, output_dir, args.as_of_session)
+    else:
+        run(state_dir, output_dir, args.as_of_session)

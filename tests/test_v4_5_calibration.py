@@ -103,3 +103,17 @@ def test_v45_model_version_is_stable_for_identical_evidence():
     first, _ = fit_model(outcomes(100), settings)
     second, _ = fit_model(outcomes(100), settings)
     assert first.version == second.version
+
+
+def test_v45_keeps_daily_batches_out_of_both_split_sides():
+    frame = outcomes(160)
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    frame["entered_at_utc"] = [
+        (start + timedelta(days=i // 20)).isoformat() for i in range(len(frame))
+    ]
+    model, _ = fit_model(
+        frame,
+        FitSettings(min_total_samples=60, min_validation_samples=20, min_positive_samples=5),
+    )
+    assert model.promotion_status != "INSUFFICIENT_DATA"
+    assert model.payload["train_end_utc"] < model.payload["validation_start_utc"]
