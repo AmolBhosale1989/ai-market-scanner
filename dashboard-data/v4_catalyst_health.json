@@ -1,28 +1,28 @@
 {
-  "checked_at_utc": "2026-09-14T14:48:53.751309+00:00",
-  "events": 8,
-  "negative_veto_events": 2,
+  "checked_at_utc": "2026-09-14T19:11:25.680414+00:00",
+  "events": 7,
+  "negative_veto_events": 1,
   "providers": [
     {
-      "duration_ms": 19183,
+      "duration_ms": 20187,
       "errors": 4,
       "events": 3,
       "nasdaq_fallbacks": 0,
       "provider": "SEC_EDGAR",
       "relay_errors": 4,
-      "relay_fallbacks": 21,
+      "relay_fallbacks": 23,
       "requested": 30,
-      "resolved": 25,
-      "search_errors": 25,
+      "resolved": 27,
+      "search_errors": 27,
       "search_fallbacks": 0,
-      "submissions_errors": 25,
+      "submissions_errors": 27,
       "ticker_map_source": "SEC_CIK_MAPPER_GITHUB",
-      "unresolved": 5
+      "unresolved": 3
     },
     {
-      "duration_ms": 893,
+      "duration_ms": 1502,
       "errors": 0,
-      "events": 5,
+      "events": 4,
       "provider": "YAHOO_NEWS",
       "requested": 20
     },
@@ -34,8 +34,8 @@
       "status": "NOT_AVAILABLE"
     }
   ],
-  "retained_active_events": 8,
-  "review_required_events": 7,
-  "source_lag_p95_seconds": 220930.0,
+  "retained_active_events": 7,
+  "review_required_events": 6,
+  "source_lag_p95_seconds": 237890.6,
   "status": "DEGRADED"
 }
