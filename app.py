@@ -144,6 +144,80 @@ def number(value, default=0):
 def columns(frame, preferred):
     return [name for name in preferred if name in frame.columns]
 
+def add_live_legendary_context(frame, live_frame, momentum_frame, rotation_frame):
+    """Overlay current-session market context on slower legendary-agent outputs."""
+    if frame is None or frame.empty:
+        return frame
+    out = frame.copy()
+    if "ticker" not in out.columns:
+        return out
+    out["ticker"] = out["ticker"].astype(str)
+    out["current_price"] = pd.to_numeric(out.get("price"), errors="coerce")
+    out["live_state"] = ""
+    out["momentum_signal"] = ""
+    out["live_intraday_rvol"] = pd.NA
+    out["day_change_pct_live"] = pd.NA
+    out["rel_vs_spy_live"] = pd.NA
+    out["theme_rotation_score_live"] = pd.NA
+    out["legendary_live_boost"] = 0.0
+
+    if live_frame is not None and not live_frame.empty and "ticker" in live_frame.columns:
+        lv = live_frame.copy()
+        lv["ticker"] = lv["ticker"].astype(str)
+        lv = lv.drop_duplicates("ticker", keep="first").set_index("ticker")
+        if "live_price" in lv:
+            out["current_price"] = out["ticker"].map(pd.to_numeric(lv["live_price"], errors="coerce")).combine_first(out["current_price"])
+        if "monitor_state" in lv:
+            out["live_state"] = out["ticker"].map(lv["monitor_state"]).fillna("")
+        if "intraday_rvol" in lv:
+            out["live_intraday_rvol"] = out["ticker"].map(pd.to_numeric(lv["intraday_rvol"], errors="coerce"))
+        state_bonus = out["live_state"].map({"LIVE_CONFIRMED":25,"TRIGGERED":15,"ARMED":8}).fillna(0)
+        out["legendary_live_boost"] += state_bonus
+
+    if momentum_frame is not None and not momentum_frame.empty and "ticker" in momentum_frame.columns:
+        ms = momentum_frame.copy()
+        ms["ticker"] = ms["ticker"].astype(str)
+        ms = ms.drop_duplicates("ticker", keep="first").set_index("ticker")
+        if "price" in ms:
+            out["current_price"] = out["ticker"].map(pd.to_numeric(ms["price"], errors="coerce")).combine_first(out["current_price"])
+        if "signal" in ms:
+            out["momentum_signal"] = out["ticker"].map(ms["signal"]).fillna("")
+        if "intraday_rvol" in ms:
+            out["live_intraday_rvol"] = out["ticker"].map(pd.to_numeric(ms["intraday_rvol"], errors="coerce")).combine_first(pd.to_numeric(out["live_intraday_rvol"], errors="coerce"))
+        if "day_change_pct" in ms:
+            out["day_change_pct_live"] = out["ticker"].map(pd.to_numeric(ms["day_change_pct"], errors="coerce"))
+        if "rel_vs_spy_pct" in ms:
+            out["rel_vs_spy_live"] = out["ticker"].map(pd.to_numeric(ms["rel_vs_spy_pct"], errors="coerce"))
+        if "theme_rotation_score" in ms:
+            out["theme_rotation_score_live"] = out["ticker"].map(pd.to_numeric(ms["theme_rotation_score"], errors="coerce"))
+        sig_bonus = out["momentum_signal"].map({
+            "MOMENTUM BUY":30,
+            "WATCH / NEAR ENTRY":18,
+            "EXTENDED / WAIT RETEST":6,
+        }).fillna(0)
+        out["legendary_live_boost"] += sig_bonus
+
+    if rotation_frame is not None and not rotation_frame.empty and "ticker" in rotation_frame.columns:
+        rl = rotation_frame.copy()
+        rl["ticker"] = rl["ticker"].astype(str)
+        rl = rl.drop_duplicates("ticker", keep="first").set_index("ticker")
+        if "last" in rl:
+            out["current_price"] = out["ticker"].map(pd.to_numeric(rl["last"], errors="coerce")).combine_first(out["current_price"])
+        if "day_change_pct" in rl:
+            out["day_change_pct_live"] = out["ticker"].map(pd.to_numeric(rl["day_change_pct"], errors="coerce")).combine_first(pd.to_numeric(out["day_change_pct_live"], errors="coerce"))
+        if "rel_vs_spy_pct" in rl:
+            out["rel_vs_spy_live"] = out["ticker"].map(pd.to_numeric(rl["rel_vs_spy_pct"], errors="coerce")).combine_first(pd.to_numeric(out["rel_vs_spy_live"], errors="coerce"))
+        if "theme_rotation_score" in rl:
+            out["theme_rotation_score_live"] = out["ticker"].map(pd.to_numeric(rl["theme_rotation_score"], errors="coerce")).combine_first(pd.to_numeric(out["theme_rotation_score_live"], errors="coerce"))
+        out["legendary_live_boost"] += (
+            pd.to_numeric(out["theme_rotation_score_live"], errors="coerce").fillna(0) * 0.12
+            + pd.to_numeric(out["rel_vs_spy_live"], errors="coerce").fillna(0).clip(lower=0, upper=10)
+        )
+
+    base_score = pd.to_numeric(out.get("legendary_score"), errors="coerce") if "legendary_score" in out else pd.Series(50.0, index=out.index)
+    out["current_legendary_score"] = (base_score.fillna(50) * 0.72 + out["legendary_live_boost"].clip(0,28)).clip(0,100)
+    return out.sort_values(["current_legendary_score"], ascending=False)
+
 def add_opportunity_context(frame):
     """Add readable RSI/volume states for opportunity tables without changing scan logic."""
     if frame is None or frame.empty:
@@ -675,9 +749,12 @@ with opportunities:
 
 with legendary_tab:
     st.subheader("Legendary trader setup agents")
-    st.markdown('<div class="section-note">Independent screening agents translate publicly described trading principles into objective research filters. They are approximations for scanning/backtesting, not exact reproductions of any trader\'s discretionary process.</div>', unsafe_allow_html=True)
+    legendary_live = data["live"]
+    legendary_momentum = data["momentum_signals"]
+    legendary_rotation = data["rotation_leaders"]
+    st.markdown('<div class="section-note">Agent memberships come from the latest deep scan, but prices, momentum, live state, RVOL, sector rotation and ranking are overlaid from the current intraday session. This prevents stale full-scan ordering during market hours.</div>', unsafe_allow_html=True)
 
-    consensus = data["legendary_consensus"]
+    consensus = add_live_legendary_context(data["legendary_consensus"], legendary_live, legendary_momentum, legendary_rotation)
     if not consensus.empty:
         st.subheader("Multi-agent consensus")
         st.markdown('<div class="section-note">Stocks detected by multiple trader agents are ranked first. Agreement is a research signal, not a trade recommendation.</div>', unsafe_allow_html=True)
@@ -704,7 +781,7 @@ with legendary_tab:
 
     preview_cols = st.columns(3)
     for idx, (trader_name, setup_name, key) in enumerate(trader_views[-3:]):
-        frame = data[key]
+        frame = add_live_legendary_context(data[key], legendary_live, legendary_momentum, legendary_rotation)
         with preview_cols[idx]:
             st.markdown(
                 f'<div class="agent-card"><div class="name">{trader_name}</div>'
@@ -715,12 +792,12 @@ with legendary_tab:
             )
 
     for trader_name, setup_name, key in trader_views:
-        frame = data[key]
+        frame = add_live_legendary_context(data[key], legendary_live, legendary_momentum, legendary_rotation)
         with st.expander(f"{trader_name} · {setup_name}", expanded=False):
             if frame.empty:
                 st.write("No current matches.")
             else:
-                preferred = ["ticker","company_name","price","venu_grade","venu_mode","venu_trend_stack","venu_theme_leadership","venu_fundamental_proxy_score","brownmoose_grade","brownmoose_state","brownmoose_confluence_score","brown_b1","brown_b1_source","brown_b2","brown_b2_source","brown_invalidation","brown_t1","brown_t2","brown_t3","brown_rr_to_t1","superstock_grade","superstock_action","momentum_grade","setup_match","legendary_score","stage","theme",
+                preferred = ["ticker","company_name","current_price","price","current_legendary_score","momentum_signal","live_state","day_change_pct_live","rel_vs_spy_live","live_intraday_rvol","theme_rotation_score_live","venu_grade","venu_mode","venu_trend_stack","venu_theme_leadership","venu_fundamental_proxy_score","brownmoose_grade","brownmoose_state","brownmoose_confluence_score","brown_b1","brown_b1_source","brown_b2","brown_b2_source","brown_invalidation","brown_t1","brown_t2","brown_t3","brown_rr_to_t1","superstock_grade","superstock_action","momentum_grade","setup_match","legendary_score","stage","theme",
                              "market_hunt_score","rs20_vs_spy","rsi14","rsi_state","atr_pct","adr20_pct","entry_trigger","entry_model",
                              "stop","effective_target","effective_rr","runway_to_next_resistance_pct",
                              "catalyst_status","intraday_rvol","setup_reason"]
