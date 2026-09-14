@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at_utc": "2026-09-14T20:59:59.123434+00:00",
+  "generated_at_utc": "2026-09-14T23:43:32.781470+00:00",
   "research_only": true,
   "market_hunt": {
     "recommendations": [],
@@ -16262,7 +16262,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "COIN",
@@ -16396,7 +16396,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "MSTR",
@@ -16530,7 +16530,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "TEAM",
@@ -16664,7 +16664,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "NOW",
@@ -16798,7 +16798,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "CRCL",
@@ -16932,7 +16932,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "MRNA",
@@ -17066,7 +17066,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "ANF",
@@ -17200,7 +17200,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "HALO",
@@ -17334,7 +17334,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "CAI",
@@ -17468,7 +17468,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "TEM",
@@ -17602,7 +17602,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "AMLX",
@@ -17736,7 +17736,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "ARE",
@@ -17870,7 +17870,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "DOCU",
@@ -18004,7 +18004,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "PSNL",
@@ -18138,7 +18138,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "NTRA",
@@ -18272,7 +18272,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "SNAP",
@@ -18403,10 +18403,10 @@
         "market_hunt_score": 69.6,
         "universal_10pct_gate": true,
         "live_stage_priority": 2,
-        "previous_state": "NEW",
+        "previous_state": "FORMING",
         "monitor_state": "FORMING",
-        "state_changed": true,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "state_changed": false,
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "DXYZ",
@@ -18540,7 +18540,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "CRWD",
@@ -18674,7 +18674,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "NTSK",
@@ -18808,7 +18808,7 @@
         "previous_state": "TRIGGERED",
         "monitor_state": "TRIGGERED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "HOOD",
@@ -18942,7 +18942,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "BMNR",
@@ -19076,7 +19076,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "NVAX",
@@ -19210,7 +19210,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "SRPT",
@@ -19344,7 +19344,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "IOVA",
@@ -19478,7 +19478,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "MARA",
@@ -19612,7 +19612,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "UMC",
@@ -19746,7 +19746,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "EL",
@@ -19880,7 +19880,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "PTEN",
@@ -20014,7 +20014,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       },
       {
         "ticker": "VEEV",
@@ -20148,13 +20148,13 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-14T16:59:58-04:00"
+        "checked_at_et": "2026-09-14T19:43:32-04:00"
       }
     ],
     "monitor_health": [
       {
         "status": "OK",
-        "checked_at_et": "2026-09-14T16:59:58-04:00",
+        "checked_at_et": "2026-09-14T19:43:32-04:00",
         "monitored_candidates": 30,
         "live_rows": 0,
         "actionable_states": 17,
