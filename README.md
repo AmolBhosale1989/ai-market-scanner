@@ -6,6 +6,36 @@ candidate tiers, signal/outcome engine and bounded SEC/news catalyst layer are d
 [`docs/V4_ARCHITECTURE.md`](docs/V4_ARCHITECTURE.md). V3 remains the production
 scanner until the V4 validation and cutover gates pass.
 
+## V8.1 operational validation
+
+V8.1 hardens the research service before longer forward validation. The Streamlit
+dashboard fetches published artifacts concurrently with bounded per-file timeouts,
+uses `/_stcore/health` as its lightweight Render health probe, and displays remote
+load telemetry. The weekday outcome workflow publishes
+`v8_1_operational_health.json` and `.csv` after verifying four fail-closed invariants:
+
+- the latest broad scan has a verified `PASS` health result;
+- the social engine has taken zero external actions and cannot self-authorize;
+- broker execution remains disabled in the V7 paper allocator;
+- durable point-in-time observation and outcome ledgers are valid JSON objects.
+
+Missing evidence leaves V8.1 in `COLLECTING` and blocks model promotion. A corrupt
+ledger or disabled safety lock marks the release `DEGRADED`. These checks do not
+enable live trading or automated social publishing.
+
+## V9 readiness foundation
+
+V9 starts with a fail-closed production-readiness controller rather than a new
+unvalidated ranking model. The weekday outcome workflow publishes
+`v9_readiness.json` and `.csv` only after checking V8.1 operational health,
+durable evidence maturity, prospective V7.3 challenger validation, V4.6 cutover
+evidence, the paper-trading validation gate and the V7 broker lock.
+
+Passing every check permits only a manual review for a bounded pilot. It does
+not apply a production change, activate a model, enable broker execution or
+send live orders. Missing or immature evidence reports
+`BLOCKED_BY_V8_VALIDATION`.
+
 Market Hunt V3 uses a broad exchange-listed master universe as the discovery perimeter, filters to a liquid tradable universe, ranks themes, finds early technical structures and monitors actionable names intraday.
 
 ## Hard trade-quality gates
