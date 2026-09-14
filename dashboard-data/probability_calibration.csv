@@ -1,10 +1,9 @@
 metric,bin,samples,wins,raw_win_rate_pct,smoothed_probability_pct,avg_r_multiple,calibration_status
-market_hunt_score,"[55, 65)",11,0,0.0,13.3,-2.07,INSUFFICIENT_DATA
-market_hunt_score,"[65, 75)",3,0,0.0,28.6,-2.28,INSUFFICIENT_DATA
+market_hunt_score,"[55, 65)",11,0,0.0,13.3,-2.13,INSUFFICIENT_DATA
+market_hunt_score,"[65, 75)",3,0,0.0,28.6,-2.31,INSUFFICIENT_DATA
 market_hunt_score,"[75, 1000)",6,0,0.0,20.0,-1.6,INSUFFICIENT_DATA
-technical_score,"[70, 85)",17,0,0.0,9.5,-2.12,INSUFFICIENT_DATA
-technical_score,"[85, 1000)",3,0,0.0,28.6,-1.09,INSUFFICIENT_DATA
-effective_rr,"[0.0, 2.0)",20,0,0.0,8.3,-1.96,USABLE
-live_confirmation_score,"[0, 40)",16,0,0.0,10.0,-2.17,INSUFFICIENT_DATA
-live_confirmation_score,"[40, 60)",3,0,0.0,28.6,-1.12,INSUFFICIENT_DATA
-live_confirmation_score,"[60, 80)",1,0,0.0,40.0,-1.13,INSUFFICIENT_DATA
+technical_score,"[70, 85)",17,0,0.0,9.5,-2.16,INSUFFICIENT_DATA
+technical_score,"[85, 1000)",3,0,0.0,28.6,-1.11,INSUFFICIENT_DATA
+effective_rr,"[0.0, 2.0)",20,0,0.0,8.3,-2.0,USABLE
+live_confirmation_score,"[0, 40)",17,0,0.0,9.5,-2.14,INSUFFICIENT_DATA
+live_confirmation_score,"[40, 60)",3,0,0.0,28.6,-1.2,INSUFFICIENT_DATA

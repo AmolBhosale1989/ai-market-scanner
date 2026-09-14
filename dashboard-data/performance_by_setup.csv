@@ -1,12 +1,12 @@
 dimension,value,closed_signals,win_rate_pct,target_hit_rate_pct,hit_5pct_rate,hit_8pct_rate,hit_10pct_rate,avg_return_pct,avg_r_multiple
-catalyst_status,NOT CHECKED,10,0.0,0.0,0.0,0.0,0.0,-11.57,-1.96
-catalyst_status,ACTIVE,5,0.0,0.0,0.0,0.0,0.0,-10.03,-1.68
-catalyst_status,WEAK,3,0.0,0.0,0.0,0.0,0.0,-11.15,-1.92
-catalyst_status,HISTORICAL / CONTEXT,2,0.0,0.0,0.0,0.0,0.0,-16.5,-2.74
-entry_model,RESISTANCE_BREAKOUT,20,0.0,0.0,0.0,0.0,0.0,-11.61,-1.96
-market_regime_state,WEAK,20,0.0,0.0,0.0,0.0,0.0,-11.61,-1.96
-stage,FORMING,11,0.0,0.0,0.0,0.0,0.0,-12.07,-2.03
-stage,DISCOVER,9,0.0,0.0,0.0,0.0,0.0,-11.06,-1.88
-theme,UNCLASSIFIED,17,0.0,0.0,0.0,0.0,0.0,-10.66,-1.81
-theme,Biotechnology,2,0.0,0.0,0.0,0.0,0.0,-17.41,-2.9
-theme,Gold Miners,1,0.0,0.0,0.0,0.0,0.0,-16.21,-2.69
+catalyst_status,NOT CHECKED,10,0.0,0.0,0.0,0.0,0.0,-11.97,-2.03
+catalyst_status,ACTIVE,5,0.0,0.0,0.0,0.0,0.0,-10.11,-1.69
+catalyst_status,WEAK,3,0.0,0.0,0.0,0.0,0.0,-11.31,-1.95
+catalyst_status,HISTORICAL / CONTEXT,2,0.0,0.0,0.0,0.0,0.0,-16.38,-2.72
+entry_model,RESISTANCE_BREAKOUT,20,0.0,0.0,0.0,0.0,0.0,-11.85,-2.0
+market_regime_state,WEAK,20,0.0,0.0,0.0,0.0,0.0,-11.85,-2.0
+stage,FORMING,11,0.0,0.0,0.0,0.0,0.0,-12.18,-2.05
+stage,DISCOVER,9,0.0,0.0,0.0,0.0,0.0,-11.44,-1.94
+theme,UNCLASSIFIED,17,0.0,0.0,0.0,0.0,0.0,-10.94,-1.86
+theme,Biotechnology,2,0.0,0.0,0.0,0.0,0.0,-17.1,-2.85
+theme,Gold Miners,1,0.0,0.0,0.0,0.0,0.0,-16.77,-2.79
