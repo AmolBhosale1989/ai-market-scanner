@@ -287,7 +287,9 @@ m1.metric("Scan health", str(h.get("status", "WAITING")))
 m2.metric("Master universe", f'{int(number(h.get("master_universe_symbols"))):,}')
 m3.metric("Tradable", f'{int(number(h.get("tradable_symbols"))):,}')
 m4.metric("Analyzable", f'{number(h.get("analyzable_coverage"))*100:.1f}%')
-m5.metric("Live alerts", f'{int(number(mh.get("alerts_generated"))):,}')
+momentum_signal_frame = data.get("momentum_signals", pd.DataFrame())
+momentum_buy_count = int(momentum_signal_frame["signal"].astype(str).eq("MOMENTUM BUY").sum()) if not momentum_signal_frame.empty and "signal" in momentum_signal_frame else 0
+m5.metric("Live alerts", f'{int(number(mh.get("alerts_generated"))) + momentum_buy_count:,}')
 
 overview, opportunities, legendary_tab, live_tab, event_tab, v4_tab, social_tab, validation, system = st.tabs(
     ["Overview", "Opportunities", "Legendary setups", "Live monitor", "Events", "V4 Intelligence", "Social Studio", "Validation", "System"]
@@ -304,7 +306,8 @@ with overview:
     c.metric("Research watchlist", len(watchlist))
     d.metric("Leading themes", len(themes))
     confirmed = int(live["monitor_state"].astype(str).eq("LIVE_CONFIRMED").sum()) if not live.empty and "monitor_state" in live else 0
-    e.metric("Live confirmed", confirmed)
+    fast_confirmed = int(momentum_signals["signal"].astype(str).eq("MOMENTUM BUY").sum()) if not momentum_signals.empty and "signal" in momentum_signals else 0
+    e.metric("Live confirmed", confirmed + fast_confirmed)
     if not recommendations.empty:
         for _, row in recommendations.head(3).iterrows():
             ticker = str(row.get("ticker","—")); stage = str(row.get("stage","WATCH"))
@@ -546,6 +549,23 @@ with legendary_tab:
 
 with live_tab:
     live, premarket, transitions, journal = data["live"], data["premarket"], data["transitions"], data["journal"]
+    momentum_signals = data["momentum_signals"]
+    rotation_leaders = data["rotation_leaders"]
+
+    st.subheader("Live confirmed & momentum signals")
+    if not momentum_signals.empty:
+        ms_cols=["ticker","theme","signal","price","day_change_pct","move_30m_pct","rel_vs_spy_pct","theme_rotation_score",
+                 "intraday_rvol","vwap","opening_range_high","entry","stop","risk_pct","target_5pct","target_8pct","last_bar_et"]
+        st.dataframe(momentum_signals[columns(momentum_signals,ms_cols)].head(40),hide_index=True,use_container_width=True)
+    else:
+        st.info("Fast momentum signal output is not available yet.")
+
+    if not rotation_leaders.empty:
+        st.subheader("Rotation leaders being watched")
+        rl_cols=["rotation_rank","ticker","theme","day_change_pct","move_30m_pct","rel_vs_spy_pct","theme_rotation_score",
+                 "theme_rotation_state","rotation_leader_score","rotation_leader","last_bar_et"]
+        st.dataframe(rotation_leaders[columns(rotation_leaders,rl_cols)].head(40),hide_index=True,use_container_width=True)
+
     st.subheader("Fresh market discoveries")
     if not premarket.empty:
         pm_cols=["premarket_rank","ticker","company_name","premarket_price","premarket_gap_pct","premarket_volume","premarket_dollar_volume","premarket_score","premarket_last_bar_et"]
@@ -553,8 +573,8 @@ with live_tab:
     else:
         st.info("Fresh pre-market discovery output is not available yet.")
 
-    st.subheader("Intraday confirmation")
-    st.markdown('<div class="section-note">VWAP, opening range and RVOL update research states; no broker orders are placed.</div>', unsafe_allow_html=True)
+    st.subheader("Base-scan intraday confirmation")
+    st.markdown('<div class="section-note">This table tracks the top base-scan candidates. Cybersecurity and other fast-rotation names are shown above even when they were not in the original top-30 shortlist. No broker orders are placed.</div>', unsafe_allow_html=True)
     if not live.empty:
         preferred=["ticker","monitor_state","previous_state","state_changed","premarket_price","premarket_gap_pct","premarket_volume",
                    "premarket_status","live_price","entry_trigger","stop","live_vwap","live_above_vwap","opening_range_high","intraday_rvol",
