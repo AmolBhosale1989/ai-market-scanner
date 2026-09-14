@@ -213,6 +213,22 @@ jobs:
           --hot-limit 20 --warm-limit 80 --warm-batch-size 10
           --warm-every-cycles 5 --max-workers 8 --catalysts
           --options-microstructure --options-limit 8
+      - name: Refresh legendary trader agents from V4 live snapshot
+        continue-on-error: true
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import pandas as pd
+          from scanner.legendary_agents import run_legendary_agents
+
+          source = Path("outputs/v4_live_snapshot.csv")
+          if source.exists() and source.stat().st_size > 0:
+              frame = pd.read_csv(source)
+              if not frame.empty:
+                  run_legendary_agents(frame, Path("outputs"), top_n=25)
+          PY
+
       - name: Publish V4 live intelligence
         if: always()
         shell: bash
@@ -224,7 +240,7 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-v4-live scan-data
           mkdir -p /tmp/market-hunt-v4-live/dashboard-data
-          for f in v4_job_health.csv v4_monitor_shortlist.csv v4_live_snapshot.csv v4_transitions.csv v4_alerts.ndjson v4_worker_cycles.csv v4_worker_health.json v4_catalyst_events.csv v4_catalyst_health.json v4_options_microstructure.csv v4_options_microstructure_health.json; do
+          for f in v4_job_health.csv v4_monitor_shortlist.csv v4_live_snapshot.csv v4_transitions.csv v4_alerts.ndjson v4_worker_cycles.csv v4_worker_health.json v4_catalyst_events.csv v4_catalyst_health.json v4_options_microstructure.csv v4_options_microstructure_health.json legendary_setups.csv legendary_consensus.csv trader_minervini.csv trader_oneil.csv trader_weinstein.csv trader_darvas.csv trader_livermore.csv trader_qullamaggie.csv trader_druckenmiller.csv trader_lawwaisum.csv trader_martinluk.csv trader_top500swing.csv trader_highmomentumbeta.csv trader_superstock.csv trader_brownmoose.csv trader_venu.csv; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-v4-live/dashboard-data/$f"
             fi
