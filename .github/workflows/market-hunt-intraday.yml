@@ -62,8 +62,10 @@ jobs:
           python -m scanner.v4_evidence --state-dir .state/v4 --import-dir /tmp/market-hunt-evidence
           git worktree remove --force /tmp/market-hunt-evidence
       - name: Refresh live themes
+        continue-on-error: true
         run: python -m scanner.theme_live
       - name: Run broad premarket discovery
+        continue-on-error: true
         run: python -m scanner.premarket --batch-size 80 --top-n 100
       - name: Run live state monitor
         env:
