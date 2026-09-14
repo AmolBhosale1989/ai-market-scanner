@@ -2,8 +2,8 @@
   "block_model_promotion": true,
   "detail": "forward evidence is accumulating normally",
   "failed_checks": [],
-  "generated_at_utc": "2026-09-14T02:41:25.872684+00:00",
-  "latest_snapshot_candidates": 25,
+  "generated_at_utc": "2026-09-14T02:59:08.922367+00:00",
+  "latest_snapshot_candidates": 20,
   "latest_snapshot_session": "2026-09-11",
   "mature_training_samples": 0,
   "milestones": {
@@ -12,7 +12,7 @@
     "v6_220": false
   },
   "observation_days": 1,
-  "observations": 25,
+  "observations": 20,
   "resolution_stalled_observations": 0,
   "schema_version": "7.1.0",
   "settings": {
@@ -23,5 +23,5 @@
   },
   "snapshot_age_calendar_days": 3,
   "status": "COLLECTING",
-  "unresolved_observations": 25
+  "unresolved_observations": 20
 }
