@@ -14,6 +14,7 @@ def write(path, value):
 def seed(output):
     output.mkdir()
     write(output / "v8_1_operational_health.json", {"status": "HEALTHY", "safe_to_serve": True})
+    write(output / "v8_2_evidence_scorecard.json", {"status": "V9_REVIEW_READY", "block_v9_review": False})
     write(output / "v7_1_evidence_health.json", {"status": "HEALTHY", "mature_training_samples": 220})
     write(output / "v7_3_challenger_health.json", {"status": "CHALLENGER_VALIDATED"})
     write(output / "v4_6_cutover_evaluation.json", {"eligible": True})
@@ -51,4 +52,3 @@ def test_broker_flag_or_immature_evidence_blocks_v9(tmp_path):
     assert report["eligible_for_manual_review"] is False
     assert (output / "v9_readiness.json").exists()
     assert (output / "v9_readiness.csv").exists()
-
