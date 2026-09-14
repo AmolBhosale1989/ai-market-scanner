@@ -15,7 +15,7 @@ permissions:
 jobs:
   intraday-monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -68,13 +68,6 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m scanner.intraday --limit 20
-      - name: Run V4.1 audit-only shadow cycle
-        continue-on-error: true
-        run: >-
-          python -m scanner.v4_worker --once --candidate-source local
-          --hot-limit 20 --warm-limit 80 --warm-batch-size 10
-          --warm-every-cycles 5 --max-workers 8 --catalysts
-          --options-microstructure --options-limit 8
       - name: Save updated monitor state
         if: always()
         uses: actions/cache/save@v4
@@ -124,6 +117,13 @@ jobs:
             git push origin scan-data
           fi
 
+      - name: Run V4.1 audit-only shadow cycle
+        continue-on-error: true
+        run: >-
+          python -m scanner.v4_worker --once --candidate-source local
+          --hot-limit 20 --warm-limit 80 --warm-batch-size 10
+          --warm-every-cycles 5 --max-workers 8 --catalysts
+          --options-microstructure --options-limit 8
       - name: Upload intraday monitor outputs
         if: always()
         uses: actions/upload-artifact@v4
