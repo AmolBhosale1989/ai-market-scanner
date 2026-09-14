@@ -1,15 +1,15 @@
 dimension,value,closed_signals,win_rate_pct,target_hit_rate_pct,hit_5pct_rate,hit_8pct_rate,hit_10pct_rate,avg_return_pct,avg_r_multiple
-catalyst_status,NOT CHECKED,17,0.0,0.0,0.0,0.0,0.0,-10.89,-1.89
-catalyst_status,ACTIVE,9,0.0,0.0,0.0,0.0,0.0,-11.18,-1.86
-catalyst_status,HISTORICAL / CONTEXT,9,0.0,0.0,0.0,0.0,0.0,-12.07,-2.07
-catalyst_status,WEAK,4,0.0,0.0,0.0,0.0,0.0,-11.21,-1.91
+catalyst_status,NOT CHECKED,18,0.0,0.0,0.0,0.0,0.0,-10.69,-1.86
+catalyst_status,HISTORICAL / CONTEXT,9,0.0,0.0,0.0,0.0,0.0,-11.65,-2.0
+catalyst_status,ACTIVE,8,0.0,0.0,0.0,0.0,0.0,-11.62,-1.94
+catalyst_status,WEAK,3,0.0,0.0,0.0,0.0,0.0,-12.25,-2.1
 catalyst_status,NEGATIVE RISK,1,0.0,0.0,0.0,0.0,0.0,-7.53,-1.26
-entry_model,RESISTANCE_BREAKOUT,40,0.0,0.0,0.0,0.0,0.0,-11.17,-1.91
-market_regime_state,WEAK,40,0.0,0.0,0.0,0.0,0.0,-11.17,-1.91
-stage,FORMING,25,0.0,0.0,0.0,0.0,0.0,-11.68,-1.97
-stage,DISCOVER,15,0.0,0.0,0.0,0.0,0.0,-10.32,-1.81
-theme,UNCLASSIFIED,30,0.0,0.0,0.0,0.0,0.0,-10.79,-1.87
-theme,Biotechnology,6,0.0,0.0,0.0,0.0,0.0,-14.09,-2.35
+catalyst_status,STRONG,1,0.0,0.0,0.0,0.0,0.0,-6.2,-1.03
+entry_model,RESISTANCE_BREAKOUT,40,0.0,0.0,0.0,0.0,0.0,-11.02,-1.89
+market_regime_state,WEAK,40,0.0,0.0,0.0,0.0,0.0,-11.02,-1.89
+stage,FORMING,24,0.0,0.0,0.0,0.0,0.0,-11.58,-1.96
+stage,DISCOVER,16,0.0,0.0,0.0,0.0,0.0,-10.18,-1.78
+theme,UNCLASSIFIED,31,0.0,0.0,0.0,0.0,0.0,-10.62,-1.84
+theme,Biotechnology,6,0.0,0.0,0.0,0.0,0.0,-13.56,-2.26
 theme,Cloud Computing,2,0.0,0.0,0.0,0.0,0.0,-6.72,-1.12
 theme,Gold Miners,1,0.0,0.0,0.0,0.0,0.0,-16.77,-2.79
-theme,Oil Services,1,0.0,0.0,0.0,0.0,0.0,-8.11,-1.35
