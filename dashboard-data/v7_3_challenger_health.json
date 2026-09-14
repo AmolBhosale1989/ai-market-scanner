@@ -1,0 +1,19 @@
+{
+  "activation_allowed": false,
+  "active_challenger": null,
+  "broker_execution_enabled": false,
+  "production_applied": false,
+  "reason": "V7.2 proposal is absent, unvalidated, or outside the committed allowlist",
+  "schema_version": "7.3.0-prospective-shadow",
+  "settings": {
+    "max_false_breakout_degradation_pp": 2.0,
+    "max_target_degradation_pp": 2.0,
+    "min_baseline_samples": 100,
+    "min_challenger_samples": 30,
+    "min_future_sessions": 10,
+    "min_retention": 0.25,
+    "min_utility_improvement": 0.5
+  },
+  "shadow_only": true,
+  "status": "WAITING_FOR_PROPOSAL"
+}
