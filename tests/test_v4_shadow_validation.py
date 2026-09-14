@@ -77,6 +77,30 @@ def test_snapshot_is_point_in_time_ranked_and_idempotent(tmp_path):
     assert second.set_index("ticker").loc["A", "v3_rank"] == 1
 
 
+def test_snapshot_session_membership_is_frozen_on_rerun(tmp_path):
+    frame = candidates()
+    store = ledger(tmp_path)
+    first = store.record_snapshot(
+        frame,
+        frame,
+        "2026-09-01",
+        "2026-09-01T20:00:00+00:00",
+    )
+    replacement = frame[frame["ticker"].eq("C")].copy()
+    replacement.loc[:, "ticker"] = "NEW"
+
+    second = store.record_snapshot(
+        replacement,
+        replacement,
+        "2026-09-01",
+        "2026-09-01T21:00:00+00:00",
+    )
+
+    assert len(second) == len(first)
+    assert set(second["ticker"]) == set(first["ticker"])
+    assert "NEW" not in set(second["ticker"])
+
+
 def test_forward_resolution_and_strategy_comparison(tmp_path):
     frame = candidates()
     store = ledger(tmp_path)

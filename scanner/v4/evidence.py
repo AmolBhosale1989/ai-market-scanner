@@ -54,7 +54,37 @@ def _merge_record(first: dict[str, Any], second: dict[str, Any]) -> dict[str, An
     for key, value in primary.items():
         if _present(value) or key not in merged:
             merged[key] = value
+    # Capture time defines the point-in-time cohort. Resolution updates may add
+    # forward labels, but they must never move a record into a later snapshot.
+    capture_times = [
+        str(record.get("observed_at_utc", "")).strip()
+        for record in (first, second)
+        if _present(record.get("observed_at_utc"))
+    ]
+    if capture_times:
+        merged["observed_at_utc"] = min(capture_times)
     return merged
+
+
+def _freeze_earliest_daily_cohorts(records: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Discard candidates appended by a later rerun of an existing session."""
+    earliest_by_session: dict[str, str] = {}
+    for record in records.values():
+        session = str(record.get("as_of_session", "")).strip()
+        captured_at = str(record.get("observed_at_utc", "")).strip()
+        if not session or not captured_at:
+            continue
+        earliest_by_session[session] = min(earliest_by_session.get(session, captured_at), captured_at)
+
+    frozen: dict[str, dict[str, Any]] = {}
+    for key, record in records.items():
+        session = str(record.get("as_of_session", "")).strip()
+        captured_at = str(record.get("observed_at_utc", "")).strip()
+        earliest = earliest_by_session.get(session)
+        if earliest and captured_at and captured_at != earliest:
+            continue
+        frozen[key] = record
+    return frozen
 
 
 def _csv_records(path: Path, id_column: str) -> dict[str, dict[str, Any]]:
@@ -88,6 +118,8 @@ def import_durable_evidence(state_dir: Path, import_dir: Path) -> dict[str, int]
         merged = dict(durable)
         for key, record in local.items():
             merged[key] = _merge_record(merged.get(key, {}), record)
+        if collection == "observations":
+            merged = _freeze_earliest_daily_cohorts(merged)
         payload = {
             "schema_version": EVIDENCE_SCHEMA,
             "updated_at_utc": datetime.now(timezone.utc).isoformat(),

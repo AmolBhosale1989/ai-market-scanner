@@ -148,6 +148,11 @@ class ShadowValidationLedger:
         v7_candidates: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         observations = self._load()
+        # A market-session snapshot is an immutable cohort. A retry may export
+        # or later resolve it, but must not append newly ranked symbols.
+        if any(str(record.get("as_of_session", "")) == str(as_of_session) for record in observations.values()):
+            self._export(observations)
+            return self._frame(observations)
         v3 = _rank(v3_candidates, "market_hunt_score")
         v45 = _rank(v45_candidates, "v45_calibrated_score")
         v3_top = v3.head(self.settings.top_k)
@@ -165,9 +170,6 @@ class ShadowValidationLedger:
 
         for ticker in sorted(set(v3_rows) | set(v45_rows) | set(v5_rows) | set(v6_rows) | set(v7_rows)):
             key = f"{as_of_session}|{ticker}"
-            # A rerun must not rewrite the point-in-time ranking with later data.
-            if key in observations:
-                continue
             v3_row = v3_rows.get(ticker)
             v45_row = v45_rows.get(ticker)
             v5_row = v5_rows.get(ticker)

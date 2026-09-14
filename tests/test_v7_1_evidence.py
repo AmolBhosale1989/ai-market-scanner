@@ -43,6 +43,27 @@ def test_durable_import_bootstraps_csv_and_preserves_more_resolved_local_record(
     assert payload["observations"]["2026-09-01|A"]["daily_bars_resolved"] == 5
 
 
+def test_durable_import_keeps_only_earliest_point_in_time_cohort(tmp_path):
+    durable = tmp_path / "durable"
+    state = tmp_path / "state"
+    (durable / "evidence-state").mkdir(parents=True)
+    first_a = observation("2026-09-01|A", 0)
+    first_b = observation("2026-09-01|B", 0)
+    later = observation("2026-09-01|LATE", 0)
+    first_a["observed_at_utc"] = first_b["observed_at_utc"] = "2026-09-01T20:00:00+00:00"
+    later["observed_at_utc"] = "2026-09-01T21:00:00+00:00"
+    records = {row["observation_id"]: row for row in (first_a, first_b, later)}
+    (durable / "evidence-state/v4_shadow_observations.json").write_text(
+        json.dumps({"observations": records})
+    )
+
+    counts = import_durable_evidence(state, durable)
+
+    payload = json.loads((state / "v4_shadow_observations.json").read_text())
+    assert counts["observations"] == 2
+    assert set(payload["observations"]) == {"2026-09-01|A", "2026-09-01|B"}
+
+
 def test_training_outcomes_uses_only_mature_forward_evidence(tmp_path):
     mature = observation("2026-09-01|A", 5)
     unresolved = observation("2026-09-02|B", 3)
