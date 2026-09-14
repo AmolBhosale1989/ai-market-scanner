@@ -1,0 +1,81 @@
+{
+  "activation_allowed": false,
+  "approved_criteria": {
+    "adr20_pct": [
+      2.0,
+      3.0,
+      4.0,
+      5.0
+    ],
+    "avg_dollar_volume": [
+      20000000.0,
+      50000000.0,
+      100000000.0
+    ],
+    "catalyst_score": [
+      30.0,
+      45.0
+    ],
+    "effective_rr": [
+      2.5,
+      3.0,
+      3.5
+    ],
+    "intraday_rvol": [
+      1.2,
+      1.5,
+      2.0
+    ],
+    "market_hunt_score": [
+      65.0,
+      70.0,
+      75.0,
+      80.0
+    ],
+    "median_dollar_volume20": [
+      25000000.0,
+      50000000.0,
+      100000000.0
+    ],
+    "rs20_vs_spy": [
+      0.0,
+      3.0,
+      5.0,
+      10.0
+    ],
+    "runway_to_next_resistance_pct": [
+      5.0,
+      8.0,
+      10.0
+    ],
+    "technical_score": [
+      60.0,
+      70.0,
+      80.0
+    ]
+  },
+  "broker_execution_enabled": false,
+  "manual_review_required": false,
+  "model_version": "untrained",
+  "production_applied": false,
+  "reason": "no mature outcomes",
+  "samples": 0,
+  "schema_version": "7.2.0-shadow",
+  "settings": {
+    "desired_p5_precision_pct": 55.0,
+    "max_false_breakout_degradation_pp": 2.0,
+    "max_target_degradation_pp": 2.0,
+    "min_candidate_samples": 30,
+    "min_total_samples": 220,
+    "min_train_retention": 0.25,
+    "min_train_sessions": 5,
+    "min_train_utility_improvement": 1.0,
+    "min_validation_retention": 0.25,
+    "min_validation_samples": 60,
+    "min_validation_sessions": 3,
+    "min_validation_utility_improvement": 0.5,
+    "validation_fraction": 0.3
+  },
+  "shadow_only": true,
+  "status": "INSUFFICIENT_DATA"
+}
