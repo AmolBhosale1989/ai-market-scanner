@@ -114,3 +114,39 @@ def test_partial_history_does_not_create_mature_outcomes(tmp_path):
 def test_session_comes_from_market_session_not_weekend_publish_time():
     frame = candidates()
     assert infer_as_of_session(frame, "2026-09-06T02:00:00+00:00") == "2026-09-01"
+
+
+def test_snapshot_captures_v5_v6_and_v7_paper_rankings(tmp_path):
+    frame = candidates()
+    frame["v5_adaptive_score"] = [90, 80, 70]
+    frame["v6_robust_score"] = [85, 75, 65]
+    frame["v6_p5_probability"] = 60
+    frame["v6_p10_probability"] = 40
+    frame["v6_p15_probability"] = 20
+    frame["v6_confidence"] = "HIGH"
+    frame["v6_decision"] = "RANK"
+    store = ledger(tmp_path)
+    captured = store.record_snapshot(
+        frame,
+        frame,
+        "2026-09-01",
+        v5_candidates=frame,
+        v6_candidates=frame,
+        v7_candidates=frame.head(1),
+    ).set_index("ticker")
+    assert captured["selected_v5"].sum() == 2
+    assert captured["selected_v6"].sum() == 2
+    assert captured["selected_v7"].sum() == 1
+    assert captured.loc["A", "v6_confidence"] == "HIGH"
+
+
+def test_ten_session_return_resolves_without_changing_five_session_labels(tmp_path):
+    frame = candidates().head(1)
+    store = ledger(tmp_path)
+    store.record_snapshot(frame, frame, "2026-09-01")
+    dates = pd.date_range("2026-09-02", periods=10, freq="B")
+    prices = list(range(101, 111))
+    history_10d = pd.DataFrame({"High": prices, "Low": prices, "Close": prices}, index=dates)
+    resolved = store.resolve_histories({"A": history_10d}).iloc[0]
+    assert resolved["daily_bars_resolved"] == 10
+    assert resolved["return_10d_pct"] == 10.0

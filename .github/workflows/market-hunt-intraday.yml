@@ -39,6 +39,15 @@ jobs:
           key: market-hunt-state-missing-${{ github.run_id }}
           restore-keys: |
             market-hunt-state-
+      - name: Restore durable evidence ledgers
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/market-hunt-evidence
+          git fetch origin scan-data:refs/remotes/origin/scan-data
+          git worktree add --detach /tmp/market-hunt-evidence origin/scan-data
+          python -m scanner.v4_evidence --state-dir .state/v4 --import-dir /tmp/market-hunt-evidence
+          git worktree remove --force /tmp/market-hunt-evidence
       - name: Run live state monitor
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -78,19 +87,25 @@ jobs:
           rm -rf /tmp/market-hunt-scan-data
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
-          mkdir -p /tmp/market-hunt-scan-data/dashboard-data
+          mkdir -p /tmp/market-hunt-scan-data/dashboard-data /tmp/market-hunt-scan-data/evidence-state
           for f in recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json v4_monitor_shortlist.csv v4_live_snapshot.csv v4_transitions.csv v4_alerts.ndjson v4_worker_cycles.csv v4_worker_health.json v4_outcomes.csv v4_outcome_summary.csv v4_catalyst_events.csv v4_catalyst_health.json v4_options_microstructure.csv v4_options_microstructure_health.json; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
           done
+          for f in v4_outcomes.json v4_shadow_observations.json; do
+            if [ -f ".state/v4/$f" ]; then
+              cp ".state/v4/$f" "/tmp/market-hunt-scan-data/evidence-state/$f"
+            fi
+          done
           printf "updated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-scan-data/dashboard-data/live_metadata.csv
           cd /tmp/market-hunt-scan-data
-          git add dashboard-data
+          git add dashboard-data evidence-state
           if git diff --cached --quiet; then
             echo "Live dashboard data unchanged."
           else
             git commit -m "Update live dashboard data [skip ci]"
+            git pull --rebase origin scan-data
             git push origin scan-data
           fi
 

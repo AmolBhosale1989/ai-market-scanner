@@ -8,18 +8,12 @@ import pandas as pd
 
 from .config import OUTPUT_DIR
 from .v4.source import HttpCandidateSource
+from .v4.evidence import training_outcomes
 from .v5.adaptive import fit_adaptive_model, save_model
 
 
 def _outcomes(state_dir: Path, output_dir: Path) -> pd.DataFrame:
-    try:
-        payload = json.loads((state_dir / "v4_outcomes.json").read_text())
-        return pd.DataFrame((payload.get("signals") or {}).values())
-    except (OSError, json.JSONDecodeError):
-        try:
-            return pd.read_csv(output_dir / "v4_outcomes.csv")
-        except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError):
-            return pd.DataFrame()
+    return training_outcomes(state_dir, output_dir)
 
 
 def run(state_dir: Path, output_dir: Path):

@@ -12,6 +12,7 @@ on:
       - 'scanner/v5_model.py'
       - 'scanner/v6_model.py'
       - 'scanner/v7_allocator.py'
+      - 'scanner/v4_evidence.py'
       - '.github/workflows/market-hunt-v4-outcomes.yml'
   schedule:
     - cron: '45 22 * * 1-5'
@@ -42,14 +43,23 @@ jobs:
           key: market-hunt-state-outcomes-missing-${{ github.run_id }}
           restore-keys: |
             market-hunt-state-
+      - name: Restore durable evidence ledgers
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/market-hunt-evidence
+          git fetch origin scan-data:refs/remotes/origin/scan-data
+          git worktree add --detach /tmp/market-hunt-evidence origin/scan-data
+          python -m scanner.v4_evidence --state-dir .state/v4 --import-dir /tmp/market-hunt-evidence
+          git worktree remove --force /tmp/market-hunt-evidence
       - name: Verify deterministic replay
         run: python -m scanner.v4_outcomes --verify-replay
       - name: Resolve available daily horizons
         run: python -m scanner.v4_outcomes --resolve-daily
+      - name: Resolve existing point-in-time snapshot horizons
+        run: python -m scanner.v4_shadow_validation --resolve-only
       - name: Fit V4.5 calibrated ranking model
         run: python -m scanner.v4_outcomes --fit-calibration
-      - name: Record and resolve V3 versus V4.5 shadow evidence
-        run: python -m scanner.v4_shadow_validation
       - name: Monitor V4.5 calibration and expectancy
         run: python -m scanner.v4_model_monitor
       - name: Fit V5 regime-adaptive shadow model
@@ -58,6 +68,10 @@ jobs:
         run: python -m scanner.v6_model
       - name: Build V7 portfolio-aware paper plan
         run: python -m scanner.v7_allocator
+      - name: Record and resolve V3 through V7 point-in-time evidence
+        run: python -m scanner.v4_shadow_validation --record-only
+      - name: Check V7.1 evidence pipeline health
+        run: python -m scanner.v4_evidence --state-dir .state/v4 --output-dir outputs --health
       - name: Evaluate V4.6 gates and enforce automatic rollback
         run: python -m scanner.v4_cutover --evaluate --enforce-safety
       - name: Save enriched V4 signal history
@@ -76,16 +90,22 @@ jobs:
           git fetch origin scan-data:scan-data
           rm -rf /tmp/market-hunt-scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
-          mkdir -p /tmp/market-hunt-scan-data/dashboard-data
-          for f in v4_outcomes.csv v4_outcome_summary.csv v4_5_model.json v4_5_validation.csv v4_5_ranked_candidates.csv v4_shadow_observations.csv v4_shadow_strategy_summary.csv v4_shadow_daily_comparison.csv v4_shadow_breakdowns.csv v4_shadow_validation_health.json v4_model_monitor.json v4_model_monitor.csv v4_6_cutover_evaluation.json v5_model.json v5_validation.csv v5_ranked_candidates.csv v6_model.json v6_validation.csv v6_ranked_candidates.csv v7_paper_portfolio.csv v7_allocation_health.json; do
+          mkdir -p /tmp/market-hunt-scan-data/dashboard-data /tmp/market-hunt-scan-data/evidence-state
+          for f in v4_outcomes.csv v4_outcome_summary.csv v4_5_model.json v4_5_validation.csv v4_5_ranked_candidates.csv v4_shadow_observations.csv v4_shadow_strategy_summary.csv v4_shadow_daily_comparison.csv v4_shadow_breakdowns.csv v4_shadow_validation_health.json v4_model_monitor.json v4_model_monitor.csv v4_6_cutover_evaluation.json v5_model.json v5_validation.csv v5_ranked_candidates.csv v6_model.json v6_validation.csv v6_ranked_candidates.csv v7_paper_portfolio.csv v7_allocation_health.json v7_1_evidence_health.json; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
           done
+          for f in v4_outcomes.json v4_shadow_observations.json; do
+            if [ -f ".state/v4/$f" ]; then
+              cp ".state/v4/$f" "/tmp/market-hunt-scan-data/evidence-state/$f"
+            fi
+          done
           cd /tmp/market-hunt-scan-data
-          git add dashboard-data
+          git add dashboard-data evidence-state
           if ! git diff --cached --quiet; then
             git commit -m "Update V4 outcome evidence [skip ci]"
+            git pull --rebase origin scan-data
             git push origin scan-data
           fi
       - name: Upload V4.2 evidence
@@ -119,4 +139,5 @@ jobs:
             outputs/v6_ranked_candidates.csv
             outputs/v7_paper_portfolio.csv
             outputs/v7_allocation_health.json
+            outputs/v7_1_evidence_health.json
           if-no-files-found: warn

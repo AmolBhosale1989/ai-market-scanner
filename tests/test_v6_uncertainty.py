@@ -58,3 +58,15 @@ def test_v6_probabilities_intervals_and_abstention_are_bounded():
         assert (scored[f"v6_{target}_probability"] <= scored[f"v6_{target}_upper"]).all()
     assert set(scored["v6_decision"]).issubset({"RANK", "ABSTAIN"})
     assert (scored.loc[scored["v6_decision"].eq("ABSTAIN"), "v6_robust_score"] == 0).all()
+
+
+def test_v6_keeps_daily_batches_in_distinct_three_way_windows():
+    frame = outcomes(400)
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    frame["entered_at_utc"] = [
+        (start + timedelta(days=i // 20)).isoformat() for i in range(len(frame))
+    ]
+    model, _ = fit_uncertainty_model(frame)
+    assert model.status != "INSUFFICIENT_DATA"
+    assert model.payload["train_end_utc"] < model.payload["calibration_start_utc"]
+    assert model.payload["calibration_end_utc"] < model.payload["validation_start_utc"]

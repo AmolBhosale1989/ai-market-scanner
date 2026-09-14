@@ -86,7 +86,7 @@ def test_daily_horizons_use_only_first_five_future_sessions(tmp_path):
     assert record["min_price_after_entry"] == 10.5
     assert record["forward_5d_mfe_pct"] == round((15.5 / 10.01 - 1) * 100, 3)
     assert record["forward_5d_mae_pct"] == round((10.5 / 10.01 - 1) * 100, 3)
-    assert record["daily_bars_resolved"] == 5
+    assert record["daily_bars_resolved"] == 6
 
 
 def test_daily_bar_uses_conservative_stop_first_when_target_and_stop_both_touch(tmp_path):

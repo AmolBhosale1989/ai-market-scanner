@@ -203,6 +203,7 @@ v45_model, v45_model_source = load_json("v4_5_model.json")
 v5_model, v5_model_source = load_json("v5_model.json")
 v6_model, v6_model_source = load_json("v6_model.json")
 v7_health, v7_health_source = load_json("v7_allocation_health.json")
+evidence_health, evidence_health_source = load_json("v7_1_evidence_health.json")
 
 # Resilience fallback: if the full-scan publisher is delayed or GitHub Actions
 # is queued, derive legendary-agent lists from the latest published deep-scan
@@ -533,6 +534,15 @@ with v4_tab:
     k5.metric("V5 adaptive", v5_status)
     k6.metric("V6 uncertainty", v6_status)
     k7.metric("V7 paper plan", v7_status)
+    evidence_status = str(evidence_health.get("status", "COLLECTING"))
+    mature_evidence = int(number(evidence_health.get("mature_training_samples")))
+    e1,e2,e3,e4 = st.columns(4)
+    e1.metric("Evidence pipeline", evidence_status)
+    e2.metric("Mature samples", mature_evidence)
+    e3.metric("V5 progress", f"{min(mature_evidence, 100)}/100")
+    e4.metric("V6 progress", f"{min(mature_evidence, 220)}/220")
+    if evidence_health.get("failed_checks"):
+        st.error("Evidence collection alert: " + ", ".join(map(str, evidence_health["failed_checks"])))
     failed = v46_cutover.get("failed_gates", [])
     if v46_cutover.get("eligible"):
         st.success("V4.5 has passed the evidence gates and is eligible for a manual, version-pinned cutover.")

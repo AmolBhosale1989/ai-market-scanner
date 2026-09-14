@@ -18,7 +18,7 @@ from .health import parse_utc
 
 ENTRY_STATES = {"TRIGGERED", "LIVE_CONFIRMED"}
 TERMINAL_STATES = {"TARGET_HIT", "FAILED_BREAKOUT", "INVALIDATED"}
-HORIZONS = (1, 2, 3, 5)
+HORIZONS = (1, 3, 5, 10)
 
 
 def _number(value) -> float | None:
@@ -161,6 +161,7 @@ class SignalOutcomeLedger:
             "return_2d_pct": None,
             "return_3d_pct": None,
             "return_5d_pct": None,
+            "return_10d_pct": None,
             "terminal_at_utc": "",
             "outcome": "",
             "failure_reason": "",
@@ -277,7 +278,7 @@ class SignalOutcomeLedger:
             entry_session = record.get("entry_session") or entered.date().isoformat()
             session_dates = pd.DatetimeIndex(frame.index).date
             future = frame[session_dates > pd.Timestamp(entry_session).date()].sort_index()
-            available = min(len(future), 5)
+            available = min(len(future), max(HORIZONS))
             record["daily_bars_resolved"] = max(int(record.get("daily_bars_resolved", 0)), available)
             entry = _number(record.get("assumed_entry_price"))
             if entry is None:
@@ -382,7 +383,7 @@ class SignalOutcomeLedger:
             "avg_forward_5d_mfe_pct": round(float(pd.to_numeric(mature.get("forward_5d_mfe_pct"), errors="coerce").mean()), 2) if len(mature) else None,
             "avg_forward_5d_mae_pct": round(float(pd.to_numeric(mature.get("forward_5d_mae_pct"), errors="coerce").mean()), 2) if len(mature) else None,
         }
-        for horizon in ("30m", "1d", "2d", "3d", "5d"):
+        for horizon in ("30m", "1d", "3d", "5d", "10d"):
             values = pd.to_numeric(entered.get(f"return_{horizon}_pct"), errors="coerce").dropna() if len(entered) else pd.Series(dtype=float)
             row[f"avg_return_{horizon}_pct"] = round(float(values.mean()), 3) if len(values) else None
         return pd.DataFrame([row])
