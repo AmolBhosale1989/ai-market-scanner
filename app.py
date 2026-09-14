@@ -4,9 +4,9 @@ from io import StringIO
 from pathlib import Path
 
 import pandas as pd
-import requests
 import streamlit as st
 
+from scanner.dashboard_data import fetch_remote_bundle
 from scanner.legendary_agents import run_legendary_agents
 
 st.set_page_config(page_title="Market Hunt V3", page_icon="⚡", layout="wide", initial_sidebar_state="collapsed")
@@ -99,12 +99,14 @@ div[data-testid="stExpander"]{border:1px solid var(--line)!important;border-radi
 
 REMOTE_BASE = os.getenv("SCAN_DATA_BASE_URL", "https://raw.githubusercontent.com/AmolBhosale1989/ai-market-scanner/scan-data/dashboard-data").rstrip("/")
 LOCAL_DIR = Path("outputs")
+remote_payloads = {}
+dashboard_fetch_health = {}
 
-@st.cache_data(ttl=60, show_spinner=False)
 def remote_csv(name):
-    response = requests.get(f"{REMOTE_BASE}/{name}", timeout=8)
-    response.raise_for_status()
-    return pd.read_csv(StringIO(response.text))
+    payload = remote_payloads.get(name)
+    if payload is None:
+        raise FileNotFoundError(name)
+    return pd.read_csv(StringIO(payload))
 
 def load_csv(name):
     try:
@@ -116,11 +118,14 @@ def load_csv(name):
             except Exception: pass
     return pd.DataFrame(), "unavailable"
 
-@st.cache_data(ttl=60, show_spinner=False)
 def remote_json(name):
-    response = requests.get(f"{REMOTE_BASE}/{name}", timeout=8)
-    response.raise_for_status()
-    return response.json()
+    payload = remote_payloads.get(name)
+    if payload is None:
+        raise FileNotFoundError(name)
+    value = json.loads(payload)
+    if not isinstance(value, dict):
+        raise ValueError(f"{name} is not a JSON object")
+    return value
 
 def load_json(name):
     try:
@@ -198,8 +203,24 @@ files = {
     "v73_comparison":"v7_3_challenger_comparison.csv",
     "social_queue":"social_content_queue.csv",
     "social_calendar":"social_content_calendar.csv",
+    "v81_operational":"v8_1_operational_health.csv",
+    "v9_readiness":"v9_readiness.csv",
     "v4_options_microstructure":"v4_options_microstructure.csv",
 }
+json_files = [
+    "v4_6_cutover_evaluation.json", "v4_5_model.json", "v5_model.json",
+    "v6_model.json", "v7_allocation_health.json", "v7_1_evidence_health.json",
+    "v7_2_criteria_proposal.json", "v7_3_challenger_health.json",
+    "social_engine_health.json", "v8_1_operational_health.json", "v9_readiness.json",
+]
+
+@st.cache_data(ttl=60, show_spinner=False)
+def remote_dashboard_bundle(remote_base, filenames):
+    return fetch_remote_bundle(remote_base, filenames)
+
+remote_payloads, dashboard_fetch_health = remote_dashboard_bundle(
+    REMOTE_BASE, tuple([*files.values(), *json_files])
+)
 data, sources = {}, {}
 for key, filename in files.items():
     data[key], sources[key] = load_csv(filename)
@@ -212,6 +233,8 @@ evidence_health, evidence_health_source = load_json("v7_1_evidence_health.json")
 v72_proposal, v72_proposal_source = load_json("v7_2_criteria_proposal.json")
 v73_health, v73_health_source = load_json("v7_3_challenger_health.json")
 social_health, social_health_source = load_json("social_engine_health.json")
+v81_health, v81_health_source = load_json("v8_1_operational_health.json")
+v9_readiness, v9_readiness_source = load_json("v9_readiness.json")
 
 # Resilience fallback: if the full-scan publisher is delayed or GitHub Actions
 # is queued, derive legendary-agent lists from the latest published deep-scan
@@ -725,6 +748,25 @@ with system:
     st.write("5k+ universe → liquidity gate → themes → technical structure → D/W/M levels → runway and R/R → catalysts → live VWAP/ORB/RVOL → V4 calibration/monitoring → V5 adaptive ranking → V6 uncertainty/abstention → V7 paper risk allocation → V7.2 bounded proposals → V7.3 prospective challengers → guarded cutover")
     status_rows=pd.DataFrame([{"dataset":key,"rows":len(data[key]),"source":sources[key]} for key in files])
     st.dataframe(status_rows,hide_index=True,use_container_width=True)
+    st.subheader("V8.1 operational health")
+    o1,o2,o3,o4=st.columns(4)
+    o1.metric("Operational state", str(v81_health.get("status", "COLLECTING")))
+    o2.metric("Remote files", int(number(dashboard_fetch_health.get("remote_files_loaded"))))
+    o3.metric("Remote failures", int(number(dashboard_fetch_health.get("remote_files_failed"))))
+    o4.metric("Load time", f'{number(dashboard_fetch_health.get("elapsed_seconds")):.2f}s')
+    if v81_health.get("failed_checks"):
+        st.error("Operational failures: " + ", ".join(map(str, v81_health["failed_checks"])))
+    elif v81_health.get("collecting_checks"):
+        st.info("Operational evidence collecting: " + ", ".join(map(str, v81_health["collecting_checks"])))
+    st.caption(f"Health probe: {v81_health.get('health_endpoint', '/_stcore/health')} · source: {v81_health_source}")
+    st.subheader("V9 readiness (manual review only)")
+    r1,r2,r3=st.columns(3)
+    r1.metric("Readiness state", str(v9_readiness.get("status", "BLOCKED_BY_V8_VALIDATION")))
+    r2.metric("Mature evidence", int(number(v9_readiness.get("mature_evidence"))))
+    r3.metric("Broker execution", "DISABLED" if not bool(v9_readiness.get("broker_execution_enabled", False)) else "ENABLED")
+    if v9_readiness.get("failed_gates"):
+        st.warning("V9 remains blocked by: " + ", ".join(map(str, v9_readiness["failed_gates"])))
+    st.caption(f"No automatic activation; explicit manual approval is always required · source: {v9_readiness_source}")
     tradable=data["tradable"]
     if not tradable.empty:
         passed=int(tradable["tradable"].sum()) if "tradable" in tradable else len(tradable)
