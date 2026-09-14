@@ -144,6 +144,80 @@ def number(value, default=0):
 def columns(frame, preferred):
     return [name for name in preferred if name in frame.columns]
 
+def add_live_table_context(frame, live_frame, momentum_frame, rotation_frame):
+    """Overlay current market price/state on deep-scan tables and derive a display-only live action state."""
+    if frame is None or frame.empty:
+        return frame
+    out = frame.copy()
+    if "ticker" not in out.columns:
+        return out
+    out["ticker"] = out["ticker"].astype(str)
+    out["current_price"] = pd.to_numeric(out.get("price"), errors="coerce")
+    out["live_state"] = ""
+    out["momentum_signal"] = ""
+    out["day_change_pct_live"] = pd.NA
+    out["rel_vs_spy_live"] = pd.NA
+    out["live_intraday_rvol"] = pd.NA
+    out["theme_rotation_score_live"] = pd.NA
+    out["live_confirmation_score_current"] = pd.NA
+    out["display_state"] = out.get("stage", pd.Series("WATCH", index=out.index)).astype(str)
+
+    if live_frame is not None and not live_frame.empty and "ticker" in live_frame.columns:
+        lv=live_frame.copy()
+        lv["ticker"]=lv["ticker"].astype(str)
+        lv=lv.drop_duplicates("ticker", keep="first").set_index("ticker")
+        if "live_price" in lv:
+            out["current_price"]=out["ticker"].map(pd.to_numeric(lv["live_price"], errors="coerce")).combine_first(out["current_price"])
+        if "monitor_state" in lv:
+            out["live_state"]=out["ticker"].map(lv["monitor_state"]).fillna("")
+        if "intraday_rvol" in lv:
+            out["live_intraday_rvol"]=out["ticker"].map(pd.to_numeric(lv["intraday_rvol"], errors="coerce"))
+        if "live_confirmation_score" in lv:
+            out["live_confirmation_score_current"]=out["ticker"].map(pd.to_numeric(lv["live_confirmation_score"], errors="coerce"))
+
+    if momentum_frame is not None and not momentum_frame.empty and "ticker" in momentum_frame.columns:
+        ms=momentum_frame.copy()
+        ms["ticker"]=ms["ticker"].astype(str)
+        ms=ms.drop_duplicates("ticker", keep="first").set_index("ticker")
+        if "price" in ms:
+            out["current_price"]=out["ticker"].map(pd.to_numeric(ms["price"], errors="coerce")).combine_first(out["current_price"])
+        if "signal" in ms:
+            out["momentum_signal"]=out["ticker"].map(ms["signal"]).fillna("")
+        if "intraday_rvol" in ms:
+            out["live_intraday_rvol"]=out["ticker"].map(pd.to_numeric(ms["intraday_rvol"], errors="coerce")).combine_first(pd.to_numeric(out["live_intraday_rvol"], errors="coerce"))
+        if "day_change_pct" in ms:
+            out["day_change_pct_live"]=out["ticker"].map(pd.to_numeric(ms["day_change_pct"], errors="coerce"))
+        if "rel_vs_spy_pct" in ms:
+            out["rel_vs_spy_live"]=out["ticker"].map(pd.to_numeric(ms["rel_vs_spy_pct"], errors="coerce"))
+        if "theme_rotation_score" in ms:
+            out["theme_rotation_score_live"]=out["ticker"].map(pd.to_numeric(ms["theme_rotation_score"], errors="coerce"))
+
+    if rotation_frame is not None and not rotation_frame.empty and "ticker" in rotation_frame.columns:
+        rl=rotation_frame.copy()
+        rl["ticker"]=rl["ticker"].astype(str)
+        rl=rl.drop_duplicates("ticker", keep="first").set_index("ticker")
+        if "last" in rl:
+            out["current_price"]=out["ticker"].map(pd.to_numeric(rl["last"], errors="coerce")).combine_first(out["current_price"])
+        if "day_change_pct" in rl:
+            out["day_change_pct_live"]=out["ticker"].map(pd.to_numeric(rl["day_change_pct"], errors="coerce")).combine_first(pd.to_numeric(out["day_change_pct_live"], errors="coerce"))
+        if "rel_vs_spy_pct" in rl:
+            out["rel_vs_spy_live"]=out["ticker"].map(pd.to_numeric(rl["rel_vs_spy_pct"], errors="coerce")).combine_first(pd.to_numeric(out["rel_vs_spy_live"], errors="coerce"))
+        if "theme_rotation_score" in rl:
+            out["theme_rotation_score_live"]=out["ticker"].map(pd.to_numeric(rl["theme_rotation_score"], errors="coerce")).combine_first(pd.to_numeric(out["theme_rotation_score_live"], errors="coerce"))
+
+    strong_buy = (
+        out["momentum_signal"].eq("MOMENTUM BUY")
+        | out["live_state"].eq("LIVE_CONFIRMED")
+        | (
+            pd.to_numeric(out["live_confirmation_score_current"], errors="coerce").fillna(0).ge(80)
+            & pd.to_numeric(out["live_intraday_rvol"], errors="coerce").fillna(0).ge(1.2)
+            & pd.to_numeric(out["rel_vs_spy_live"], errors="coerce").fillna(0).ge(1.0)
+        )
+    )
+    out.loc[strong_buy, "display_state"]="STRONG BUY"
+    out.loc[~strong_buy & out["live_state"].eq("TRIGGERED"), "display_state"]="TRIGGERED"
+    return out
+
 def add_live_legendary_context(frame, live_frame, momentum_frame, rotation_frame):
     """Overlay current-session market context on slower legendary-agent outputs."""
     if frame is None or frame.empty:
@@ -396,9 +470,12 @@ with overview:
     c.metric("Research watchlist", len(watchlist))
     d.metric("Leading themes", len(themes))
     e.metric("Confirmed now", len(confirmed_tickers), help="Unique tickers currently LIVE_CONFIRMED or MOMENTUM BUY. This is a current state, not an alert-event count.")
-    if not recommendations.empty:
-        for _, row in recommendations.head(3).iterrows():
-            ticker = str(row.get("ticker","—")); stage = str(row.get("stage","WATCH"))
+    recommendations_live = add_live_table_context(recommendations, live, momentum_signals, rotation_leaders)
+    if recommendations_live.empty and not momentum_signals.empty:
+        recommendations_live = add_live_table_context(momentum_signals[momentum_signals["signal"].astype(str).eq("MOMENTUM BUY")].copy(), live, momentum_signals, rotation_leaders)
+    if not recommendations_live.empty:
+        for _, row in recommendations_live.head(5).iterrows():
+            ticker = str(row.get("ticker","—")); stage = str(row.get("display_state", row.get("stage","WATCH")))
             decision = str(row.get("final_decision", row.get("decision","RESEARCH")))
             score = number(row.get("market_hunt_score")); rr = number(row.get("effective_rr"))
             tone = "good" if "BUY" in decision or stage == "CONFIRMED" else "warn"
@@ -658,37 +735,37 @@ with opportunities:
                            "market_hunt_broad_opportunities.csv", "text/csv", use_container_width=True,
                            key="download_broad_opportunities")
 
-    superstocks = data["trader_superstock"]
+    superstocks = add_live_table_context(data["trader_superstock"], live, momentum_signals, rotation_leaders)
     st.subheader("Superstock candidates")
     st.markdown('<div class="section-note">Explosive liquid leaders with at least one +10% day in the last 30 sessions, ranked for outsized-move potential. A+ is a research priority, not an automatic trade.</div>', unsafe_allow_html=True)
     if superstocks.empty:
         st.info("No current Superstock candidates yet. The next successful full scan will populate this list.")
     else:
-        super_cols=["ticker","company_name","price","superstock_grade","superstock_action","legendary_score","stage","theme",
+        super_cols=["ticker","company_name","current_price","price","display_state","momentum_signal","live_state","day_change_pct_live","rel_vs_spy_live","live_intraday_rvol","superstock_grade","superstock_action","legendary_score","stage","theme",
                     "market_hunt_score","rs20_vs_spy","rsi14","rsi_state","max_up_day_30d_pct","ten_pct_up_days_30d",
                     "atr_pct","adr20_pct","effective_rr","runway_to_next_resistance_pct","catalyst_status","catalyst_score",
                     "entry_trigger","stop","effective_target","pattern"]
         st.dataframe(superstocks[columns(superstocks,super_cols)].head(25), hide_index=True, use_container_width=True)
 
-    brown = data["trader_brownmoose"]
+    brown = add_live_table_context(data["trader_brownmoose"], live, momentum_signals, rotation_leaders)
     st.subheader("Brownmoose-style staged setups")
     st.markdown('<div class="section-note">Research approximation from observed subscriber examples: B1/B2 entries are mapped from EMA/support confluence, while T1/T2/T3 come from overhead resistance. No automatic orders are placed.</div>', unsafe_allow_html=True)
     if brown.empty:
         st.info("No current Brownmoose-style setup passes the confluence and R/R filters.")
     else:
-        brown_cols=["ticker","company_name","price","brownmoose_grade","brownmoose_state","brownmoose_confluence_score",
+        brown_cols=["ticker","company_name","current_price","price","display_state","momentum_signal","live_state","day_change_pct_live","rel_vs_spy_live","live_intraday_rvol","brownmoose_grade","brownmoose_state","brownmoose_confluence_score",
                     "brown_b1","brown_b1_source","brown_b2","brown_b2_source","brown_invalidation",
                     "brown_t1","brown_t2","brown_t3","brown_rr_to_t1","stage","theme","market_hunt_score",
                     "rs20_vs_spy","rsi14","atr_pct","adr20_pct","catalyst_status","pattern"]
         st.dataframe(brown[columns(brown,brown_cols)].head(25), hide_index=True, use_container_width=True)
 
-    venu = data["trader_venu"]
+    venu = add_live_table_context(data["trader_venu"], live, momentum_signals, rotation_leaders)
     st.subheader("Venu-style leaders")
     st.markdown('<div class="section-note">Research approximation with two modes: longer-horizon Position Leaders and tactical Rotation Swings. Theme leadership, catalyst/fundamental proxy, relative strength, trend alignment and pullback/breakout quality drive ranking.</div>', unsafe_allow_html=True)
     if venu.empty:
         st.info("No current Venu-style leader or rotation setup passes the filters.")
     else:
-        venu_cols=["ticker","company_name","price","venu_grade","venu_mode","venu_trend_stack","venu_theme_leadership",
+        venu_cols=["ticker","company_name","current_price","price","display_state","momentum_signal","live_state","day_change_pct_live","rel_vs_spy_live","live_intraday_rvol","venu_grade","venu_mode","venu_trend_stack","venu_theme_leadership",
                    "venu_fundamental_proxy_score","legendary_score","stage","theme","market_hunt_score","rs20_vs_spy",
                    "rsi14","atr_pct","adr20_pct","effective_rr","runway_to_next_resistance_pct","catalyst_status",
                    "entry_trigger","entry_model","stop","effective_target","pattern"]
@@ -706,10 +783,10 @@ with opportunities:
     else:
         st.dataframe(leaders[columns(leaders,leader_cols)],hide_index=True,use_container_width=True)
 
-    recommendations = add_opportunity_context(data["recommendations"])
-    st.subheader("Live-confirmed recommendations")
+    recommendations = add_live_table_context(add_opportunity_context(data["recommendations"]), live, momentum_signals, rotation_leaders)
+    st.subheader("Live-confirmed recommendations / Strong Buy")
     st.markdown('<div class="section-note">Only stocks passing liquidity, volatility, catalyst, spread, runway, R/R and live VWAP/ORB/RVOL gates appear here.</div>', unsafe_allow_html=True)
-    recommendation_cols=["ticker","company_name","live_price","stage","theme","market_hunt_score",
+    recommendation_cols=["ticker","company_name","current_price","live_price","display_state","stage","momentum_signal","live_state","day_change_pct_live","rel_vs_spy_live","theme","market_hunt_score",
                          "rsi14","rsi_state","volume_vs_20ma","swing_volume_state",
                          "live_above_vwap","volume_vs_9ma","opening_30m_rvol","opening_volume_spike_2x",
                          "catalyst_status","catalyst_score","intraday_rvol","bid_ask_spread_pct","entry_trigger","stop",
@@ -721,9 +798,9 @@ with opportunities:
         st.download_button("Download recommendations", recommendations.to_csv(index=False), "market_hunt_recommendations.csv", "text/csv", use_container_width=True)
 
     picks = data["watchlist"] if not data["watchlist"].empty else data["picks"]
-    picks = add_opportunity_context(picks)
+    picks = add_live_table_context(add_opportunity_context(picks), live, momentum_signals, rotation_leaders)
     st.subheader("Research watchlist")
-    st.markdown('<div class="section-note">FORMING, DISCOVER and waiting setups are research candidates—not trade recommendations.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-note">Deep-scan FORMING/DISCOVER setups are overlaid with current live prices. When live confirmation and momentum gates align, the display state upgrades to STRONG BUY without changing the underlying historical stage.</div>', unsafe_allow_html=True)
     if picks.empty: st.info("No watchlist results are available yet.")
     else:
         query = st.text_input("Find ticker or company", placeholder="AXTI, IOVA…")
@@ -734,7 +811,7 @@ with opportunities:
         stages = sorted(view["stage"].dropna().astype(str).unique()) if "stage" in view else []
         selected = st.multiselect("Stage", stages, default=stages)
         if selected and "stage" in view: view = view[view["stage"].astype(str).isin(selected)]
-        priority=["ticker","company_name","price","stage","theme","theme_state","market_hunt_score","final_decision",
+        priority=["ticker","company_name","current_price","price","display_state","stage","momentum_signal","live_state","day_change_pct_live","rel_vs_spy_live","live_intraday_rvol","theme","theme_state","market_hunt_score","final_decision",
                   "rsi14","rsi_state","volume_vs_20ma","swing_volume_state",
                   "avg_share_volume20","median_dollar_volume20","atr_pct","adr20_pct",
                   "market_regime_state","catalyst_status","entry_trigger","entry_model","entry_condition","stop","stop_basis",
