@@ -1,2 +1,2 @@
 status,checked_at_et,monitored_candidates,live_rows,actionable_states,alerts_generated,telegram_configured,telegram_sent
-OK,2026-09-14T10:09:00-04:00,30,30,20,20,False,False
+OK,2026-09-14T10:11:37-04:00,30,30,20,1,False,False
