@@ -1,6 +1,6 @@
 {
-  "completed_at_utc": "2026-09-15T02:54:33.174049+00:00",
-  "duration_ms": 750,
+  "completed_at_utc": "2026-09-15T04:35:24.461322+00:00",
+  "duration_ms": 687,
   "errors": 0,
   "execution_grade": false,
   "microstructure_available": 8,
@@ -9,6 +9,6 @@
   "provider": "yahoo-shadow",
   "received": 8,
   "requested": 8,
-  "started_at_utc": "2026-09-15T02:54:32.424065+00:00",
+  "started_at_utc": "2026-09-15T04:35:23.774747+00:00",
   "status": "OK"
 }
