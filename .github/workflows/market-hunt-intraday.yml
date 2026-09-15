@@ -122,7 +122,7 @@ jobs:
           set -euo pipefail
           mkdir -p outputs
           git fetch origin scan-data:refs/remotes/origin/scan-data
-          for f in tradable_universe.csv latest_scan.csv all_candidates.csv trending_themes.csv; do
+          for f in tradable_universe.csv latest_scan.csv all_candidates.csv trending_themes.csv daily_top_pick_log.csv daily_top_pick_summary.csv intraday_live.csv; do
             git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
           done
           test -s outputs/tradable_universe.csv
@@ -138,6 +138,9 @@ jobs:
       - name: Run broad premarket discovery
         continue-on-error: true
         run: timeout 240s python -m scanner.premarket --batch-size 80 --top-n 100
+      - name: Update daily top-conviction validation pick
+        continue-on-error: true
+        run: timeout 180s python -m scanner.daily_pick
       - name: Publish intelligence data
         if: always()
         shell: bash
@@ -149,7 +152,7 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-intel scan-data
           mkdir -p /tmp/market-hunt-intel/dashboard-data
-          for f in trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv momentum_signals.csv momentum_health.csv premarket_discovery.csv premarket_health.csv; do
+          for f in trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv momentum_signals.csv momentum_health.csv premarket_discovery.csv premarket_health.csv daily_top_pick_log.csv daily_top_pick_summary.csv; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-intel/dashboard-data/$f"
             fi
