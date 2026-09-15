@@ -1,10 +1,10 @@
 {
   "forward_sessions": 5,
-  "generated_at_utc": "2026-09-14T13:30:31.187003+00:00",
+  "generated_at_utc": "2026-09-15T00:54:49.505278+00:00",
   "mature_observations": 0,
   "maximum_resolution_sessions": 10,
-  "observation_days": 1,
-  "observations": 20,
+  "observation_days": 2,
+  "observations": 40,
   "schema_version": "4.shadow.1",
   "status": "COLLECTING",
   "top_k": 20

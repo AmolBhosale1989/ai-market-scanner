@@ -13,7 +13,7 @@
       },
       "v4_shadow_observations.json": {
         "present": true,
-        "records": 20,
+        "records": 40,
         "valid": true
       }
     },
@@ -34,7 +34,7 @@
     "outcome_resolution": "22:45 Monday-Friday"
   },
   "failed_checks": [],
-  "generated_at_utc": "2026-09-14T13:30:35.072878+00:00",
+  "generated_at_utc": "2026-09-15T00:54:53.119781+00:00",
   "health_endpoint": "/_stcore/health",
   "safe_to_serve": true,
   "schema_version": "8.1.0",

@@ -2,17 +2,17 @@
   "block_model_promotion": true,
   "detail": "forward evidence is accumulating normally",
   "failed_checks": [],
-  "generated_at_utc": "2026-09-14T13:30:31.985497+00:00",
+  "generated_at_utc": "2026-09-15T00:54:50.256083+00:00",
   "latest_snapshot_candidates": 20,
-  "latest_snapshot_session": "2026-09-11",
+  "latest_snapshot_session": "2026-09-14",
   "mature_training_samples": 0,
   "milestones": {
     "monitoring_30": false,
     "v5_100": false,
     "v6_220": false
   },
-  "observation_days": 1,
-  "observations": 20,
+  "observation_days": 2,
+  "observations": 40,
   "resolution_stalled_observations": 0,
   "schema_version": "7.1.0",
   "settings": {
@@ -21,7 +21,7 @@
     "resolution_stalled_after_days": 15,
     "stale_after_calendar_days": 4
   },
-  "snapshot_age_calendar_days": 3,
+  "snapshot_age_calendar_days": 1,
   "status": "COLLECTING",
-  "unresolved_observations": 20
+  "unresolved_observations": 40
 }

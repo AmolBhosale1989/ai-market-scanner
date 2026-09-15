@@ -9,9 +9,9 @@
   },
   "detail": "forward outcomes are accumulating; no performance conclusion is permitted yet",
   "failed_checks": [],
-  "generated_at_utc": "2026-09-14T13:30:35.504580+00:00",
+  "generated_at_utc": "2026-09-15T00:54:53.521827+00:00",
   "latest_snapshot_candidates": 20,
-  "latest_snapshot_session": "2026-09-11",
+  "latest_snapshot_session": "2026-09-14",
   "mature_samples": 0,
   "next_milestone": {
     "current": 0,
@@ -19,8 +19,8 @@
     "remaining": 30,
     "required": 30
   },
-  "observation_days": 1,
-  "observations": 20,
+  "observation_days": 2,
+  "observations": 40,
   "performance_claim_allowed": false,
   "progress_pct": {
     "monitoring_30": 0.0,
@@ -35,7 +35,7 @@
     "v5_samples": 100,
     "v9_samples": 220
   },
-  "snapshot_age_calendar_days": 3,
+  "snapshot_age_calendar_days": 1,
   "status": "HEALTHY_COLLECTING",
-  "unresolved_observations": 20
+  "unresolved_observations": 40
 }
