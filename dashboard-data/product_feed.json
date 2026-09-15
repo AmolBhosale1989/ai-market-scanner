@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at_utc": "2026-09-15T20:26:22.221403+00:00",
+  "generated_at_utc": "2026-09-15T23:00:17.269239+00:00",
   "research_only": true,
   "market_hunt": {
     "recommendations": [],
@@ -16209,7 +16209,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "COIN",
@@ -16343,7 +16343,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "BMNR",
@@ -16477,7 +16477,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "ARE",
@@ -16583,13 +16583,13 @@
         "live_price": 52.93,
         "session_high": 53.28,
         "session_low": 51.43,
-        "live_vwap": 52.72,
+        "live_vwap": 52.77,
         "live_above_vwap": true,
         "opening_range_high": 51.89,
         "opening_range_low": 51.43,
         "live_above_or_high": true,
-        "intraday_rvol": 1.01,
-        "volume_vs_9ma": 0.0,
+        "intraday_rvol": 1.27,
+        "volume_vs_9ma": 6.14,
         "opening_30m_rvol": 0.58,
         "opening_volume_spike_2x": false,
         "quote_bid": null,
@@ -16599,7 +16599,7 @@
         "spread_gate_source": "NONE",
         "live_trigger_reached": false,
         "live_retest_touched": false,
-        "live_confirmation_score": 50,
+        "live_confirmation_score": 75,
         "premarket_price": null,
         "premarket_gap_pct": null,
         "premarket_volume": null,
@@ -16611,7 +16611,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "TEAM",
@@ -16745,7 +16745,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "ZETA",
@@ -16879,7 +16879,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "CRM",
@@ -17013,7 +17013,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "SRPT",
@@ -17147,7 +17147,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "SG",
@@ -17281,7 +17281,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "AMLX",
@@ -17415,7 +17415,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "UMC",
@@ -17549,7 +17549,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "AUGO",
@@ -17683,7 +17683,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "MSTR",
@@ -17817,7 +17817,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "SBET",
@@ -17951,7 +17951,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "IOVA",
@@ -18085,7 +18085,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "CAI",
@@ -18219,7 +18219,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "PSNL",
@@ -18353,7 +18353,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "ANF",
@@ -18487,7 +18487,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "DK",
@@ -18593,13 +18593,13 @@
         "live_price": 78.14,
         "session_high": 78.41,
         "session_low": 74.42,
-        "live_vwap": 77.55,
+        "live_vwap": 77.62,
         "live_above_vwap": true,
         "opening_range_high": 76.7,
         "opening_range_low": 74.42,
         "live_above_or_high": true,
-        "intraday_rvol": 0.69,
-        "volume_vs_9ma": 0.0,
+        "intraday_rvol": 0.79,
+        "volume_vs_9ma": 4.29,
         "opening_30m_rvol": 0.49,
         "opening_volume_spike_2x": false,
         "quote_bid": null,
@@ -18609,7 +18609,7 @@
         "spread_gate_source": "LIQUIDITY_PROXY",
         "live_trigger_reached": false,
         "live_retest_touched": false,
-        "live_confirmation_score": 50,
+        "live_confirmation_score": 55,
         "premarket_price": 74.08,
         "premarket_gap_pct": -0.52,
         "premarket_volume": 0.0,
@@ -18621,7 +18621,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "ASST",
@@ -18755,7 +18755,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "SMMT",
@@ -18889,7 +18889,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "ROIV",
@@ -19023,7 +19023,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "PTEN",
@@ -19157,7 +19157,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "HOOD",
@@ -19291,7 +19291,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "MNDY",
@@ -19425,7 +19425,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "HNGE",
@@ -19559,7 +19559,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "CRK",
@@ -19665,13 +19665,13 @@
         "live_price": 14.31,
         "session_high": 14.73,
         "session_low": 14.24,
-        "live_vwap": 14.46,
+        "live_vwap": 14.42,
         "live_above_vwap": false,
         "opening_range_high": 14.55,
         "opening_range_low": 14.34,
         "live_above_or_high": false,
-        "intraday_rvol": 0.68,
-        "volume_vs_9ma": 0.0,
+        "intraday_rvol": 0.93,
+        "volume_vs_9ma": 12.31,
         "opening_30m_rvol": 0.89,
         "opening_volume_spike_2x": false,
         "quote_bid": null,
@@ -19681,7 +19681,7 @@
         "spread_gate_source": "NONE",
         "live_trigger_reached": false,
         "live_retest_touched": false,
-        "live_confirmation_score": 0,
+        "live_confirmation_score": 5,
         "premarket_price": 14.38,
         "premarket_gap_pct": 0.56,
         "premarket_volume": 0.0,
@@ -19693,7 +19693,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "VEEV",
@@ -19827,7 +19827,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "EL",
@@ -19933,13 +19933,13 @@
         "live_price": 96.25,
         "session_high": 97.99,
         "session_low": 95.94,
-        "live_vwap": 96.8,
+        "live_vwap": 96.68,
         "live_above_vwap": false,
         "opening_range_high": 97.99,
         "opening_range_low": 96.7,
         "live_above_or_high": false,
-        "intraday_rvol": 0.69,
-        "volume_vs_9ma": 0.0,
+        "intraday_rvol": 0.87,
+        "volume_vs_9ma": 8.57,
         "opening_30m_rvol": 0.67,
         "opening_volume_spike_2x": false,
         "quote_bid": null,
@@ -19949,7 +19949,7 @@
         "spread_gate_source": "LIQUIDITY_PROXY",
         "live_trigger_reached": false,
         "live_retest_touched": false,
-        "live_confirmation_score": 0,
+        "live_confirmation_score": 5,
         "premarket_price": 97.03,
         "premarket_gap_pct": -1.24,
         "premarket_volume": 0.0,
@@ -19961,7 +19961,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       },
       {
         "ticker": "IT",
@@ -20095,13 +20095,13 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-15T16:26:22-04:00"
+        "checked_at_et": "2026-09-15T19:00:17-04:00"
       }
     ],
     "monitor_health": [
       {
         "status": "OK",
-        "checked_at_et": "2026-09-15T16:26:22-04:00",
+        "checked_at_et": "2026-09-15T19:00:17-04:00",
         "monitored_candidates": 30,
         "live_rows": 0,
         "actionable_states": 17,
