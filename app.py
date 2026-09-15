@@ -323,6 +323,7 @@ files = {
     "events":"upcoming_events.csv", "event_status":"event_status.csv", "journal":"paper_journal.csv",
     "performance":"performance_summary.csv", "performance_setup":"performance_by_setup.csv",
     "calibration":"probability_calibration.csv", "monitor":"monitor_health.csv", "gate":"validation_gate.csv",
+    "daily_pick_log":"daily_top_pick_log.csv", "daily_pick_summary":"daily_top_pick_summary.csv",
     "legendary":"legendary_setups.csv", "legendary_consensus":"legendary_consensus.csv",
     "trader_minervini":"trader_minervini.csv", "trader_oneil":"trader_oneil.csv",
     "trader_weinstein":"trader_weinstein.csv", "trader_darvas":"trader_darvas.csv",
@@ -1165,6 +1166,36 @@ with social_tab:
 
 with validation:
     performance, setup, calibration, gate = data["performance"], data["performance_setup"], data["calibration"], data["gate"]
+    daily_pick_log, daily_pick_summary = data["daily_pick_log"], data["daily_pick_summary"]
+    st.subheader("Daily Top Conviction Paper Pick")
+    st.markdown('<div class="section-note">Exactly one paper-only selection per U.S. trading day. Entry, stop and target are frozen when selected; the same row is tracked until TARGET HIT, STOP HIT or EXPIRED. No replacement is allowed after selection.</div>', unsafe_allow_html=True)
+    if daily_pick_log.empty:
+        st.info("No daily top-conviction paper pick has been recorded yet.")
+    else:
+        latest_pick = daily_pick_log.sort_values(["selection_date_et","selected_at_et"], ascending=[False,False]).iloc[0]
+        p1,p2,p3,p4,p5 = st.columns(5)
+        p1.metric("Ticker", str(latest_pick.get("ticker","—")))
+        p2.metric("Status", str(latest_pick.get("status","OPEN")))
+        p3.metric("Entry", f'{number(latest_pick.get("entry_price")):.2f}')
+        p4.metric("Stop", f'{number(latest_pick.get("stop_price")):.2f}')
+        p5.metric("Target", f'{number(latest_pick.get("target_price")):.2f}')
+        st.caption(
+            f'Selected {latest_pick.get("selected_at_et","—")} · source {latest_pick.get("source","—")} · '
+            f'score {number(latest_pick.get("selection_score")):.1f} · '
+            f'R/R {(number(latest_pick.get("target_price"))-number(latest_pick.get("entry_price"))) / max(number(latest_pick.get("entry_price"))-number(latest_pick.get("stop_price")), 0.0001):.2f}x'
+        )
+        pick_cols=["selection_date_et","selected_at_et","ticker","source","selection_score","theme","entry_price","stop_price",
+                   "target_price","target_pct","risk_pct","status","outcome_at_et","exit_price","return_pct","r_multiple",
+                   "mfe_pct","mae_pct","business_days_open","intraday_rvol","rel_vs_spy_pct","theme_rotation_score","reason"]
+        st.dataframe(daily_pick_log[columns(daily_pick_log,pick_cols)], hide_index=True, use_container_width=True)
+        if not daily_pick_summary.empty:
+            s=daily_pick_summary.iloc[0]
+            s1,s2,s3,s4,s5=st.columns(5)
+            s1.metric("Daily picks", int(number(s.get("total_daily_picks"))))
+            s2.metric("Closed", int(number(s.get("closed_picks"))))
+            s3.metric("Target hits", int(number(s.get("target_hits"))))
+            s4.metric("Stop hits", int(number(s.get("stop_hits"))))
+            s5.metric("Win rate", f'{number(s.get("win_rate_pct")):.1f}%')
     st.subheader("Forward validation")
     if not gate.empty:
         g=gate.iloc[0]
