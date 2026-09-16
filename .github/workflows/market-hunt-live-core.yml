@@ -1,0 +1,184 @@
+name: Market Hunt Live Core
+
+on:
+  schedule:
+    - cron: '5,15,25,35,45,55 13-21 * * 1-5'
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/market-hunt-live-core.yml'
+      - 'scanner/intraday.py'
+      - 'scanner/live.py'
+      - 'scanner/v4_worker.py'
+      - 'scanner/v4_evidence.py'
+      - 'scanner/legendary_agents.py'
+      - 'scanner/system_health.py'
+
+permissions:
+  contents: write
+
+jobs:
+  live-monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    concurrency:
+      group: market-hunt-live-core-monitor
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Restore live inputs and state
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs .state
+          git fetch origin scan-data:refs/remotes/origin/scan-data
+          for f in latest_scan.csv tradable_universe.csv all_candidates.csv trending_themes.csv sector_rotation.csv rotation_leaders.csv momentum_signals.csv order_flow_strategy.csv; do
+            git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
+          done
+          test -s outputs/latest_scan.csv
+      - name: Refresh V7 live monitor
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: timeout 240s python -m scanner.intraday --limit 30
+      - name: Publish V7 live monitor
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "market-hunt-bot"
+          git config user.email "market-hunt-bot@users.noreply.github.com"
+          rm -rf /tmp/market-hunt-live-core-monitor
+          git fetch origin scan-data:scan-data
+          git worktree add /tmp/market-hunt-live-core-monitor scan-data
+          mkdir -p /tmp/market-hunt-live-core-monitor/dashboard-data
+          for f in recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json; do
+            if [ -f "outputs/$f" ]; then
+              cp "outputs/$f" "/tmp/market-hunt-live-core-monitor/dashboard-data/$f"
+            fi
+          done
+          printf "updated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-monitor/dashboard-data/live_metadata.csv
+          cd /tmp/market-hunt-live-core-monitor
+          git add dashboard-data
+          if ! git diff --cached --quiet; then
+            git commit -m "Refresh V7 live monitor [skip ci]"
+            git pull --rebase origin scan-data
+            git push origin scan-data
+          fi
+
+  v4-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    concurrency:
+      group: market-hunt-live-core-v4
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Restore V4 inputs and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs .state/v4
+          git fetch origin scan-data:refs/remotes/origin/scan-data
+          for f in latest_scan.csv all_candidates.csv intraday_live.csv trending_themes.csv sector_rotation.csv rotation_leaders.csv momentum_signals.csv order_flow_strategy.csv; do
+            git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
+          done
+          rm -rf /tmp/market-hunt-v4-evidence
+          git worktree add --detach /tmp/market-hunt-v4-evidence origin/scan-data
+          python -m scanner.v4_evidence --state-dir .state/v4 --import-dir /tmp/market-hunt-v4-evidence || true
+          git worktree remove --force /tmp/market-hunt-v4-evidence
+          test -s outputs/latest_scan.csv
+      - name: Refresh V4 live intelligence
+        run: >-
+          timeout 300s python -m scanner.v4_worker --once --candidate-source local
+          --hot-limit 20 --warm-limit 80 --warm-batch-size 10
+          --warm-every-cycles 5 --max-workers 8 --catalysts
+          --options-microstructure --options-limit 8
+      - name: Refresh legendary agents
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import pandas as pd
+          from scanner.legendary_agents import run_legendary_agents
+          source=Path("outputs/v4_live_snapshot.csv")
+          if source.exists() and source.stat().st_size>0:
+              frame=pd.read_csv(source)
+              if not frame.empty:
+                  run_legendary_agents(frame,Path("outputs"),top_n=25)
+          PY
+      - name: Publish V4 live intelligence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "market-hunt-bot"
+          git config user.email "market-hunt-bot@users.noreply.github.com"
+          rm -rf /tmp/market-hunt-live-core-v4
+          git fetch origin scan-data:scan-data
+          git worktree add /tmp/market-hunt-live-core-v4 scan-data
+          mkdir -p /tmp/market-hunt-live-core-v4/dashboard-data
+          for f in v4_job_health.csv v4_monitor_shortlist.csv v4_live_snapshot.csv v4_transitions.csv v4_alerts.ndjson v4_worker_cycles.csv v4_worker_health.json v4_catalyst_events.csv v4_catalyst_health.json v4_options_microstructure.csv v4_options_microstructure_health.json legendary_setups.csv legendary_consensus.csv trader_minervini.csv trader_oneil.csv trader_weinstein.csv trader_darvas.csv trader_livermore.csv trader_qullamaggie.csv trader_druckenmiller.csv trader_lawwaisum.csv trader_martinluk.csv trader_top500swing.csv trader_highmomentumbeta.csv trader_superstock.csv trader_brownmoose.csv trader_venu.csv; do
+            if [ -f "outputs/$f" ]; then
+              cp "outputs/$f" "/tmp/market-hunt-live-core-v4/dashboard-data/$f"
+            fi
+          done
+          printf "updated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-v4/dashboard-data/v4_live_metadata.csv
+          cd /tmp/market-hunt-live-core-v4
+          git add dashboard-data
+          if ! git diff --cached --quiet; then
+            git commit -m "Refresh V4 live intelligence [skip ci]"
+            git pull --rebase origin scan-data
+            git push origin scan-data
+          fi
+
+  system-health:
+    if: always()
+    needs: [live-monitor, v4-live]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Restore all published health artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs
+          git fetch origin scan-data:refs/remotes/origin/scan-data
+          for f in monitor_health.csv v4_worker_health.json theme_health.csv sector_rotation_health.csv momentum_health.csv broad_breakout_health.csv order_flow_strategy_health.csv high_conviction_alert_health.csv premarket_health.csv daily_top_pick_summary.csv; do
+            git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
+          done
+      - name: Build unified live health
+        run: python -m scanner.system_health
+      - name: Publish unified health
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "market-hunt-bot"
+          git config user.email "market-hunt-bot@users.noreply.github.com"
+          rm -rf /tmp/market-hunt-system-health
+          git fetch origin scan-data:scan-data
+          git worktree add /tmp/market-hunt-system-health scan-data
+          mkdir -p /tmp/market-hunt-system-health/dashboard-data
+          cp outputs/live_system_health.csv /tmp/market-hunt-system-health/dashboard-data/
+          cp outputs/live_system_health_summary.csv /tmp/market-hunt-system-health/dashboard-data/
+          cd /tmp/market-hunt-system-health
+          git add dashboard-data
+          if ! git diff --cached --quiet; then
+            git commit -m "Update unified live-system health [skip ci]"
+            git pull --rebase origin scan-data
+            git push origin scan-data
+          fi
