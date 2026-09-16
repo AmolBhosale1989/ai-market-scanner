@@ -187,15 +187,25 @@ def _update_paper_journal(live: pd.DataFrame, now: str):
             journal.at[idx,"triggered_at_et"]=now
         if new_state=="LIVE_CONFIRMED" and (pd.isna(confirmed_existing) or not str(confirmed_existing).strip()):
             journal.at[idx,"live_confirmed_at_et"]=now
+        ever_triggered = not (pd.isna(journal.at[idx,"triggered_at_et"]) or not str(journal.at[idx,"triggered_at_et"]).strip())
+        ever_confirmed = not (pd.isna(journal.at[idx,"live_confirmed_at_et"]) or not str(journal.at[idx,"live_confirmed_at_et"]).strip())
+        entered_trade = bool(ever_triggered or ever_confirmed or new_state in {"TARGET_HIT","FAILED_BREAKOUT"})
+
         if new_state in {"TARGET_HIT","FAILED_BREAKOUT","INVALIDATED"}:
             if pd.isna(closed_existing) or not str(closed_existing).strip():
                 journal.at[idx,"closed_at_et"]=now
-            journal.at[idx,"outcome"]=new_state
-            if math.isfinite(price) and math.isfinite(entry) and entry>0:
-                journal.at[idx,"return_pct"]=round((price/entry-1)*100,2)
-                risk=entry-stop if math.isfinite(stop) else math.nan
-                if math.isfinite(risk) and risk>0:
-                    journal.at[idx,"r_multiple"]=round((price-entry)/risk,2)
+
+            if new_state=="INVALIDATED" and not entered_trade:
+                journal.at[idx,"outcome"]="PRE_ENTRY_INVALIDATED"
+                journal.at[idx,"return_pct"]=math.nan
+                journal.at[idx,"r_multiple"]=math.nan
+            else:
+                journal.at[idx,"outcome"]=new_state
+                if math.isfinite(price) and math.isfinite(entry) and entry>0:
+                    journal.at[idx,"return_pct"]=round((price/entry-1)*100,2)
+                    risk=entry-stop if math.isfinite(stop) else math.nan
+                    if math.isfinite(risk) and risk>0:
+                        journal.at[idx,"r_multiple"]=round((price-entry)/risk,2)
 
     STATE_DIR.mkdir(exist_ok=True)
     journal.to_csv(JOURNAL_FILE,index=False)
