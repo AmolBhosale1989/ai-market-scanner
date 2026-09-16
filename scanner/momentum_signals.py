@@ -8,6 +8,7 @@ import pandas as pd
 import yfinance as yf
 
 from .config import OUTPUT_DIR
+from .order_flow import bar_order_flow_proxy
 
 NY = ZoneInfo("America/New_York")
 
@@ -102,6 +103,7 @@ def run(limit: int = 40):
         or_high=float(orb["High"].max()) if not orb.empty else math.nan
         recent_low=float(today["Low"].tail(3).min()) if len(today)>=3 else float(today["Low"].min())
         rvol=_same_time_rvol(d,today,now.date())
+        order_flow=bar_order_flow_proxy(today)
         day=float(meta.get("day_change_pct",math.nan))
         rel=float(meta.get("rel_vs_spy_pct",math.nan))
         move30=float(meta.get("move_30m_pct",math.nan))
@@ -155,6 +157,7 @@ def run(limit: int = 40):
             "risk_pct":round(risk_pct,2) if math.isfinite(risk_pct) else math.nan,
             "target_5pct":round(price*1.05,2),
             "target_8pct":round(price*1.08,2),
+            **order_flow,
             "last_bar_et":today.index[-1].isoformat(),
         })
 
