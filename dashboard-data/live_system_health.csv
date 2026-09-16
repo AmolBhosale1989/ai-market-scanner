@@ -1,0 +1,11 @@
+module,file,last_update_utc,age_minutes,max_age_minutes,status,market_open,checked_at_et
+Live Monitor / V7,monitor_health.csv,2026-09-16T17:26:39+00:00,4.7,20,OK,True,2026-09-16T13:31:23-04:00
+V4 Live Intelligence,v4_worker_health.json,2026-09-16T17:26:53.187716+00:00,4.5,25,OK,True,2026-09-16T13:31:23-04:00
+Themes,theme_health.csv,2026-09-16T17:30:36+00:00,0.8,20,OK,True,2026-09-16T13:31:23-04:00
+Sector Rotation,sector_rotation_health.csv,2026-09-16T17:30:47+00:00,0.6,20,OK,True,2026-09-16T13:31:23-04:00
+Momentum,momentum_health.csv,2026-09-16T17:31:22+00:00,0.0,20,OK,True,2026-09-16T13:31:23-04:00
+Broad Breakout,broad_breakout_health.csv,2026-09-16T17:30:47+00:00,0.6,20,OK,True,2026-09-16T13:31:23-04:00
+Order Flow,order_flow_strategy_health.csv,2026-09-16T17:31:22+00:00,0.0,20,OK,True,2026-09-16T13:31:23-04:00
+High Conviction Alerts,high_conviction_alert_health.csv,2026-09-16T17:31:23+00:00,0.0,20,OK,True,2026-09-16T13:31:23-04:00
+Premarket Discovery,premarket_health.csv,2026-09-16T17:26:37+00:00,4.8,45,OK,True,2026-09-16T13:31:23-04:00
+Daily Pick Validation,daily_top_pick_summary.csv,2026-09-16T17:27:29.752164+00:00,3.9,90,OK,True,2026-09-16T13:31:23-04:00
