@@ -588,8 +588,34 @@ with opportunities:
     order_flow_strategy = data["order_flow_strategy"]
     st.subheader("Order Flow Strategy")
     st.markdown('<div class="section-note">Bar-derived order-flow strategy. It estimates buying/selling pressure from 5-minute OHLCV, volume imbalance, VWAP and participation. It is not true bid/ask tape or Level 2 order-book data.</div>', unsafe_allow_html=True)
+    order_flow_health = data["order_flow_strategy_health"]
+    if not order_flow_health.empty:
+        ofh = order_flow_health.iloc[0]
+        updated_raw = ofh.get("updated_at_et", "")
+        updated_ts = pd.to_datetime(updated_raw, errors="coerce")
+        now_et = pd.Timestamp.now(tz="America/New_York")
+        stale = False
+        stale_reason = ""
+        if pd.notna(updated_ts):
+            if updated_ts.tzinfo is None:
+                updated_ts = updated_ts.tz_localize("America/New_York")
+            else:
+                updated_ts = updated_ts.tz_convert("America/New_York")
+            regular_open = now_et.normalize() + pd.Timedelta(hours=9, minutes=30)
+            regular_close = now_et.normalize() + pd.Timedelta(hours=16)
+            if regular_open <= now_et <= regular_close:
+                age_min = (now_et - updated_ts).total_seconds() / 60
+                if updated_ts < regular_open:
+                    stale = True
+                    stale_reason = "last order-flow update occurred before today’s 9:30 ET market open"
+                elif age_min > 30:
+                    stale = True
+                    stale_reason = f"last order-flow update is {age_min:.0f} minutes old"
+            st.caption(f"Order-flow last update: {updated_ts.strftime('%Y-%m-%d %H:%M:%S ET')}")
+        if stale:
+            st.error(f"ORDER FLOW DATA STALE — {stale_reason}. Empty or unchanged results should not be interpreted as 'no setups'.")
     if order_flow_strategy.empty:
-        st.info("No order-flow strategy data has been published yet.")
+        st.info("No order-flow strategy rows are currently published.")
     else:
         of_cols=["ticker","theme","order_flow_strategy_signal","order_flow_strategy_score","order_flow_setup",
                  "price","day_change_pct","rel_vs_spy_pct","theme_rotation_score","intraday_rvol",
