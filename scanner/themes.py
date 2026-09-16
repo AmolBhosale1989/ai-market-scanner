@@ -14,6 +14,7 @@ STATIC_THEME_MEMBERS = {
     "Semiconductors": {"NVDA","AMD","AVGO","MU","MRVL","ARM","INTC","QCOM","TSM","ASML","LRCX","AMAT","KLAC","MPWR","ON"},
     "Cloud Computing": {"SNOW","DDOG","NET","MDB","NOW","CRM","ORCL","AMZN","MSFT","GTLB","ESTC"},
     "Biotechnology": {"MRNA","BMRN","VRTX","REGN","ALNY","NBIX","IONS","CRSP","BEAM","NTLA","IOVA"},
+    "Crypto & Digital Infrastructure": {"CIFR","IREN","MARA","RIOT","CLSK","HUT","WULF","CORZ","BTDR","BITF","CAN","ARBK","APLD"},
 }
 
 THEMES = {
@@ -34,6 +35,7 @@ THEMES = {
     "Homebuilders": {"etf":"XHB","industries":["residential construction","building products & equipment"],"keywords":["homebuilding","homebuilder","residential construction"]},
     "Regional Banks": {"etf":"KRE","industries":["banks - regional"],"keywords":["regional bank"]},
     "Fintech": {"etf":"FINX","industries":[],"keywords":["financial technology","fintech","digital payments"]},
+    "Crypto & Digital Infrastructure": {"etf":"WGMI","industries":[],"keywords":["bitcoin mining","crypto mining","cryptocurrency mining","digital infrastructure","data center"]},
     "Cannabis": {"etf":"MSOS","industries":[],"keywords":["cannabis","marijuana"]},
 }
 
