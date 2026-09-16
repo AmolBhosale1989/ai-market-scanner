@@ -11,6 +11,7 @@ on:
       - 'scanner/order_flow_strategy.py'
       - 'scanner/order_flow_validation.py'
       - 'scanner/momentum_signals.py'
+      - 'scanner/broad_breakout.py'
       - 'scanner/sector_rotation.py'
       - 'scanner/theme_live.py'
 
@@ -57,7 +58,7 @@ jobs:
 
       - name: Scan broad liquid breakouts
         continue-on-error: true
-        run: timeout 240s python -m scanner.broad_breakout --help || timeout 240s python -m scanner.broad_breakout
+        run: timeout 240s python -m scanner.broad_breakout
 
       - name: Refresh fast momentum
         continue-on-error: true
