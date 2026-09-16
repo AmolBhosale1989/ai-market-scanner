@@ -12,6 +12,7 @@ on:
       - 'scanner/order_flow_validation.py'
       - 'scanner/momentum_signals.py'
       - 'scanner/broad_breakout.py'
+      - 'scanner/v31_challenger.py'
       - 'scanner/sector_rotation.py'
       - 'scanner/theme_live.py'
 
