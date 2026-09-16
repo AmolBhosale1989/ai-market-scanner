@@ -1,8 +1,12 @@
 dimension,value,closed_signals,win_rate_pct,target_hit_rate_pct,hit_5pct_rate,hit_8pct_rate,hit_10pct_rate,avg_return_pct,avg_r_multiple
-catalyst_status,NOT CHECKED,9,0.0,0.0,0.0,0.0,0.0,-10.48,-1.84
-catalyst_status,ACTIVE,2,0.0,0.0,0.0,0.0,0.0,-9.0,-1.54
-entry_model,RESISTANCE_BREAKOUT,11,0.0,0.0,0.0,0.0,0.0,-10.21,-1.79
-market_regime_state,WEAK,11,0.0,0.0,0.0,0.0,0.0,-10.21,-1.79
-stage,DISCOVER,9,0.0,0.0,0.0,0.0,0.0,-10.48,-1.84
-stage,FORMING,2,0.0,0.0,0.0,0.0,0.0,-9.0,-1.54
-theme,UNCLASSIFIED,11,0.0,0.0,0.0,0.0,0.0,-10.21,-1.79
+catalyst_status,NOT CHECKED,12,0.0,0.0,0.0,0.0,0.0,-10.01,-1.75
+catalyst_status,ACTIVE,3,0.0,0.0,0.0,0.0,0.0,-9.72,-1.64
+entry_model,RESISTANCE_BREAKOUT,15,0.0,0.0,0.0,0.0,0.0,-9.95,-1.72
+market_regime_state,WEAK,15,0.0,0.0,0.0,0.0,0.0,-9.95,-1.72
+stage,DISCOVER,11,0.0,0.0,0.0,0.0,0.0,-10.36,-1.81
+stage,FORMING,4,0.0,0.0,0.0,0.0,0.0,-8.81,-1.49
+theme,UNCLASSIFIED,10,0.0,0.0,0.0,0.0,0.0,-10.26,-1.8
+theme,Biotechnology,2,0.0,0.0,0.0,0.0,0.0,-11.43,-1.9
+theme,Cloud Computing,1,0.0,0.0,0.0,0.0,0.0,-6.56,-1.09
+theme,Gold Miners,1,0.0,0.0,0.0,0.0,0.0,-11.18,-1.93
+theme,Oil Services,1,0.0,0.0,0.0,0.0,0.0,-6.1,-1.02
