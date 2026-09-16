@@ -317,7 +317,7 @@ def add_opportunity_context(frame):
 
 files = {
     "scan_meta":"scan_metadata.csv", "live_meta":"live_metadata.csv", "health":"scan_health.csv",
-    "live":"intraday_live.csv", "premarket":"premarket_discovery.csv", "theme_health":"theme_health.csv", "sector_rotation":"sector_rotation.csv", "rotation_leaders":"rotation_leaders.csv", "momentum_signals":"momentum_signals.csv", "transitions":"state_transitions.csv", "themes":"trending_themes.csv",
+    "live":"intraday_live.csv", "premarket":"premarket_discovery.csv", "theme_health":"theme_health.csv", "sector_rotation":"sector_rotation.csv", "rotation_leaders":"rotation_leaders.csv", "momentum_signals":"momentum_signals.csv", "order_flow_strategy":"order_flow_strategy.csv", "order_flow_strategy_health":"order_flow_strategy_health.csv", "transitions":"state_transitions.csv", "themes":"trending_themes.csv",
     "recommendations":"recommended_trades.csv", "leaders":"liquid_leaders.csv", "watchlist":"watchlist.csv",
     "picks":"latest_scan.csv", "tradable":"tradable_universe.csv", "candidates":"all_candidates.csv",
     "events":"upcoming_events.csv", "event_status":"event_status.csv", "journal":"paper_journal.csv",
@@ -583,6 +583,20 @@ with opportunities:
         st.dataframe(unified[columns(unified,live_cols)].head(50), hide_index=True, use_container_width=True)
     else:
         st.info("No live opportunity data has been published yet.")
+
+    order_flow_strategy = data["order_flow_strategy"]
+    st.subheader("Order Flow Strategy")
+    st.markdown('<div class="section-note">Bar-derived order-flow strategy. It estimates buying/selling pressure from 5-minute OHLCV, volume imbalance, VWAP and participation. It is not true bid/ask tape or Level 2 order-book data.</div>', unsafe_allow_html=True)
+    if order_flow_strategy.empty:
+        st.info("No order-flow strategy data has been published yet.")
+    else:
+        of_cols=["ticker","theme","order_flow_strategy_signal","order_flow_strategy_score","order_flow_setup",
+                 "price","day_change_pct","rel_vs_spy_pct","theme_rotation_score","intraday_rvol",
+                 "order_flow_score","order_flow_state","buy_pressure_pct","sell_pressure_pct",
+                 "volume_imbalance_proxy","volume_impulse","vwap_pressure","strategy_entry","strategy_stop",
+                 "strategy_target_1","strategy_target_2","strategy_risk_pct","strategy_rr_to_t2",
+                 "order_flow_strategy_reason","last_bar_et"]
+        st.dataframe(order_flow_strategy[columns(order_flow_strategy,of_cols)].head(50), hide_index=True, use_container_width=True)
 
     st.subheader("Fresh Market Discoveries")
     st.markdown('<div class="section-note">Fresh discoveries now combine pre-market movers, current rotation leaders and fast momentum signals so this table continues updating after the opening bell.</div>', unsafe_allow_html=True)
