@@ -324,6 +324,7 @@ files = {
     "performance":"performance_summary.csv", "performance_setup":"performance_by_setup.csv",
     "calibration":"probability_calibration.csv", "monitor":"monitor_health.csv", "gate":"validation_gate.csv",
     "daily_pick_log":"daily_top_pick_log.csv", "daily_pick_summary":"daily_top_pick_summary.csv",
+    "order_flow_journal":"order_flow_strategy_journal.csv", "order_flow_performance":"order_flow_strategy_performance.csv",
     "legendary":"legendary_setups.csv", "legendary_consensus":"legendary_consensus.csv",
     "trader_minervini":"trader_minervini.csv", "trader_oneil":"trader_oneil.csv",
     "trader_weinstein":"trader_weinstein.csv", "trader_darvas":"trader_darvas.csv",
@@ -1213,6 +1214,32 @@ with validation:
             s3.metric("Target hits", int(number(s.get("target_hits"))))
             s4.metric("Stop hits", int(number(s.get("stop_hits"))))
             s5.metric("Win rate", f'{number(s.get("win_rate_pct")):.1f}%')
+    st.subheader("Order Flow Strategy Validation")
+    order_flow_journal = data["order_flow_journal"]
+    order_flow_performance = data["order_flow_performance"]
+    if order_flow_performance.empty:
+        st.info("Order-flow forward-validation samples are still being collected.")
+    else:
+        op = order_flow_performance.iloc[0]
+        o1,o2,o3,o4,o5,o6 = st.columns(6)
+        o1.metric("Signals", int(number(op.get("signals"))))
+        o2.metric("Closed", int(number(op.get("closed_signals"))))
+        o3.metric("T1 hit", f'{number(op.get("target1_hit_rate_pct")):.1f}%')
+        o4.metric("T2 hit", f'{number(op.get("target2_hit_rate_pct")):.1f}%')
+        o5.metric("Stop rate", f'{number(op.get("stop_rate_pct")):.1f}%')
+        o6.metric("Win rate", f'{number(op.get("win_rate_pct")):.1f}%')
+        q1,q2,q3,q4 = st.columns(4)
+        q1.metric("Avg return", f'{number(op.get("avg_return_pct")):.2f}%')
+        q2.metric("Avg R", f'{number(op.get("avg_r_multiple")):.2f}')
+        q3.metric("Avg MFE", f'{number(op.get("avg_mfe_pct")):.2f}%')
+        q4.metric("Avg MAE", f'{number(op.get("avg_mae_pct")):.2f}%')
+    if not order_flow_journal.empty:
+        ofj_cols=["signal_date_et","signal_at_et","ticker","theme","entry_price","stop_price","target1_price",
+                  "target2_price","status","return_pct","r_multiple","target1_hit","target2_hit","mfe_pct","mae_pct",
+                  "order_flow_strategy_score","order_flow_score","order_flow_state","buy_pressure_pct",
+                  "volume_imbalance_proxy","intraday_rvol","theme_rotation_score","rel_vs_spy_pct"]
+        st.dataframe(order_flow_journal[columns(order_flow_journal,ofj_cols)], hide_index=True, use_container_width=True)
+
     st.subheader("Forward validation")
     if not gate.empty:
         g=gate.iloc[0]
