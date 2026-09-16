@@ -54,7 +54,7 @@ def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float
     return cur/base if base>0 else math.nan
 
 
-def run(batch_size: int = 80, top_n: int = 80) -> pd.DataFrame:
+def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.DataFrame:
     src=OUTPUT_DIR/"tradable_universe.csv"
     if not src.exists():
         return pd.DataFrame()
@@ -62,8 +62,20 @@ def run(batch_size: int = 80, top_n: int = 80) -> pd.DataFrame:
     if u.empty or "ticker" not in u.columns:
         return pd.DataFrame()
 
-    # Keep the broad liquid universe. Liquidity was already validated upstream.
-    tickers=u["ticker"].dropna().astype(str).unique().tolist()
+    # Keep a broad liquid universe but prioritize names most capable of producing
+    # outsized moves so the live scan completes reliably within GitHub runtime limits.
+    for col in ["avg_dollar_volume20","adr20_pct","max_up_day_30d_pct","ret20_pct"]:
+        if col not in u.columns:
+            u[col]=0.0
+        u[col]=pd.to_numeric(u[col],errors="coerce").fillna(0)
+    u["_priority"]=(
+        u["avg_dollar_volume20"].rank(pct=True)*0.45
+        + u["adr20_pct"].rank(pct=True)*0.20
+        + u["max_up_day_30d_pct"].rank(pct=True)*0.25
+        + u["ret20_pct"].rank(pct=True)*0.10
+    )
+    tickers=(u.sort_values(["_priority","avg_dollar_volume20"],ascending=[False,False])
+               .head(scan_limit)["ticker"].dropna().astype(str).unique().tolist())
     now=datetime.now(NY)
 
     spy_raw=yf.download("SPY",period="3d",interval="5m",auto_adjust=True,progress=False,threads=False,prepost=True)
@@ -158,6 +170,7 @@ def run(batch_size: int = 80, top_n: int = 80) -> pd.DataFrame:
     pd.DataFrame([{
         "updated_at_et":now.isoformat(timespec="seconds"),
         "universe_scanned":len(tickers),
+        "scan_limit":scan_limit,
         "qualified_breakouts":len(out),
         "mode":"THEME_INDEPENDENT_BROAD_BREAKOUT",
     }]).to_csv(OUTPUT_DIR/"broad_breakout_health.csv",index=False)
