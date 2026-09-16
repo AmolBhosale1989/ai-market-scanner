@@ -3,6 +3,9 @@ name: Market Hunt Live Core
 on:
   schedule:
     - cron: '5,15,25,35,45,55 13-21 * * 1-5'
+  workflow_run:
+    workflows: ["Market Hunt Order Flow Live"]
+    types: [completed]
   workflow_dispatch:
   push:
     paths:
