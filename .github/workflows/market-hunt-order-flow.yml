@@ -55,6 +55,10 @@ jobs:
         continue-on-error: true
         run: timeout 150s python -m scanner.sector_rotation
 
+      - name: Scan broad liquid breakouts
+        continue-on-error: true
+        run: timeout 240s python -m scanner.broad_breakout --help || timeout 240s python -m scanner.broad_breakout
+
       - name: Refresh fast momentum
         continue-on-error: true
         run: timeout 150s python -m scanner.momentum_signals
@@ -85,7 +89,7 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-order-flow scan-data
           mkdir -p /tmp/market-hunt-order-flow/dashboard-data
-          for f in trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv momentum_signals.csv momentum_health.csv order_flow_strategy.csv order_flow_strategy_health.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv high_conviction_alert_log.csv high_conviction_alert_health.csv; do
+          for f in trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv broad_breakout_discovery.csv broad_breakout_health.csv momentum_signals.csv momentum_health.csv order_flow_strategy.csv order_flow_strategy_health.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv high_conviction_alert_log.csv high_conviction_alert_health.csv; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-order-flow/dashboard-data/$f"
             fi
