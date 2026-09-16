@@ -66,18 +66,28 @@ def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float
 
 def run(limit: int = 40):
     src=OUTPUT_DIR/"rotation_leaders.csv"
-    if not src.exists():
-        return pd.DataFrame()
-    leaders=pd.read_csv(src)
+    broad_src=OUTPUT_DIR/"broad_breakout_discovery.csv"
+    themed=pd.read_csv(src) if src.exists() and src.stat().st_size>0 else pd.DataFrame()
+    broad=pd.read_csv(broad_src) if broad_src.exists() and broad_src.stat().st_size>0 else pd.DataFrame()
+
+    if not themed.empty:
+        mask=themed.get("rotation_leader",pd.Series(False,index=themed.index)).astype(str).str.lower().isin(["true","1","yes"])
+        themed=themed[mask].copy()
+        if "source" not in themed.columns:
+            themed["source"]="THEME_ROTATION"
+    if not broad.empty:
+        if "source" not in broad.columns:
+            broad["source"]="BROAD_BREAKOUT"
+
+    leaders=pd.concat([themed,broad],ignore_index=True,sort=False) if (not themed.empty or not broad.empty) else pd.DataFrame()
     if leaders.empty:
         return pd.DataFrame()
 
-    mask=leaders.get("rotation_leader",pd.Series(False,index=leaders.index)).astype(str).str.lower().isin(["true","1","yes"])
-    leaders=leaders[mask].copy()
-    if leaders.empty:
-        return pd.DataFrame()
-
-    leaders=leaders.sort_values(["theme_rotation_score","rotation_leader_score"],ascending=[False,False]).head(limit)
+    leaders["theme_rotation_score"]=pd.to_numeric(leaders.get("theme_rotation_score",0),errors="coerce").fillna(0)
+    leaders["rotation_leader_score"]=pd.to_numeric(leaders.get("rotation_leader_score",0),errors="coerce").fillna(0)
+    leaders["broad_breakout_score"]=pd.to_numeric(leaders.get("broad_breakout_score",0),errors="coerce").fillna(0)
+    leaders["candidate_priority"]=leaders[["theme_rotation_score","rotation_leader_score","broad_breakout_score"]].max(axis=1)
+    leaders=leaders.sort_values(["candidate_priority","rel_vs_spy_pct"],ascending=[False,False]).drop_duplicates("ticker").head(limit)
     tickers=leaders["ticker"].astype(str).tolist()
     try:
         raw=yf.download(tickers=tickers,period="5d",interval="5m",auto_adjust=True,
@@ -108,6 +118,8 @@ def run(limit: int = 40):
         rel=float(meta.get("rel_vs_spy_pct",math.nan))
         move30=float(meta.get("move_30m_pct",math.nan))
         theme_score=float(meta.get("theme_rotation_score",0))
+        candidate_source=str(meta.get("source","THEME_ROTATION"))
+        broad_score=float(meta.get("broad_breakout_score",0) or 0)
 
         above_vwap=math.isfinite(vwap) and price>vwap
         above_or=math.isfinite(or_high) and price>or_high
@@ -115,9 +127,13 @@ def run(limit: int = 40):
         liquidity_ok=liquid_dollars>=20_000_000
         early_zone=math.isfinite(day) and 1.5<=day<=8.0
         extended=math.isfinite(day) and day>8.0
-        momentum_ok=(theme_score>=70 and rel>=1.0 and move30>0 and above_vwap and
-                     (above_or or price>=float(today["High"].tail(4).max())*0.997) and
-                     math.isfinite(rvol) and rvol>=1.20 and liquidity_ok)
+        themed_momentum_ok=(theme_score>=70 and rel>=1.0 and move30>0 and above_vwap and
+                            (above_or or price>=float(today["High"].tail(4).max())*0.997) and
+                            math.isfinite(rvol) and rvol>=1.20 and liquidity_ok)
+        broad_momentum_ok=(candidate_source=="BROAD_BREAKOUT" and broad_score>=65 and rel>=1.25 and
+                           above_vwap and (above_or or price>=float(today["High"].tail(4).max())*0.995) and
+                           math.isfinite(rvol) and rvol>=1.25 and liquidity_ok)
+        momentum_ok=bool(themed_momentum_ok or broad_momentum_ok)
 
         stop_anchor=min(vwap,recent_low) if math.isfinite(vwap) else recent_low
         stop=stop_anchor*0.997 if math.isfinite(stop_anchor) else math.nan
@@ -126,7 +142,7 @@ def run(limit: int = 40):
 
         if momentum_ok and early_zone and risk_ok:
             signal="MOMENTUM BUY"
-            reason="ROTATION + VWAP + ORB + RVOL"
+            reason=("BROAD BREAKOUT + VWAP + RVOL" if candidate_source=="BROAD_BREAKOUT" else "ROTATION + VWAP + ORB + RVOL")
         elif extended and momentum_ok:
             signal="EXTENDED / WAIT RETEST"
             reason="STRONG ROTATION BUT MOVE ALREADY >8%"
@@ -139,6 +155,7 @@ def run(limit: int = 40):
 
         rows.append({
             "ticker":ticker,
+            "candidate_source":candidate_source,
             "theme":meta.get("theme",""),
             "signal":signal,
             "reason":reason,
@@ -147,6 +164,7 @@ def run(limit: int = 40):
             "move_30m_pct":round(move30,2) if math.isfinite(move30) else math.nan,
             "rel_vs_spy_pct":round(rel,2) if math.isfinite(rel) else math.nan,
             "theme_rotation_score":round(theme_score,1),
+            "broad_breakout_score":round(broad_score,1),
             "intraday_rvol":round(rvol,2) if math.isfinite(rvol) else math.nan,
             "vwap":round(vwap,2) if math.isfinite(vwap) else math.nan,
             "opening_range_high":round(or_high,2) if math.isfinite(or_high) else math.nan,
