@@ -19,7 +19,8 @@ def build_performance_reports(journal: pd.DataFrame | None=None):
         journal=pd.read_csv(path) if path.exists() else pd.DataFrame()
 
     summary_cols=[
-        "signals","open_signals","closed_signals","target_hits","failed_breakouts","invalidated",
+        "candidate_signals","pre_entry_invalidated","signals","open_signals","closed_signals",
+        "target_hits","failed_breakouts","invalidated",
         "win_rate_pct","target_hit_rate_pct","hit_5pct_rate","hit_8pct_rate","hit_10pct_rate",
         "avg_return_pct","median_return_pct","avg_mfe_pct","avg_mae_pct",
         "avg_r_multiple","median_r_multiple","profit_factor_r","expectancy_r"
@@ -31,7 +32,15 @@ def build_performance_reports(journal: pd.DataFrame | None=None):
         return out,pd.DataFrame()
 
     j=journal.copy()
-    closed=j[j.get("outcome",pd.Series(index=j.index,dtype=object)).fillna("").astype(str).str.len()>0].copy()
+    outcome=j.get("outcome",pd.Series("",index=j.index,dtype=object)).fillna("").astype(str)
+    triggered=j.get("triggered_at_et",pd.Series("",index=j.index,dtype=object)).fillna("").astype(str).str.strip().ne("")
+    confirmed=j.get("live_confirmed_at_et",pd.Series("",index=j.index,dtype=object)).fillna("").astype(str).str.strip().ne("")
+    entered=triggered | confirmed | outcome.isin(["TARGET_HIT","FAILED_BREAKOUT"])
+    pre_entry_invalidated=(~entered) & outcome.eq("INVALIDATED")
+
+    trades=j[entered].copy()
+    trade_outcome=trades.get("outcome",pd.Series("",index=trades.index,dtype=object)).fillna("").astype(str)
+    closed=trades[trade_outcome.str.len()>0].copy()
     r=_num(closed.get("r_multiple",pd.Series(index=closed.index,dtype=float)))
     ret=_num(closed.get("return_pct",pd.Series(index=closed.index,dtype=float)))
     wins=r[r>0]
@@ -42,8 +51,10 @@ def build_performance_reports(journal: pd.DataFrame | None=None):
     profit_factor=(gross_win/gross_loss) if gross_loss>0 else (math.inf if gross_win>0 else math.nan)
 
     row={
-        "signals":len(j),
-        "open_signals":int(j.get("outcome",pd.Series(index=j.index,dtype=object)).fillna("").astype(str).eq("").sum()),
+        "candidate_signals":len(j),
+        "pre_entry_invalidated":int(pre_entry_invalidated.sum()),
+        "signals":len(trades),
+        "open_signals":int(trade_outcome.eq("").sum()),
         "closed_signals":len(closed),
         "target_hits":int(closed.get("outcome",pd.Series(index=closed.index,dtype=object)).eq("TARGET_HIT").sum()),
         "failed_breakouts":int(closed.get("outcome",pd.Series(index=closed.index,dtype=object)).eq("FAILED_BREAKOUT").sum()),
@@ -102,7 +113,11 @@ def build_empirical_calibration(journal: pd.DataFrame | None=None, min_samples: 
         return out
 
     j=journal.copy()
-    j=j[j.get("outcome",pd.Series(index=j.index,dtype=object)).fillna("").astype(str).str.len()>0].copy()
+    outcome=j.get("outcome",pd.Series("",index=j.index,dtype=object)).fillna("").astype(str)
+    triggered=j.get("triggered_at_et",pd.Series("",index=j.index,dtype=object)).fillna("").astype(str).str.strip().ne("")
+    confirmed=j.get("live_confirmed_at_et",pd.Series("",index=j.index,dtype=object)).fillna("").astype(str).str.strip().ne("")
+    entered=triggered | confirmed | outcome.isin(["TARGET_HIT","FAILED_BREAKOUT"])
+    j=j[entered & outcome.str.len().gt(0)].copy()
     if j.empty:
         out=pd.DataFrame(columns=cols)
         out.to_csv(OUTPUT_DIR/"probability_calibration.csv",index=False)
