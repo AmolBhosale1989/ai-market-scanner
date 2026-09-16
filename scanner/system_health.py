@@ -1,0 +1,92 @@
+from __future__ import annotations
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import json
+from pathlib import Path
+
+import pandas as pd
+
+from .config import OUTPUT_DIR
+
+NY = ZoneInfo("America/New_York")
+
+CHECKS = [
+    ("Live Monitor / V7", "monitor_health.csv", "checked_at_et", 20),
+    ("V4 Live Intelligence", "v4_worker_health.json", "generated_at_utc", 25),
+    ("Themes", "theme_health.csv", "updated_at_et", 20),
+    ("Sector Rotation", "sector_rotation_health.csv", "updated_at_et", 20),
+    ("Momentum", "momentum_health.csv", "updated_at_et", 20),
+    ("Broad Breakout", "broad_breakout_health.csv", "updated_at_et", 20),
+    ("Order Flow", "order_flow_strategy_health.csv", "updated_at_et", 20),
+    ("High Conviction Alerts", "high_conviction_alert_health.csv", "checked_at_et", 20),
+    ("Premarket Discovery", "premarket_health.csv", "checked_at_et", 45),
+    ("Daily Pick Validation", "daily_top_pick_summary.csv", "updated_at_et", 90),
+]
+
+
+def _read_timestamp(path: Path, field: str):
+    if not path.exists() or path.stat().st_size == 0:
+        return None, "MISSING"
+    try:
+        if path.suffix.lower() == ".json":
+            obj=json.loads(path.read_text())
+            raw=obj.get(field)
+        else:
+            df=pd.read_csv(path)
+            if df.empty or field not in df.columns:
+                return None, "INVALID"
+            raw=df.iloc[-1].get(field)
+        ts=pd.to_datetime(raw, errors="coerce", utc=True)
+        if pd.isna(ts):
+            return None, "INVALID"
+        return ts, "OK"
+    except Exception:
+        return None, "INVALID"
+
+
+def run() -> pd.DataFrame:
+    now_et=datetime.now(NY)
+    now_utc=pd.Timestamp.now(tz="UTC")
+    open_et=pd.Timestamp(now_et.date(), tz=NY)+pd.Timedelta(hours=9,minutes=30)
+    close_et=pd.Timestamp(now_et.date(), tz=NY)+pd.Timedelta(hours=16)
+    market_open=bool(open_et <= pd.Timestamp(now_et) <= close_et and now_et.weekday()<5)
+
+    rows=[]
+    for module, filename, field, max_age in CHECKS:
+        ts,status=_read_timestamp(OUTPUT_DIR/filename, field)
+        age_min=None
+        if ts is not None:
+            age_min=max(0.0,(now_utc-ts).total_seconds()/60)
+            if market_open and age_min > max_age:
+                status="STALE"
+        rows.append({
+            "module":module,
+            "file":filename,
+            "last_update_utc":ts.isoformat() if ts is not None else "",
+            "age_minutes":round(age_min,1) if age_min is not None else "",
+            "max_age_minutes":max_age,
+            "status":status,
+            "market_open":market_open,
+            "checked_at_et":now_et.isoformat(timespec="seconds"),
+        })
+
+    out=pd.DataFrame(rows)
+    out.to_csv(OUTPUT_DIR/"live_system_health.csv",index=False)
+    bad=out["status"].isin(["STALE","MISSING","INVALID"])
+    summary=pd.DataFrame([{
+        "checked_at_et":now_et.isoformat(timespec="seconds"),
+        "market_open":market_open,
+        "modules_checked":len(out),
+        "healthy_modules":int((out["status"]=="OK").sum()),
+        "stale_modules":int((out["status"]=="STALE").sum()),
+        "missing_or_invalid_modules":int(out["status"].isin(["MISSING","INVALID"]).sum()),
+        "overall_status":"DEGRADED" if bad.any() and market_open else "OK",
+    }])
+    summary.to_csv(OUTPUT_DIR/"live_system_health_summary.csv",index=False)
+    return out
+
+
+if __name__=="__main__":
+    df=run()
+    print(df.to_string(index=False))
