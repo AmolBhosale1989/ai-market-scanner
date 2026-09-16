@@ -1,47 +1,47 @@
 SMMT: NEW -> INVALIDATED
-Price 17.32 | Trigger 18.91 | Stop 17.77 | RVOL 0.89 | Theme Biotechnology
+Price 17.29 | Trigger 18.91 | Stop 17.77 | RVOL 0.89 | Theme Biotechnology
 
 WPM: NEW -> INVALIDATED
-Price 145.04 | Trigger 164.35 | Stop 154.84 | RVOL 1.1 | Theme Gold Miners
+Price 144.8 | Trigger 164.35 | Stop 154.84 | RVOL 1.1 | Theme Gold Miners
 
 SG: NEW -> INVALIDATED
-Price 6.69 | Trigger 7.43 | Stop 6.99 | RVOL 0.64 | Theme UNCLASSIFIED
+Price 6.68 | Trigger 7.43 | Stop 6.99 | RVOL 0.64 | Theme UNCLASSIFIED
 
 WTTR: NEW -> INVALIDATED
-Price 19.83 | Trigger 21.32 | Stop 20.04 | RVOL 1.28 | Theme Oil Services
+Price 19.79 | Trigger 21.32 | Stop 20.04 | RVOL 1.26 | Theme Oil Services
 
 NOW: NEW -> INVALIDATED
-Price 139.52 | Trigger 150.18 | Stop 141.17 | RVOL 0.62 | Theme Cloud Computing
+Price 139.4 | Trigger 150.18 | Stop 141.17 | RVOL 0.62 | Theme Cloud Computing
 
 MSTR: NEW -> INVALIDATED
-Price 125.0 | Trigger 145.68 | Stop 136.94 | RVOL 1.05 | Theme UNCLASSIFIED
+Price 124.58 | Trigger 145.68 | Stop 136.94 | RVOL 1.05 | Theme UNCLASSIFIED
 
 NVAX: NEW -> INVALIDATED
-Price 9.19 | Trigger 10.8 | Stop 10.15 | RVOL 0.6 | Theme Biotechnology
+Price 9.18 | Trigger 10.8 | Stop 10.15 | RVOL 0.6 | Theme Biotechnology
 
 BE: NEW -> INVALIDATED
-Price 264.04 | Trigger 285.2 | Stop 268.08 | RVOL 0.94 | Theme UNCLASSIFIED
+Price 263.4 | Trigger 285.2 | Stop 268.08 | RVOL 0.95 | Theme UNCLASSIFIED
 
 PSNL: NEW -> INVALIDATED
-Price 16.07 | Trigger 18.94 | Stop 17.97 | RVOL 1.1 | Theme UNCLASSIFIED
+Price 16.04 | Trigger 18.94 | Stop 17.97 | RVOL 1.1 | Theme UNCLASSIFIED
 
 EL: NEW -> INVALIDATED
-Price 95.11 | Trigger 108.26 | Stop 103.01 | RVOL 0.83 | Theme UNCLASSIFIED
+Price 95.08 | Trigger 108.26 | Stop 103.01 | RVOL 0.84 | Theme UNCLASSIFIED
 
 CRM: NEW -> INVALIDATED
-Price 250.84 | Trigger 269.27 | Stop 253.11 | RVOL 0.87 | Theme UNCLASSIFIED
+Price 250.68 | Trigger 269.27 | Stop 253.11 | RVOL 0.88 | Theme UNCLASSIFIED
 
 ANF: NEW -> INVALIDATED
-Price 139.9 | Trigger 155.73 | Stop 146.39 | RVOL 1.1 | Theme UNCLASSIFIED
+Price 139.81 | Trigger 155.73 | Stop 146.39 | RVOL 1.11 | Theme UNCLASSIFIED
 
 ZETA: NEW -> INVALIDATED
-Price 30.63 | Trigger 32.93 | Stop 30.95 | RVOL 0.92 | Theme UNCLASSIFIED
+Price 30.59 | Trigger 32.93 | Stop 30.95 | RVOL 0.92 | Theme UNCLASSIFIED
 
 AUGO: NEW -> INVALIDATED
-Price 85.24 | Trigger 91.0 | Stop 85.54 | RVOL 1.06 | Theme UNCLASSIFIED
+Price 84.78 | Trigger 91.0 | Stop 85.54 | RVOL 1.07 | Theme UNCLASSIFIED
 
 SSRM: NEW -> INVALIDATED
-Price 34.91 | Trigger 39.56 | Stop 37.19 | RVOL 1.79 | Theme UNCLASSIFIED
+Price 34.75 | Trigger 39.56 | Stop 37.19 | RVOL 1.8 | Theme UNCLASSIFIED
 
 CLSK: NEW -> INVALIDATED
-Price 12.62 | Trigger 14.1 | Stop 13.26 | RVOL 0.78 | Theme UNCLASSIFIED
+Price 12.61 | Trigger 14.1 | Stop 13.26 | RVOL 0.79 | Theme UNCLASSIFIED
