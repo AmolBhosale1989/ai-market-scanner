@@ -9,6 +9,8 @@ import pandas as pd
 import pandas_market_calendars as mcal
 import yfinance as yf
 
+from .order_flow import bar_order_flow_proxy
+
 from .config import (
     LIVE_ENRICH_LIMIT,
     LIVE_INTERVAL,
@@ -56,6 +58,16 @@ def _empty_live(status="NOT CHECKED"):
         "premarket_volume": math.nan,
         "premarket_status": "NOT CHECKED",
         "live_trade_action": "NO LIVE SIGNAL",
+        "order_flow_mode": "BAR_PROXY",
+        "order_flow_score": 0.0,
+        "order_flow_state": "NO DATA",
+        "buy_pressure_pct": math.nan,
+        "sell_pressure_pct": math.nan,
+        "signed_volume_proxy": math.nan,
+        "volume_imbalance_proxy": math.nan,
+        "close_location_value": math.nan,
+        "volume_impulse": math.nan,
+        "vwap_pressure": math.nan,
     }
 
 def _normalize_intraday(df: pd.DataFrame):
@@ -310,6 +322,7 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
     or_high,or_low,or_complete=_opening_range(latest_session)
     rvol=_intraday_rvol(d,latest_date,latest_session)
     volume_vs_9ma,opening_30m_rvol,opening_volume_spike_2x=_volume_confirmation(d,latest_date,latest_session)
+    order_flow=bar_order_flow_proxy(latest_session)
     bid,ask,spread_pct=_quote_spread(ticker,price) if state=="LIVE" else (math.nan,math.nan,math.nan)
     quote_spread_ok=math.isfinite(spread_pct) and spread_pct<=MAX_BID_ASK_SPREAD_PCT
     liquidity_proxy_ok=(not math.isfinite(spread_pct)) and math.isfinite(avg_dollar_volume) and avg_dollar_volume>=100_000_000
@@ -412,6 +425,7 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
         "premarket_gap_pct":round(premarket_gap,2) if math.isfinite(premarket_gap) else math.nan,
         "premarket_volume":round(premarket_volume,0) if math.isfinite(premarket_volume) else math.nan,
         "premarket_status":premarket_status,
+        **order_flow,
         "live_trade_action":live_action,
     })
     return result
