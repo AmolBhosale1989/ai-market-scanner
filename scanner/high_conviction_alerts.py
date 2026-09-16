@@ -60,6 +60,7 @@ def _candidate_rows() -> pd.DataFrame:
         rel = _num(m.get("rel_vs_spy_pct"), idx)
         rvol = _num(m.get("intraday_rvol"), idx)
         day = _num(m.get("day_change_pct"), idx)
+        flow = _num(m.get("order_flow_score"), idx)
         price = _num(m.get("price"), idx, np.nan)
         stop = _num(m.get("stop"), idx, np.nan)
 
@@ -70,6 +71,7 @@ def _candidate_rows() -> pd.DataFrame:
             & rvol.ge(1.5)
             & day.ge(1.0)
             & day.lt(8.0)
+            & flow.ge(58)
             & price.gt(0)
         )
         for i, r in m[mask].iterrows():
@@ -91,7 +93,10 @@ def _candidate_rows() -> pd.DataFrame:
                 "intraday_rvol": round(float(rvol.loc[i]), 2),
                 "day_change_pct": round(float(day.loc[i]), 2),
                 "state": "STRONG BUY",
-                "reason": "Momentum BUY + leading rotation + strong relative strength + RVOL",
+                "order_flow_score": round(float(flow.loc[i]), 1),
+                "order_flow_state": str(r.get("order_flow_state", "")),
+                "buy_pressure_pct": float(pd.to_numeric(pd.Series([r.get("buy_pressure_pct")]), errors="coerce").fillna(0).iloc[0]),
+                "reason": "Momentum BUY + leading rotation + strong relative strength + RVOL + positive order-flow proxy",
             })
 
     if not live.empty and "ticker" in live.columns:
@@ -132,6 +137,9 @@ def _candidate_rows() -> pd.DataFrame:
                 "intraday_rvol": round(float(rvol.loc[i]), 2),
                 "day_change_pct": np.nan,
                 "state": "STRONG BUY",
+                "order_flow_score": float(pd.to_numeric(pd.Series([r.get("order_flow_score")]), errors="coerce").fillna(0).iloc[0]),
+                "order_flow_state": str(r.get("order_flow_state", "")),
+                "buy_pressure_pct": float(pd.to_numeric(pd.Series([r.get("buy_pressure_pct")]), errors="coerce").fillna(0).iloc[0]),
                 "reason": str(r.get("live_trade_action", "Live-confirmed high-conviction setup")),
             })
 
@@ -181,6 +189,8 @@ def run() -> pd.DataFrame:
             f"Rotation: {float(row.get('rotation_score',0)):.0f}/100\n"
             f"Rel vs SPY: {float(row.get('rel_vs_spy_pct',0)):+.2f}%\n"
             f"RVOL: {float(row.get('intraday_rvol',0)):.2f}x\n"
+            f"Order Flow: {float(row.get('order_flow_score',0)):.0f}/100 — {row.get('order_flow_state','')}\n"
+            f"Buy Pressure: {float(row.get('buy_pressure_pct',0)):.0f}%\n"
             f"Conviction: {float(row.get('conviction_score',0)):.1f}\n\n"
             f"Why: {row.get('reason','')}\n\n"
             "Paper-validation alert. Research only — not financial advice."
