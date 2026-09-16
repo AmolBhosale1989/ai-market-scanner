@@ -334,6 +334,8 @@ files = {
     "performance":"performance_summary.csv", "performance_setup":"performance_by_setup.csv",
     "calibration":"probability_calibration.csv", "monitor":"monitor_health.csv", "gate":"validation_gate.csv",
     "daily_pick_log":"daily_top_pick_log.csv", "daily_pick_summary":"daily_top_pick_summary.csv",
+    "v31_challenger_log":"v31_challenger_log.csv", "v31_challenger_summary":"v31_challenger_summary.csv",
+    "v31_challenger_decisions":"v31_challenger_decisions.csv",
     "order_flow_journal":"order_flow_strategy_journal.csv", "order_flow_performance":"order_flow_strategy_performance.csv",
     "legendary":"legendary_setups.csv", "legendary_consensus":"legendary_consensus.csv",
     "trader_minervini":"trader_minervini.csv", "trader_oneil":"trader_oneil.csv",
@@ -1279,6 +1281,35 @@ with validation:
             s3.metric("Target hits", int(number(s.get("target_hits"))))
             s4.metric("Stop hits", int(number(s.get("stop_hits"))))
             s5.metric("Win rate", f'{number(s.get("win_rate_pct")):.1f}%')
+    st.subheader("V3 Primary vs V3.1 Challenger")
+    st.markdown('<div class="section-note">V3.1 runs in shadow mode only. It can explicitly choose NO TRADE and does not replace V3 Primary until forward evidence is sufficient.</div>', unsafe_allow_html=True)
+    v31_log=data["v31_challenger_log"]
+    v31_summary=data["v31_challenger_summary"]
+    v31_decisions=data["v31_challenger_decisions"]
+    primary=daily_pick_summary.iloc[0] if not daily_pick_summary.empty else {}
+    challenger=v31_summary.iloc[0] if not v31_summary.empty else {}
+    c1,c2,c3,c4,c5,c6=st.columns(6)
+    c1.metric("V3 closed", int(number(primary.get("closed_picks"))))
+    c2.metric("V3 win rate", f'{number(primary.get("win_rate_pct")):.1f}%')
+    c3.metric("V3 avg R", f'{number(primary.get("avg_r_multiple")):.2f}')
+    c4.metric("V3.1 closed", int(number(challenger.get("closed_trades"))))
+    c5.metric("V3.1 win rate", f'{number(challenger.get("win_rate_pct")):.1f}%')
+    c6.metric("V3.1 avg R", f'{number(challenger.get("avg_r_multiple")):.2f}')
+    if not v31_summary.empty:
+        st.caption(
+            f'V3.1 selections: {int(number(challenger.get("total_trade_selections")))} · '
+            f'NO TRADE days: {int(number(challenger.get("no_trade_days")))} · '
+            f'mode: {challenger.get("mode","SHADOW")}'
+        )
+    if not v31_decisions.empty:
+        st.dataframe(v31_decisions.tail(10),hide_index=True,use_container_width=True)
+    if not v31_log.empty:
+        v31_cols=["selection_date_et","selected_at_et","ticker","selection_score","market_regime_state",
+                  "entry_price","stop_price","target_price","risk_pct","rr_to_target","status","return_pct","r_multiple",
+                  "mfe_pct","mae_pct","order_flow_score","buy_pressure_pct","catalyst_score","live_confirmation_score",
+                  "rel_vs_spy_pct","intraday_rvol","day_change_pct","reason"]
+        st.dataframe(v31_log[columns(v31_log,v31_cols)],hide_index=True,use_container_width=True)
+
     st.subheader("Order Flow Strategy Validation")
     order_flow_journal = data["order_flow_journal"]
     order_flow_performance = data["order_flow_performance"]
