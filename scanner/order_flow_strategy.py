@@ -54,6 +54,8 @@ def run() -> pd.DataFrame:
     rvol = d.get("intraday_rvol", pd.Series(0, index=d.index)).fillna(0)
     rel = d.get("rel_vs_spy_pct", pd.Series(0, index=d.index)).fillna(0)
     rotation = d.get("theme_rotation_score", pd.Series(0, index=d.index)).fillna(0)
+    broad_score = d.get("broad_breakout_score", pd.Series(0, index=d.index)).fillna(0)
+    source = d.get("candidate_source", pd.Series("THEME_ROTATION", index=d.index)).astype(str)
     day = d.get("day_change_pct", pd.Series(0, index=d.index)).fillna(0)
     above_vwap = d.get("above_vwap", pd.Series(False, index=d.index)).astype(bool)
     above_or = d.get("above_or_high", pd.Series(False, index=d.index)).astype(bool)
@@ -66,7 +68,7 @@ def run() -> pd.DataFrame:
         & rvol.ge(1.25)
         & above_vwap
     )
-    breakout_confirmation = (
+    themed_breakout_confirmation = (
         flow.ge(70)
         & buy_pressure.ge(60)
         & rvol.ge(1.5)
@@ -74,6 +76,16 @@ def run() -> pd.DataFrame:
         & rotation.ge(70)
         & (above_or | vwap_pressure.ge(0.4))
     )
+    broad_breakout_confirmation = (
+        source.eq("BROAD_BREAKOUT")
+        & broad_score.ge(65)
+        & flow.ge(72)
+        & buy_pressure.ge(60)
+        & rvol.ge(1.5)
+        & rel.ge(1.5)
+        & (above_or | vwap_pressure.ge(0.5))
+    )
+    breakout_confirmation = themed_breakout_confirmation | broad_breakout_confirmation
     absorption_watch = (
         flow.between(55, 69.999)
         & buy_pressure.ge(55)
@@ -92,7 +104,8 @@ def run() -> pd.DataFrame:
     score = (
         flow * 0.38
         + buy_pressure.clip(0, 100) * 0.16
-        + rotation.clip(0, 100) * 0.18
+        + rotation.clip(0, 100) * 0.12
+        + broad_score.clip(0, 100) * 0.06
         + rel.clip(lower=0, upper=10) * 1.5
         + rvol.clip(lower=0, upper=5) * 4
         + impulse.clip(lower=0, upper=3) * 3
@@ -114,7 +127,7 @@ def run() -> pd.DataFrame:
     buy_mask = ~distribution & breakout_confirmation & accumulation & risk_ok & ~extended
     signal.loc[buy_mask] = "ORDER FLOW BUY"
     setup.loc[buy_mask] = "BUYING PRESSURE BREAKOUT"
-    reason.loc[buy_mask] = "Strong buying pressure + RVOL + relative strength + sector rotation + VWAP/ORB confirmation"
+    reason.loc[buy_mask] = "Strong buying pressure + RVOL + relative strength + theme rotation or broad-breakout confirmation + VWAP/ORB confirmation"
 
     ext_mask = ~distribution & breakout_confirmation & extended
     signal.loc[ext_mask] = "EXTENDED / WAIT RETEST"
