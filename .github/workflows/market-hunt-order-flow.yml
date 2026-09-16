@@ -1,0 +1,108 @@
+name: Market Hunt Order Flow Live
+
+on:
+  schedule:
+    - cron: '3,13,23,33,43,53 13-21 * * 1-5'
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/market-hunt-order-flow.yml'
+      - 'scanner/order_flow.py'
+      - 'scanner/order_flow_strategy.py'
+      - 'scanner/order_flow_validation.py'
+      - 'scanner/momentum_signals.py'
+      - 'scanner/sector_rotation.py'
+      - 'scanner/theme_live.py'
+
+permissions:
+  contents: write
+
+jobs:
+  order-flow-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: market-hunt-order-flow-live
+      cancel-in-progress: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore required inputs and prior validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs
+          git fetch origin scan-data:refs/remotes/origin/scan-data
+          for f in tradable_universe.csv latest_scan.csv all_candidates.csv trending_themes.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv high_conviction_alert_log.csv high_conviction_alert_health.csv intraday_live.csv; do
+            git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
+          done
+          test -s outputs/tradable_universe.csv
+
+      - name: Refresh live themes
+        continue-on-error: true
+        run: timeout 150s python -m scanner.theme_live
+
+      - name: Refresh sector rotation
+        continue-on-error: true
+        run: timeout 150s python -m scanner.sector_rotation
+
+      - name: Refresh fast momentum
+        continue-on-error: true
+        run: timeout 150s python -m scanner.momentum_signals
+
+      - name: Refresh order flow strategy
+        continue-on-error: true
+        run: timeout 90s python -m scanner.order_flow_strategy
+
+      - name: Update order flow validation
+        continue-on-error: true
+        run: timeout 150s python -m scanner.order_flow_validation
+
+      - name: Send high-conviction Telegram alerts
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: timeout 90s python -m scanner.high_conviction_alerts
+
+      - name: Publish order flow data
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "market-hunt-bot"
+          git config user.email "market-hunt-bot@users.noreply.github.com"
+          rm -rf /tmp/market-hunt-order-flow
+          git fetch origin scan-data:scan-data
+          git worktree add /tmp/market-hunt-order-flow scan-data
+          mkdir -p /tmp/market-hunt-order-flow/dashboard-data
+          for f in trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv momentum_signals.csv momentum_health.csv order_flow_strategy.csv order_flow_strategy_health.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv high_conviction_alert_log.csv high_conviction_alert_health.csv; do
+            if [ -f "outputs/$f" ]; then
+              cp "outputs/$f" "/tmp/market-hunt-order-flow/dashboard-data/$f"
+            fi
+          done
+          printf "updated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-order-flow/dashboard-data/order_flow_live_metadata.csv
+          cd /tmp/market-hunt-order-flow
+          git add dashboard-data
+          if ! git diff --cached --quiet; then
+            git commit -m "Update live order flow [skip ci]"
+            git pull --rebase origin scan-data
+            git push origin scan-data
+          fi
+
+      - name: Upload order flow outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-hunt-order-flow-${{ github.run_id }}
+          path: outputs/
+          if-no-files-found: warn
