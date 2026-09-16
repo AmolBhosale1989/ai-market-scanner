@@ -1,2 +1,2 @@
 checked_at_et,market_open,modules_checked,healthy_modules,stale_modules,missing_or_invalid_modules,overall_status
-2026-09-16T13:31:56-04:00,True,10,10,0,0,OK
+2026-09-16T14:51:03-04:00,True,10,7,3,0,DEGRADED
