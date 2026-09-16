@@ -7,6 +7,6 @@ technical_score,"[55, 70)",8,0,0.0,16.7,-1.86,INSUFFICIENT_DATA
 technical_score,"[70, 85)",40,0,0.0,4.5,-1.95,USABLE
 technical_score,"[85, 1000)",6,0,0.0,20.0,-1.67,INSUFFICIENT_DATA
 effective_rr,"[0.0, 2.0)",54,0,0.0,3.4,-1.91,USABLE
-live_confirmation_score,"[0, 40)",36,0,0.0,5.0,-1.96,USABLE
-live_confirmation_score,"[40, 60)",10,0,0.0,14.3,-2.08,INSUFFICIENT_DATA
-live_confirmation_score,"[60, 80)",8,0,0.0,16.7,-1.45,INSUFFICIENT_DATA
+live_confirmation_score,"[0, 40)",37,0,0.0,4.9,-1.98,USABLE
+live_confirmation_score,"[40, 60)",10,0,0.0,14.3,-1.95,INSUFFICIENT_DATA
+live_confirmation_score,"[60, 80)",7,0,0.0,18.2,-1.43,INSUFFICIENT_DATA
