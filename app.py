@@ -141,6 +141,15 @@ def number(value, default=0):
     try: return float(value)
     except (TypeError, ValueError): return default
 
+def to_gst(value):
+    try:
+        ts=pd.to_datetime(value, errors="coerce", utc=True)
+        if pd.isna(ts):
+            return ""
+        return ts.tz_convert("Asia/Dubai").strftime("%Y-%m-%d %H:%M:%S GST")
+    except Exception:
+        return ""
+
 def columns(frame, preferred):
     return [name for name in preferred if name in frame.columns]
 
@@ -464,13 +473,16 @@ else:
     h2.metric("Healthy modules", healthy)
     h3.metric("Stale modules", stale)
     h4.metric("Missing/invalid", missing)
-    st.caption(f"Freshness check: {checked}")
+    st.caption(f"Freshness check: {checked} | GST: {to_gst(checked)}")
     if overall != "OK":
         st.error("LIVE DATA DEGRADED — one or more project modules are stale or missing. Treat affected live signals as unreliable until freshness returns.")
 
 if not live_system_health.empty:
-    health_cols=["module","status","age_minutes","max_age_minutes","last_update_utc","market_open"]
-    st.dataframe(live_system_health[columns(live_system_health,health_cols)], hide_index=True, use_container_width=True)
+    health_display=live_system_health.copy()
+    if "last_update_utc" in health_display.columns:
+        health_display["last_update_gst"]=health_display["last_update_utc"].apply(to_gst)
+    health_cols=["module","status","age_minutes","max_age_minutes","last_update_gst","last_update_utc","market_open"]
+    st.dataframe(health_display[columns(health_display,health_cols)], hide_index=True, use_container_width=True)
 
 overview, opportunities, legendary_tab, live_tab, event_tab, v4_tab, social_tab, validation, system = st.tabs(
     ["Overview", "Opportunities", "Legendary setups", "Live monitor", "Events", "V4 Intelligence", "Social Studio", "Validation", "System"]
