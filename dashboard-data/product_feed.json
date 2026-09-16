@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at_utc": "2026-09-16T04:37:44.949015+00:00",
+  "generated_at_utc": "2026-09-16T04:38:32.249248+00:00",
   "research_only": true,
   "market_hunt": {
     "recommendations": [],
@@ -16219,7 +16219,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "COIN",
@@ -16363,7 +16363,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "BMNR",
@@ -16507,7 +16507,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "ARE",
@@ -16651,7 +16651,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "TEAM",
@@ -16795,7 +16795,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "ZETA",
@@ -16939,7 +16939,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "CRM",
@@ -17083,7 +17083,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "SRPT",
@@ -17227,7 +17227,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "SG",
@@ -17371,7 +17371,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "AMLX",
@@ -17515,7 +17515,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "UMC",
@@ -17659,7 +17659,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "AUGO",
@@ -17803,7 +17803,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "MSTR",
@@ -17947,7 +17947,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "SBET",
@@ -18091,7 +18091,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "IOVA",
@@ -18235,7 +18235,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "CAI",
@@ -18379,7 +18379,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "PSNL",
@@ -18523,7 +18523,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "ANF",
@@ -18667,7 +18667,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "DK",
@@ -18811,7 +18811,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "ASST",
@@ -18955,7 +18955,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "SMMT",
@@ -19099,7 +19099,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "ROIV",
@@ -19243,7 +19243,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "PTEN",
@@ -19387,7 +19387,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "HOOD",
@@ -19531,7 +19531,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "MNDY",
@@ -19675,7 +19675,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "HNGE",
@@ -19819,7 +19819,7 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "CRK",
@@ -19963,7 +19963,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "VEEV",
@@ -20107,7 +20107,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "EL",
@@ -20251,7 +20251,7 @@
         "previous_state": "INVALIDATED",
         "monitor_state": "INVALIDATED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       },
       {
         "ticker": "IT",
@@ -20395,13 +20395,13 @@
         "previous_state": "ARMED",
         "monitor_state": "ARMED",
         "state_changed": false,
-        "checked_at_et": "2026-09-16T00:37:44-04:00"
+        "checked_at_et": "2026-09-16T00:38:31-04:00"
       }
     ],
     "monitor_health": [
       {
         "status": "OK",
-        "checked_at_et": "2026-09-16T00:37:44-04:00",
+        "checked_at_et": "2026-09-16T00:38:31-04:00",
         "monitored_candidates": 30,
         "live_rows": 0,
         "actionable_states": 17,
