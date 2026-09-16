@@ -83,9 +83,15 @@ def run(limit: int = 40):
     if leaders.empty:
         return pd.DataFrame()
 
-    leaders["theme_rotation_score"]=pd.to_numeric(leaders.get("theme_rotation_score",0),errors="coerce").fillna(0)
-    leaders["rotation_leader_score"]=pd.to_numeric(leaders.get("rotation_leader_score",0),errors="coerce").fillna(0)
-    leaders["broad_breakout_score"]=pd.to_numeric(leaders.get("broad_breakout_score",0),errors="coerce").fillna(0)
+    if "theme_rotation_score" not in leaders.columns:
+        leaders["theme_rotation_score"]=0.0
+    if "rotation_leader_score" not in leaders.columns:
+        leaders["rotation_leader_score"]=0.0
+    if "broad_breakout_score" not in leaders.columns:
+        leaders["broad_breakout_score"]=0.0
+    leaders["theme_rotation_score"]=pd.to_numeric(leaders["theme_rotation_score"],errors="coerce").fillna(0)
+    leaders["rotation_leader_score"]=pd.to_numeric(leaders["rotation_leader_score"],errors="coerce").fillna(0)
+    leaders["broad_breakout_score"]=pd.to_numeric(leaders["broad_breakout_score"],errors="coerce").fillna(0)
     leaders["candidate_priority"]=leaders[["theme_rotation_score","rotation_leader_score","broad_breakout_score"]].max(axis=1)
     leaders=leaders.sort_values(["candidate_priority","rel_vs_spy_pct"],ascending=[False,False]).drop_duplicates("ticker").head(limit)
     tickers=leaders["ticker"].astype(str).tolist()
