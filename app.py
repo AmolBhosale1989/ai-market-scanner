@@ -576,6 +576,8 @@ with opportunities:
         unified = unified.drop(columns=["_priority"], errors="ignore")
         live_cols=["ticker","theme","opportunity_source","opportunity_state","current_price",
                    "day_change_pct","move_30m_pct","rel_vs_spy_pct","intraday_rvol",
+                   "order_flow_score","order_flow_state","buy_pressure_pct","sell_pressure_pct",
+                   "volume_imbalance_proxy","volume_impulse","vwap_pressure",
                    "live_confirmation_score","live_score","entry","entry_trigger","stop",
                    "target_5pct","target_8pct","last_bar_et","checked_at_et"]
         st.dataframe(unified[columns(unified,live_cols)].head(50), hide_index=True, use_container_width=True)
@@ -630,7 +632,8 @@ with opportunities:
         fresh = fresh.sort_values("discovery_score", ascending=False)
         fresh = fresh.drop_duplicates(subset=["ticker"], keep="first")
         fresh_cols=["ticker","company_name","theme","discovery_source","signal","current_price","day_change_pct",
-                    "move_30m_pct","rel_vs_spy_pct","intraday_rvol","discovery_score","last_update_et"]
+                    "move_30m_pct","rel_vs_spy_pct","intraday_rvol","order_flow_score","order_flow_state",
+                    "buy_pressure_pct","sell_pressure_pct","volume_imbalance_proxy","discovery_score","last_update_et"]
         st.dataframe(fresh[columns(fresh,fresh_cols)].head(100), hide_index=True, use_container_width=True)
     else:
         st.info("No fresh market discoveries are published yet.")
