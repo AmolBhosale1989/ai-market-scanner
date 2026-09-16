@@ -480,7 +480,7 @@ else:
 if not live_system_health.empty:
     health_display=live_system_health.copy()
     if "last_update_utc" in health_display.columns:
-        health_display["last_update_ist"]=health_display["last_update_utc"].apply(to_gst)
+        health_display["last_update_ist"]=health_display["last_update_utc"].apply(to_ist)
     health_cols=["module","status","age_minutes","max_age_minutes","last_update_ist","last_update_utc","market_open"]
     st.dataframe(health_display[columns(health_display,health_cols)], hide_index=True, use_container_width=True)
 
