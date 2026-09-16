@@ -1,2 +1,2 @@
 schema_version,generated_at_utc,status,eligible_for_manual_review,mature_evidence,minimum_mature_evidence,failed_gates,production_applied,broker_execution_enabled
-9.1.0-readiness-only,2026-09-15T00:54:53.927462+00:00,BLOCKED_BY_V8_VALIDATION,False,0,220,"v8_evidence_scorecard,evidence_pipeline,mature_evidence,prospective_challenger,v4_cutover_evidence,paper_validation",False,False
+9.1.0-readiness-only,2026-09-16T00:49:04.134265+00:00,BLOCKED_BY_V8_VALIDATION,False,0,220,"v8_evidence_scorecard,evidence_pipeline,mature_evidence,prospective_challenger,v4_cutover_evidence,paper_validation",False,False
