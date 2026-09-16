@@ -57,15 +57,12 @@ jobs:
         run: timeout 150s python -m scanner.sector_rotation
 
       - name: Scan broad liquid breakouts
-        continue-on-error: true
-        run: timeout 240s python -m scanner.broad_breakout
+        run: timeout 210s python -m scanner.broad_breakout
 
       - name: Refresh fast momentum
-        continue-on-error: true
         run: timeout 150s python -m scanner.momentum_signals
 
       - name: Refresh order flow strategy
-        continue-on-error: true
         run: timeout 90s python -m scanner.order_flow_strategy
 
       - name: Update order flow validation
