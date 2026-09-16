@@ -12,16 +12,16 @@ from .config import OUTPUT_DIR
 NY = ZoneInfo("America/New_York")
 
 CHECKS = [
-    ("Live Monitor / V7", "monitor_health.csv", "checked_at_et", 20),
-    ("V4 Live Intelligence", "v4_worker_health.json", "generated_at_utc", 25),
-    ("Themes", "theme_health.csv", "updated_at_et", 20),
-    ("Sector Rotation", "sector_rotation_health.csv", "updated_at_et", 20),
-    ("Momentum", "momentum_health.csv", "updated_at_et", 20),
-    ("Broad Breakout", "broad_breakout_health.csv", "updated_at_et", 20),
-    ("Order Flow", "order_flow_strategy_health.csv", "updated_at_et", 20),
-    ("High Conviction Alerts", "high_conviction_alert_health.csv", "checked_at_et", 20),
-    ("Premarket Discovery", "premarket_health.csv", "checked_at_et", 45),
-    ("Daily Pick Validation", "daily_top_pick_summary.csv", "updated_at_et", 90),
+    ("Live Monitor / V7", "monitor_health.csv", "checked_at_et", 20, "REGULAR"),
+    ("V4 Live Intelligence", "v4_worker_health.json", "generated_at_utc", 25, "REGULAR"),
+    ("Themes", "theme_health.csv", "updated_at_et", 20, "REGULAR"),
+    ("Sector Rotation", "sector_rotation_health.csv", "updated_at_et", 20, "REGULAR"),
+    ("Momentum", "momentum_health.csv", "updated_at_et", 20, "REGULAR"),
+    ("Broad Breakout", "broad_breakout_health.csv", "updated_at_et", 20, "REGULAR"),
+    ("Order Flow", "order_flow_strategy_health.csv", "updated_at_et", 20, "REGULAR"),
+    ("High Conviction Alerts", "high_conviction_alert_health.csv", "checked_at_et", 20, "REGULAR"),
+    ("Premarket Discovery", "premarket_health.csv", "checked_at_et", 45, "PREMARKET"),
+    ("Daily Pick Validation", "daily_top_pick_summary.csv", "updated_at_et", 90, "SESSION"),
 ]
 
 
@@ -50,16 +50,26 @@ def run() -> pd.DataFrame:
     now_utc=pd.Timestamp.now(tz="UTC")
     open_et=pd.Timestamp(now_et.date(), tz=NY)+pd.Timedelta(hours=9,minutes=30)
     close_et=pd.Timestamp(now_et.date(), tz=NY)+pd.Timedelta(hours=16)
-    market_open=bool(open_et <= pd.Timestamp(now_et) <= close_et and now_et.weekday()<5)
+    now_et_ts=pd.Timestamp(now_et)
+    market_open=bool(open_et <= now_et_ts <= close_et and now_et.weekday()<5)
+    premarket_start=pd.Timestamp(now_et.date(), tz=NY)+pd.Timedelta(hours=4)
+    premarket_open=bool(premarket_start <= now_et_ts < open_et and now_et.weekday()<5)
 
     rows=[]
-    for module, filename, field, max_age in CHECKS:
+    for module, filename, field, max_age, window in CHECKS:
         ts,status=_read_timestamp(OUTPUT_DIR/filename, field)
         age_min=None
         if ts is not None:
             age_min=max(0.0,(now_utc-ts).total_seconds()/60)
-            if market_open and age_min > max_age:
+            should_be_fresh=(
+                (window=="REGULAR" and market_open)
+                or (window=="PREMARKET" and premarket_open)
+                or (window=="SESSION" and (premarket_open or market_open))
+            )
+            if should_be_fresh and age_min > max_age:
                 status="STALE"
+            elif not should_be_fresh and status=="OK":
+                status="OK"
         rows.append({
             "module":module,
             "file":filename,
