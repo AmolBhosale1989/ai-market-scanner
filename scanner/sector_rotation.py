@@ -22,12 +22,13 @@ THEME_CONSTITUENTS = {
     "Uranium & Nuclear": ["CCJ","UEC","UUUU","NXE","DNN","SMR","OKLO","LEU"],
     "Gold Miners": ["NEM","AEM","GOLD","KGC","AU","WPM","FNV"],
     "Clean Energy": ["FSLR","ENPH","SEDG","RUN","NXT","BE","PLUG"],
+    "Crypto & Digital Infrastructure": ["CIFR","IREN","MARA","RIOT","CLSK","HUT","WULF","CORZ","BTDR","BITF","CAN","ARBK","APLD"],
 }
 
 THEME_ETFS = {
     "Cybersecurity":"HACK","Semiconductors":"SMH","AI & Robotics":"BOTZ","Cloud Computing":"SKYY",
     "Biotechnology":"XBI","Defense & Aerospace":"ITA","Energy":"XLE","Uranium & Nuclear":"URA",
-    "Gold Miners":"GDX","Clean Energy":"ICLN",
+    "Gold Miners":"GDX","Clean Energy":"ICLN","Crypto & Digital Infrastructure":"WGMI",
 }
 
 
