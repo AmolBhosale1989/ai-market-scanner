@@ -12,6 +12,8 @@ on:
       - '.github/workflows/market-hunt-live-core.yml'
       - 'scanner/intraday.py'
       - 'scanner/live.py'
+      - 'scanner/v3_live.py'
+      - 'scanner/v3_live_refresh.py'
       - 'scanner/v4_worker.py'
       - 'scanner/v4_evidence.py'
       - 'scanner/legendary_agents.py'
@@ -34,29 +36,32 @@ jobs:
           python-version: '3.11'
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Restore live inputs and state
+      - name: Restore candidate identities and state
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p outputs .state
           git fetch origin scan-data:refs/remotes/origin/scan-data
-          for f in latest_scan.csv tradable_universe.csv all_candidates.csv trending_themes.csv sector_rotation.csv rotation_leaders.csv momentum_signals.csv order_flow_strategy.csv; do
-            git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
-          done
+          # latest_scan nominates candidate identities only. V3 market/technical
+          # fields are refreshed directly from the provider in the next step.
+          git show "origin/scan-data:dashboard-data/latest_scan.csv" > outputs/latest_scan.csv
           test -s outputs/latest_scan.csv
-      - name: Refresh V7 live monitor
+      - name: Refresh direct-provider V3 production data
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: timeout 240s python -m scanner.intraday --limit 30
-      - name: Validate V7 freshness contract
+        run: timeout 360s python -m scanner.v3_live --limit 30
+      - name: Validate V3 freshness contract
         shell: bash
         run: |
           set -euo pipefail
+          test -s outputs/v3_live_snapshot.csv
+          test "$(wc -l < outputs/v3_live_snapshot.csv)" -gt 1
+          grep -q 'DIRECT_PROVIDER' outputs/v3_live_snapshot.csv
           test -s outputs/intraday_live.csv
           test "$(wc -l < outputs/intraday_live.csv)" -gt 1
           test -s outputs/monitor_health.csv
-      - name: Publish V7 live monitor
+      - name: Publish V3 live production
         shell: bash
         run: |
           set -euo pipefail
@@ -66,16 +71,16 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-live-core-monitor scan-data
           mkdir -p /tmp/market-hunt-live-core-monitor/dashboard-data
-          for f in recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json; do
+          for f in v3_live_snapshot.csv recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json; do
             if [ -s "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-live-core-monitor/dashboard-data/$f"
             fi
           done
-          printf "updated_at_utc,workflow_run_id,source_commit,data_status\n%s,%s,%s,FRESH\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-monitor/dashboard-data/live_metadata.csv
+          printf "updated_at_utc,workflow_run_id,source_commit,data_status,data_source\n%s,%s,%s,FRESH,DIRECT_PROVIDER\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-monitor/dashboard-data/live_metadata.csv
           cd /tmp/market-hunt-live-core-monitor
           git add dashboard-data
           if ! git diff --cached --quiet; then
-            git commit -m "Refresh V7 live monitor [skip ci]"
+            git commit -m "Refresh direct-provider V3 live production [skip ci]"
             git pull --rebase origin scan-data
             git push origin scan-data
           fi
