@@ -102,11 +102,6 @@ def refresh_v3_candidates(base: pd.DataFrame) -> pd.DataFrame:
     out = fresh.reset_index()
     _validate_schema(out)
     out["market_hunt_score"] = _build_v3_rank(out)
-    # Temporary compatibility bridge for legacy live.py. This value is NOT the
-    # historical final_score: it is an alias of the newly calculated V3-native
-    # direct-provider rank. Remove once live.py ranking is migrated.
-    out["final_score"] = out["market_hunt_score"]
-    out["final_score_source"] = "V3_NATIVE_COMPAT_ALIAS"
     out["v3_rank_source"] = "V3_NATIVE_DIRECT_PROVIDER"
     out["v3_market_data_source"] = "DIRECT_PROVIDER"
     out["v3_market_data_refreshed_at_utc"] = datetime.now(timezone.utc).isoformat()
