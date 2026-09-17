@@ -1,1 +1,6 @@
 metric,bin,samples,wins,raw_win_rate_pct,smoothed_probability_pct,avg_r_multiple,calibration_status
+market_hunt_score,"[0, 45)",2,2,100.0,66.7,0.17,INSUFFICIENT_DATA
+technical_score,"[0, 40)",2,2,100.0,66.7,0.17,INSUFFICIENT_DATA
+effective_rr,"[0.0, 2.0)",2,2,100.0,66.7,0.17,INSUFFICIENT_DATA
+live_confirmation_score,"[40, 60)",1,1,100.0,60.0,0.3,INSUFFICIENT_DATA
+live_confirmation_score,"[60, 80)",1,1,100.0,60.0,0.04,INSUFFICIENT_DATA

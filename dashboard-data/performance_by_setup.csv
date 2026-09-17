@@ -1,1 +1,6 @@
-
+dimension,value,closed_signals,win_rate_pct,target_hit_rate_pct,hit_5pct_rate,hit_8pct_rate,hit_10pct_rate,avg_return_pct,avg_r_multiple
+catalyst_status,NOT CHECKED,2,100.0,0.0,0.0,0.0,0.0,1.02,0.17
+entry_model,CONFIRMED_MARKET,2,100.0,0.0,0.0,0.0,0.0,1.02,0.17
+market_regime_state,WEAK,2,100.0,0.0,0.0,0.0,0.0,1.02,0.17
+stage,FORMING,2,100.0,0.0,0.0,0.0,0.0,1.02,0.17
+theme,UNCLASSIFIED,2,100.0,0.0,0.0,0.0,0.0,1.02,0.17
