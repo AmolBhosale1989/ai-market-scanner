@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/market-hunt-live-core.yml'
       - 'scanner/intraday.py'
+      - 'scanner/live.py'
       - 'scanner/v3_live.py'
       - 'scanner/v3_live_refresh.py'
       - 'scanner/broad_breakout.py'
