@@ -1,2 +1,2 @@
-updated_at_utc,workflow_run_id,source_commit
-2026-09-17T16:17:26Z,35245556303,3b0290aabd7b1d434ba5889b00c5767f24912675
+updated_at_utc,workflow_run_id,source_commit,data_status
+2026-09-17T16:23:48Z,35246201146,49efb8e7ec1620db823eeaf9bced5d9a47db00d0,FRESH
