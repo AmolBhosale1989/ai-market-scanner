@@ -49,6 +49,13 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: timeout 240s python -m scanner.intraday --limit 30
+      - name: Validate V7 freshness contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s outputs/intraday_live.csv
+          test "$(wc -l < outputs/intraday_live.csv)" -gt 1
+          test -s outputs/monitor_health.csv
       - name: Publish V7 live monitor
         shell: bash
         run: |
@@ -60,11 +67,11 @@ jobs:
           git worktree add /tmp/market-hunt-live-core-monitor scan-data
           mkdir -p /tmp/market-hunt-live-core-monitor/dashboard-data
           for f in recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json; do
-            if [ -f "outputs/$f" ]; then
+            if [ -s "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-live-core-monitor/dashboard-data/$f"
             fi
           done
-          printf "updated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-monitor/dashboard-data/live_metadata.csv
+          printf "updated_at_utc,workflow_run_id,source_commit,data_status\n%s,%s,%s,FRESH\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-monitor/dashboard-data/live_metadata.csv
           cd /tmp/market-hunt-live-core-monitor
           git add dashboard-data
           if ! git diff --cached --quiet; then
@@ -119,6 +126,13 @@ jobs:
               if not frame.empty:
                   run_legendary_agents(frame,Path("outputs"),top_n=25)
           PY
+      - name: Validate V4 freshness contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s outputs/v4_live_snapshot.csv
+          test "$(wc -l < outputs/v4_live_snapshot.csv)" -gt 1
+          test -s outputs/v4_worker_health.json
       - name: Publish V4 live intelligence
         shell: bash
         run: |
@@ -130,11 +144,11 @@ jobs:
           git worktree add /tmp/market-hunt-live-core-v4 scan-data
           mkdir -p /tmp/market-hunt-live-core-v4/dashboard-data
           for f in v4_job_health.csv v4_monitor_shortlist.csv v4_live_snapshot.csv v4_transitions.csv v4_alerts.ndjson v4_worker_cycles.csv v4_worker_health.json v4_catalyst_events.csv v4_catalyst_health.json v4_options_microstructure.csv v4_options_microstructure_health.json legendary_setups.csv legendary_consensus.csv trader_minervini.csv trader_oneil.csv trader_weinstein.csv trader_darvas.csv trader_livermore.csv trader_qullamaggie.csv trader_druckenmiller.csv trader_lawwaisum.csv trader_martinluk.csv trader_top500swing.csv trader_highmomentumbeta.csv trader_superstock.csv trader_brownmoose.csv trader_venu.csv; do
-            if [ -f "outputs/$f" ]; then
+            if [ -s "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-live-core-v4/dashboard-data/$f"
             fi
           done
-          printf "updated_at_utc,workflow_run_id,source_commit\n%s,%s,%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-v4/dashboard-data/v4_live_metadata.csv
+          printf "updated_at_utc,workflow_run_id,source_commit,data_status\n%s,%s,%s,FRESH\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-v4/dashboard-data/v4_live_metadata.csv
           cd /tmp/market-hunt-live-core-v4
           git add dashboard-data
           if ! git diff --cached --quiet; then
@@ -166,6 +180,12 @@ jobs:
           done
       - name: Build unified live health
         run: python -m scanner.system_health
+      - name: Validate unified health
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s outputs/live_system_health.csv
+          test -s outputs/live_system_health_summary.csv
       - name: Publish unified health
         shell: bash
         run: |
@@ -178,6 +198,7 @@ jobs:
           mkdir -p /tmp/market-hunt-system-health/dashboard-data
           cp outputs/live_system_health.csv /tmp/market-hunt-system-health/dashboard-data/
           cp outputs/live_system_health_summary.csv /tmp/market-hunt-system-health/dashboard-data/
+          printf "updated_at_utc,workflow_run_id,source_commit,data_status\n%s,%s,%s,FRESH\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-system-health/dashboard-data/system_health_metadata.csv
           cd /tmp/market-hunt-system-health
           git add dashboard-data
           if ! git diff --cached --quiet; then
