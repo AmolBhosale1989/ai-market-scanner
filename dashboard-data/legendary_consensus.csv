@@ -1,31 +1,82 @@
 ticker,legendary_agent_count,legendary_avg_score,legendary_best_score,legendary_traders,legendary_setups
-EL,4,87.4,100.0,Brownmoose Agent | Superstock Agent | Top-500 Swing Agent | Venu Agent,2–7 Day Liquid Swing Ideas | B1/B2 Confluence + Retest + Multi-Target Plan | Explosive Leader / Early Supertrend Candidate | Position Leader + Rotation Swing
-SMMT,4,99.9,100.0,Brownmoose Agent | High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | B1/B2 Confluence + Retest + Multi-Target Plan | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-AVAH,3,82.6,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-BE,3,97.1,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-CAI,3,94.6,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-CRM,3,88.5,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-DELL,3,85.1,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-DK,3,88.9,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-MSTR,3,99.7,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-NVAX,3,98.7,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-OKTA,3,87.4,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-SG,3,97.2,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-SIG,3,93.9,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-SMTC,3,100.0,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-TEAM,3,85.4,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-TEM,3,92.9,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-ZETA,3,90.8,99.3,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-AUGO,3,79.7,99.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-CRWD,3,80.6,97.7,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-NOW,3,79.6,90.3,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-ARE,2,82.4,91.6,Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate
-VEEV,2,77.4,85.0,Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate
-PSNL,2,75.9,83.1,High Momentum / High Beta Agent | Superstock Agent,Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-HALO,2,77.2,79.4,Top-500 Swing Agent | Venu Agent,2–7 Day Liquid Swing Ideas | Position Leader + Rotation Swing
-FIVN,2,73.0,78.8,High Momentum / High Beta Agent | Superstock Agent,Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
-HNGE,2,66.0,66.5,High Momentum / High Beta Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Fast-Mover Momentum + Beta/Volatility
-TWLO,2,61.1,64.9,High Momentum / High Beta Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Fast-Mover Momentum + Beta/Volatility
-NTRA,1,83.4,83.4,Superstock Agent,Explosive Leader / Early Supertrend Candidate
-WPM,1,79.2,79.2,Brownmoose Agent,B1/B2 Confluence + Retest + Multi-Target Plan
-SSRM,1,51.3,51.3,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+MARA,4,93.2,100.0,Brownmoose Agent | High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | B1/B2 Confluence + Retest + Multi-Target Plan | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+ANF,3,79.9,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+ASST,3,100.0,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+BE,3,95.8,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+BMNR,3,83.3,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+BTDR,3,94.7,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+DOCN,3,90.4,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+MSTR,3,90.7,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+OKTA,3,93.0,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+SG,3,90.5,100.0,Brownmoose Agent | High Momentum / High Beta Agent | Superstock Agent,B1/B2 Confluence + Retest + Multi-Target Plan | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+SWKS,3,89.4,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+TEAM,3,79.8,100.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+LITE,3,76.0,95.8,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+SMCI,3,74.9,94.6,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+HOOD,3,75.5,94.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+HNGE,3,79.4,89.8,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+HPE,3,74.6,89.0,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+DOCU,3,71.6,81.7,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+NET,3,71.6,79.4,High Momentum / High Beta Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+ZS,3,63.1,70.9,Brownmoose Agent | Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | B1/B2 Confluence + Retest + Multi-Target Plan | Explosive Leader / Early Supertrend Candidate
+NTSK,2,91.4,100.0,High Momentum / High Beta Agent | Superstock Agent,Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+NVAX,2,92.6,100.0,High Momentum / High Beta Agent | Superstock Agent,Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+SBET,2,87.2,99.2,High Momentum / High Beta Agent | Superstock Agent,Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+TWLO,2,84.6,98.2,Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate
+MGNI,2,87.2,97.7,High Momentum / High Beta Agent | Superstock Agent,Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+SNDK,2,87.8,97.6,Brownmoose Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | B1/B2 Confluence + Retest + Multi-Target Plan
+TH,2,85.2,97.4,High Momentum / High Beta Agent | Superstock Agent,Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+KGC,2,75.2,95.5,Brownmoose Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | B1/B2 Confluence + Retest + Multi-Target Plan
+SIG,2,84.4,95.3,High Momentum / High Beta Agent | Superstock Agent,Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+VRNS,2,81.2,94.1,High Momentum / High Beta Agent | Superstock Agent,Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+DELL,2,79.6,93.9,High Momentum / High Beta Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Fast-Mover Momentum + Beta/Volatility
+CRM,2,75.5,92.1,Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate
+SEI,2,81.6,87.8,High Momentum / High Beta Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Fast-Mover Momentum + Beta/Volatility
+NBIS,2,75.6,87.6,Brownmoose Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | B1/B2 Confluence + Retest + Multi-Target Plan
+CLSK,2,78.2,84.3,High Momentum / High Beta Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Fast-Mover Momentum + Beta/Volatility
+EQX,2,69.7,83.8,Brownmoose Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | B1/B2 Confluence + Retest + Multi-Target Plan
+ASO,2,73.5,81.7,High Momentum / High Beta Agent | Superstock Agent,Explosive Leader / Early Supertrend Candidate | Fast-Mover Momentum + Beta/Volatility
+S,2,70.2,81.2,Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate
+RBRK,2,69.2,80.6,Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate
+RIOT,2,77.4,79.7,High Momentum / High Beta Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Fast-Mover Momentum + Beta/Volatility
+CRWD,2,70.4,79.0,High Momentum / High Beta Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Fast-Mover Momentum + Beta/Volatility
+HALO,2,74.9,79.0,Top-500 Swing Agent | Venu Agent,2–7 Day Liquid Swing Ideas | Position Leader + Rotation Swing
+TWST,2,67.5,73.4,High Momentum / High Beta Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Fast-Mover Momentum + Beta/Volatility
+PANW,2,57.0,65.8,Superstock Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Explosive Leader / Early Supertrend Candidate
+TENB,2,60.9,63.6,High Momentum / High Beta Agent | Top-500 Swing Agent,2–7 Day Liquid Swing Ideas | Fast-Mover Momentum + Beta/Volatility
+SMMT,1,100.0,100.0,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+SMTC,1,99.9,99.9,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+BLSH,1,99.6,99.6,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+TEM,1,92.1,92.1,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+CAI,1,89.0,89.0,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+HTFL,1,88.3,88.3,Superstock Agent,Explosive Leader / Early Supertrend Candidate
+AVAH,1,86.2,86.2,Superstock Agent,Explosive Leader / Early Supertrend Candidate
+CVI,1,85.1,85.1,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+TXG,1,83.3,83.3,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+EL,1,83.2,83.2,Brownmoose Agent,B1/B2 Confluence + Retest + Multi-Target Plan
+RBLX,1,82.5,82.5,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+SEDG,1,80.8,80.8,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+INTC,1,79.5,79.5,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+CLMT,1,79.1,79.1,Superstock Agent,Explosive Leader / Early Supertrend Candidate
+DK,1,78.7,78.7,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+IOVA,1,77.3,77.3,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+MXL,1,76.5,76.5,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+AU,1,74.2,74.2,Brownmoose Agent,B1/B2 Confluence + Retest + Multi-Target Plan
+GNRC,1,73.6,73.6,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
+INSM,1,71.3,71.3,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
+FSLY,1,67.8,67.8,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+UMAC,1,67.2,67.2,Brownmoose Agent,B1/B2 Confluence + Retest + Multi-Target Plan
+CRML,1,66.1,66.1,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+CLS,1,65.3,65.3,High Momentum / High Beta Agent,Fast-Mover Momentum + Beta/Volatility
+ROIV,1,59.1,59.1,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
+WDAY,1,57.7,57.7,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
+COIN,1,57.4,57.4,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
+ESTC,1,56.3,56.3,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
+NTRA,1,55.0,55.0,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
+NOW,1,53.0,53.0,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
+SNOW,1,51.7,51.7,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
+FIGR,1,50.9,50.9,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
+AEM,1,50.4,50.4,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
+AG,1,50.2,50.2,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
+BTG,1,48.2,48.2,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
+VEEV,1,46.1,46.1,Top-500 Swing Agent,2–7 Day Liquid Swing Ideas
