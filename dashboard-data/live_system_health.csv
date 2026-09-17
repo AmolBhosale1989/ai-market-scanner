@@ -1,11 +1,11 @@
 module,file,last_update_utc,age_minutes,max_age_minutes,status,market_open,checked_at_et
-Live Monitor / V7,monitor_health.csv,2026-09-17T16:17:08+00:00,0.8,20,OK,True,2026-09-17T12:17:57-04:00
-V4 Live Intelligence,v4_worker_health.json,2026-09-17T16:17:25.401275+00:00,0.5,25,OK,True,2026-09-17T12:17:57-04:00
-Themes,theme_health.csv,2026-09-17T12:53:32+00:00,204.4,20,STALE,True,2026-09-17T12:17:57-04:00
-Sector Rotation,sector_rotation_health.csv,2026-09-17T12:53:39+00:00,204.3,20,STALE,True,2026-09-17T12:17:57-04:00
-Momentum,momentum_health.csv,2026-09-17T12:53:42+00:00,204.3,20,STALE,True,2026-09-17T12:17:57-04:00
-Broad Breakout,broad_breakout_health.csv,2026-09-16T23:55:42+00:00,982.3,20,STALE,True,2026-09-17T12:17:57-04:00
-Order Flow,order_flow_strategy_health.csv,2026-09-17T12:53:43+00:00,204.2,20,STALE,True,2026-09-17T12:17:57-04:00
-High Conviction Alerts,high_conviction_alert_health.csv,2026-09-17T12:53:44+00:00,204.2,20,STALE,True,2026-09-17T12:17:57-04:00
-Premarket Discovery,premarket_health.csv,2026-09-17T12:53:44+00:00,204.2,45,OK,True,2026-09-17T12:17:57-04:00
-Daily Pick Validation,daily_top_pick_summary.csv,2026-09-17T12:54:41.907938+00:00,203.3,90,STALE,True,2026-09-17T12:17:57-04:00
+Live Monitor / V7,monitor_health.csv,2026-09-17T16:23:23+00:00,1.0,20,OK,True,2026-09-17T12:24:20-04:00
+V4 Live Intelligence,v4_worker_health.json,2026-09-17T16:23:47.192438+00:00,0.6,25,OK,True,2026-09-17T12:24:20-04:00
+Themes,theme_health.csv,2026-09-17T12:53:32+00:00,210.8,20,STALE,True,2026-09-17T12:24:20-04:00
+Sector Rotation,sector_rotation_health.csv,2026-09-17T12:53:39+00:00,210.7,20,STALE,True,2026-09-17T12:24:20-04:00
+Momentum,momentum_health.csv,2026-09-17T12:53:42+00:00,210.6,20,STALE,True,2026-09-17T12:24:20-04:00
+Broad Breakout,broad_breakout_health.csv,2026-09-16T23:55:42+00:00,988.6,20,STALE,True,2026-09-17T12:24:20-04:00
+Order Flow,order_flow_strategy_health.csv,2026-09-17T12:53:43+00:00,210.6,20,STALE,True,2026-09-17T12:24:20-04:00
+High Conviction Alerts,high_conviction_alert_health.csv,2026-09-17T12:53:44+00:00,210.6,20,STALE,True,2026-09-17T12:24:20-04:00
+Premarket Discovery,premarket_health.csv,2026-09-17T12:53:44+00:00,210.6,45,OK,True,2026-09-17T12:24:20-04:00
+Daily Pick Validation,daily_top_pick_summary.csv,2026-09-17T12:54:41.907938+00:00,209.6,90,STALE,True,2026-09-17T12:24:20-04:00
