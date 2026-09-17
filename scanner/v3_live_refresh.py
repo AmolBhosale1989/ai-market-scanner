@@ -39,12 +39,6 @@ def _validate_schema(frame: pd.DataFrame) -> None:
 
 
 def _build_v3_rank(frame: pd.DataFrame) -> pd.Series:
-    """V3-native ranking for the direct-provider production path.
-
-    This deliberately does not depend on legacy latest_scan/final_score fields.
-    Fresh technical quality and risk are primary; current discovery strength is
-    a smaller tie-breaker when broad-breakout discovery supplied it.
-    """
     technical = pd.to_numeric(frame["technical_score"], errors="coerce").fillna(0).clip(0, 100)
     risk = pd.to_numeric(frame["risk_score"], errors="coerce").fillna(100).clip(0, 100)
     if "broad_breakout_score" in frame.columns:
@@ -59,13 +53,6 @@ def _build_v3_rank(frame: pd.DataFrame) -> pd.Series:
 
 
 def refresh_v3_candidates(base: pd.DataFrame) -> pd.DataFrame:
-    """Build V3 market/technical inputs directly from current provider data.
-
-    `base` is fresh discovery context from the same run. It may contribute
-    discovery metadata, but it never supplies the V3 market/technical decision
-    fields. Those fields are recomputed from the provider here. If provider
-    coverage or the V3 input schema is unhealthy, production fails closed.
-    """
     if base is None or base.empty or "ticker" not in base.columns:
         raise RuntimeError("V3 LIVE REFRESH ABORTED: no fresh candidate identities available.")
 
@@ -88,12 +75,7 @@ def refresh_v3_candidates(base: pd.DataFrame) -> pd.DataFrame:
         if hist is None or hist.empty:
             continue
         try:
-            row = analyze_dataframe(
-                ticker,
-                hist,
-                benchmark_return20=bench20,
-                market_regime=market_regime,
-            )
+            row = analyze_dataframe(ticker, hist, benchmark_return20=bench20, market_regime=market_regime)
         except Exception as exc:
             print(f"V3 live refresh {ticker}: {exc}")
             continue
@@ -111,8 +93,6 @@ def refresh_v3_candidates(base: pd.DataFrame) -> pd.DataFrame:
             f"{fresh['ticker'].nunique()}/{len(tickers)} ({analyzable_coverage:.1%})."
         )
 
-    # Preserve only fields that the fresh discovery stage added and V3 did not
-    # recompute. Fresh V3 fields always win on name collisions.
     discovery = base.drop_duplicates("ticker").set_index("ticker")
     fresh = fresh.drop_duplicates("ticker").set_index("ticker")
     for col in discovery.columns:
@@ -122,6 +102,11 @@ def refresh_v3_candidates(base: pd.DataFrame) -> pd.DataFrame:
     out = fresh.reset_index()
     _validate_schema(out)
     out["market_hunt_score"] = _build_v3_rank(out)
+    # Temporary compatibility bridge for legacy live.py. This value is NOT the
+    # historical final_score: it is an alias of the newly calculated V3-native
+    # direct-provider rank. Remove once live.py ranking is migrated.
+    out["final_score"] = out["market_hunt_score"]
+    out["final_score_source"] = "V3_NATIVE_COMPAT_ALIAS"
     out["v3_rank_source"] = "V3_NATIVE_DIRECT_PROVIDER"
     out["v3_market_data_source"] = "DIRECT_PROVIDER"
     out["v3_market_data_refreshed_at_utc"] = datetime.now(timezone.utc).isoformat()
