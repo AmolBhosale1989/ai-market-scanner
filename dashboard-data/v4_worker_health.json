@@ -1,16 +1,16 @@
 {
   "status": "HEALTHY",
-  "generated_at_utc": "2026-09-17T17:55:53.518969+00:00",
+  "generated_at_utc": "2026-09-17T20:04:41.799310+00:00",
   "cycles_recorded": 1,
-  "market_open_cycles": 1,
-  "market_hours_uptime_pct": 100.0,
-  "event_lag_p95_ms": 53381.3,
-  "provider_duration_p95_ms": 2837.0,
+  "market_open_cycles": 0,
+  "market_hours_uptime_pct": null,
+  "event_lag_p95_ms": null,
+  "provider_duration_p95_ms": 1602.0,
   "last_cycle": {
-    "cycle_started_at_utc": "2026-09-17T17:55:29.508595+00:00",
-    "cycle_completed_at_utc": "2026-09-17T17:55:53.515708+00:00",
+    "cycle_started_at_utc": "2026-09-17T20:04:16.340550+00:00",
+    "cycle_completed_at_utc": "2026-09-17T20:04:41.797235+00:00",
     "success": true,
-    "market_open": true,
+    "market_open": false,
     "source_name": "local-scan-output",
     "source_degraded": false,
     "source_age_seconds": null,
@@ -19,11 +19,11 @@
     "received": 30,
     "provider_coverage_pct": 100.0,
     "provider_errors": 0,
-    "provider_duration_ms": 2837,
-    "event_lag_p95_ms": 53381.3,
+    "provider_duration_ms": 1602,
+    "event_lag_p95_ms": null,
     "transitions": 30,
-    "alert_deliveries": 10,
+    "alert_deliveries": 0,
     "alert_failures": 0,
-    "detail": "ranking=V3_PRIMARY_V4_SHADOW; catalysts=7 new=7 status=DEGRADED; v4.4_events=16 new=16 status=OK"
+    "detail": "ranking=V3_PRIMARY_V4_SHADOW; catalysts=6 new=6 status=DEGRADED; v4.4_events=16 new=16 status=OK"
   }
 }
