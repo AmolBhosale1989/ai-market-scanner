@@ -1,9 +1,1 @@
-dimension,value,closed_signals,win_rate_pct,target_hit_rate_pct,hit_5pct_rate,hit_8pct_rate,hit_10pct_rate,avg_return_pct,avg_r_multiple
-catalyst_status,NOT CHECKED,4,50.0,0.0,0.0,0.0,0.0,-0.93,-0.15
-entry_model,CONFIRMED_MARKET,2,100.0,0.0,0.0,0.0,0.0,1.02,0.17
-entry_model,RESISTANCE_BREAKOUT,2,0.0,0.0,0.0,0.0,0.0,-2.88,-0.48
-market_regime_state,WEAK,4,50.0,0.0,0.0,0.0,0.0,-0.93,-0.15
-stage,DISCOVER,2,0.0,0.0,0.0,0.0,0.0,-2.88,-0.48
-stage,FORMING,2,100.0,0.0,0.0,0.0,0.0,1.02,0.17
-theme,UNCLASSIFIED,3,66.7,0.0,0.0,0.0,0.0,-0.77,-0.13
-theme,Cybersecurity,1,0.0,0.0,0.0,0.0,0.0,-1.41,-0.24
+
