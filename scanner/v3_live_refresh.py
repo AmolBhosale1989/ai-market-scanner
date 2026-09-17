@@ -12,6 +12,13 @@ from .regime import evaluate_regime
 from .stocks import analyze_dataframe
 
 
+REQUIRED_V3_LIVE_COLUMNS = {
+    "ticker", "price", "stage", "technical_score", "risk_score",
+    "entry_trigger", "stop", "effective_target", "effective_rr",
+    "rvol", "avg_dollar_volume", "market_regime_state",
+}
+
+
 def _benchmark_context():
     hist = download_history(BENCHMARK, "6mo", "1d")
     if hist is None or len(hist) < 70:
@@ -23,21 +30,48 @@ def _benchmark_context():
     return ret20, evaluate_regime(hist)
 
 
-def refresh_v3_candidates(base: pd.DataFrame) -> pd.DataFrame:
-    """Refresh V3 candidate market/technical fields directly from the provider.
+def _validate_schema(frame: pd.DataFrame) -> None:
+    missing = sorted(REQUIRED_V3_LIVE_COLUMNS - set(frame.columns))
+    if missing:
+        raise RuntimeError("V3_INPUT_SCHEMA_FAILED: " + ",".join(missing))
+    if frame["ticker"].isna().any():
+        raise RuntimeError("V3_INPUT_SCHEMA_FAILED: ticker contains null values")
 
-    The prior scan is used only to identify candidates and retain slow-moving
-    context (company/catalyst/theme metadata). Price/technical decision fields
-    are recomputed from a fresh provider download for the current run. If live
-    provider coverage is unhealthy, fail closed instead of silently using old
-    market values.
+
+def _build_v3_rank(frame: pd.DataFrame) -> pd.Series:
+    """V3-native ranking for the direct-provider production path.
+
+    This deliberately does not depend on legacy latest_scan/final_score fields.
+    Fresh technical quality and risk are primary; current discovery strength is
+    a smaller tie-breaker when broad-breakout discovery supplied it.
+    """
+    technical = pd.to_numeric(frame["technical_score"], errors="coerce").fillna(0).clip(0, 100)
+    risk = pd.to_numeric(frame["risk_score"], errors="coerce").fillna(100).clip(0, 100)
+    if "broad_breakout_score" in frame.columns:
+        discovery = pd.to_numeric(frame["broad_breakout_score"], errors="coerce").fillna(0).clip(0, 100)
+    elif "rotation_leader_score" in frame.columns:
+        discovery = pd.to_numeric(frame["rotation_leader_score"], errors="coerce").fillna(0).clip(0, 100)
+    else:
+        discovery = pd.Series(0.0, index=frame.index)
+    rr = pd.to_numeric(frame["effective_rr"], errors="coerce").fillna(0).clip(0, 4) / 4 * 100
+    score = technical * 0.55 + (100 - risk) * 0.20 + rr * 0.15 + discovery * 0.10
+    return score.clip(0, 100).round(1)
+
+
+def refresh_v3_candidates(base: pd.DataFrame) -> pd.DataFrame:
+    """Build V3 market/technical inputs directly from current provider data.
+
+    `base` is fresh discovery context from the same run. It may contribute
+    discovery metadata, but it never supplies the V3 market/technical decision
+    fields. Those fields are recomputed from the provider here. If provider
+    coverage or the V3 input schema is unhealthy, production fails closed.
     """
     if base is None or base.empty or "ticker" not in base.columns:
-        raise RuntimeError("V3 LIVE REFRESH ABORTED: no candidate identities available.")
+        raise RuntimeError("V3 LIVE REFRESH ABORTED: no fresh candidate identities available.")
 
     tickers = list(dict.fromkeys(base["ticker"].dropna().astype(str)))
     if not tickers:
-        raise RuntimeError("V3 LIVE REFRESH ABORTED: candidate list is empty.")
+        raise RuntimeError("V3 LIVE REFRESH ABORTED: fresh candidate list is empty.")
 
     bench20, market_regime = _benchmark_context()
     histories = download_batch(tickers, period="1y", interval="1d")
@@ -77,15 +111,18 @@ def refresh_v3_candidates(base: pd.DataFrame) -> pd.DataFrame:
             f"{fresh['ticker'].nunique()}/{len(tickers)} ({analyzable_coverage:.1%})."
         )
 
-    # Preserve slow-moving enrichment from the discovery scan, but never let it
-    # overwrite freshly recomputed market/technical fields.
-    slow = base.drop_duplicates("ticker").set_index("ticker")
+    # Preserve only fields that the fresh discovery stage added and V3 did not
+    # recompute. Fresh V3 fields always win on name collisions.
+    discovery = base.drop_duplicates("ticker").set_index("ticker")
     fresh = fresh.drop_duplicates("ticker").set_index("ticker")
-    for col in slow.columns:
+    for col in discovery.columns:
         if col not in fresh.columns:
-            fresh[col] = slow[col]
+            fresh[col] = discovery[col]
 
     out = fresh.reset_index()
+    _validate_schema(out)
+    out["market_hunt_score"] = _build_v3_rank(out)
+    out["v3_rank_source"] = "V3_NATIVE_DIRECT_PROVIDER"
     out["v3_market_data_source"] = "DIRECT_PROVIDER"
     out["v3_market_data_refreshed_at_utc"] = datetime.now(timezone.utc).isoformat()
     out["v3_provider_coverage"] = round(coverage, 4)
