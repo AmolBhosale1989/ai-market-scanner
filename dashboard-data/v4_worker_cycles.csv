@@ -1,2 +1,2 @@
 cycle_started_at_utc,cycle_completed_at_utc,success,market_open,source_name,source_degraded,source_age_seconds,candidates,polled,received,provider_coverage_pct,provider_errors,provider_duration_ms,event_lag_p95_ms,transitions,alert_deliveries,alert_failures,detail
-2026-09-16T23:56:54.998087+00:00,2026-09-16T23:57:18.914255+00:00,True,False,local-scan-output,False,,100,30,30,100.0,0,1444,,30,0,0,ranking=V3_PRIMARY_V4_SHADOW; catalysts=8 new=8 status=DEGRADED; v4.4_events=16 new=16 status=OK
+2026-09-17T12:53:33.173899+00:00,2026-09-17T12:53:56.595943+00:00,True,False,local-scan-output,False,,100,30,30,100.0,0,1761,,30,0,0,ranking=V3_PRIMARY_V4_SHADOW; catalysts=8 new=8 status=DEGRADED; v4.4_events=16 new=16 status=OK
