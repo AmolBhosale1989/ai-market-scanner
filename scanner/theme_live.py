@@ -5,7 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-import yfinance as yf
+from .warehouse import DataRequirement, provide
 
 from .config import OUTPUT_DIR
 from .themes import THEMES, rank_themes
@@ -57,18 +57,17 @@ def run():
         return pd.DataFrame()
 
     tickers=["SPY"]+sorted({str(v["etf"]) for v in THEMES.values()})
-    try:
-        raw=yf.download(tickers=tickers,period="5d",interval="5m",auto_adjust=True,
-                        progress=False,group_by="ticker",threads=True,prepost=True,timeout=30)
-    except TypeError:
-        raw=yf.download(tickers=tickers,period="5d",interval="5m",auto_adjust=True,
-                        progress=False,group_by="ticker",threads=True,prepost=True)
+    view=provide(DataRequirement(consumer="theme_live",tickers=tuple(tickers),interval="5m",period="5d",max_age_minutes=10,view_name="theme_live_5m"))
+    raw={}
+    for ticker,g in view.frame.groupby("ticker"):
+        x=g.copy(); x["bar_timestamp"]=pd.to_datetime(x["bar_timestamp"],utc=True,errors="coerce")
+        raw[str(ticker)]=x.dropna(subset=["bar_timestamp"]).set_index("bar_timestamp")
 
-    spy_move,spy_bar=_stats(_extract(raw,"SPY"))
+    spy_move,spy_bar=_stats(_extract(raw.get("SPY",pd.DataFrame()),"SPY"))
     out=base.copy()
     moves=[]; rels=[]; bars=[]
     for _,row in out.iterrows():
-        move,bar=_stats(_extract(raw,str(row["etf"])))
+        move,bar=_stats(_extract(raw.get(str(row["etf"],pd.DataFrame()),str(row["etf"])))
         moves.append(round(move,2) if math.isfinite(move) else math.nan)
         rel=move-spy_move if math.isfinite(move) and math.isfinite(spy_move) else math.nan
         rels.append(round(rel,2) if math.isfinite(rel) else math.nan)
