@@ -1,7 +1,11 @@
 name: Market Hunt Intraday Monitor
 
 on:
+  # Legacy/shadow workflow. V3 production is owned exclusively by market-hunt-live-core.yml.
+  # Manual dispatch is retained for diagnostics; it must not overwrite production live outputs.
   push:
+    branches-ignore:
+      - '**'
     paths:
       - '.github/workflows/market-hunt-intraday.yml'
       - 'scanner/intraday.py'
@@ -10,8 +14,6 @@ on:
       - 'scanner/sector_rotation.py'
       - 'scanner/premarket.py'
       - 'scanner/themes.py'
-  schedule:
-    - cron: '*/15 8-22 * * 1-5'
   workflow_dispatch:
 
 permissions:
@@ -65,6 +67,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m scanner.intraday --limit 30
       - name: Publish critical live data
+        if: ${{ false }}
         shell: bash
         run: |
           set -euo pipefail
