@@ -105,9 +105,12 @@ def main():
     p.add_argument("--period", default="5d")
     p.add_argument("--interval", default="1d")
     p.add_argument("--limit", type=int, default=0)
+    p.add_argument("--offset", type=int, default=0)
     p.add_argument("--bootstrap", action="store_true")
     args = p.parse_args()
     tickers = _symbols()
+    if args.offset > 0:
+        tickers = tickers[args.offset:]
     if args.limit > 0:
         tickers = tickers[:args.limit]
     result = refresh(tickers, period=args.period, interval=args.interval, bootstrap=args.bootstrap)
