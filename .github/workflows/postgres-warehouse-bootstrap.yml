@@ -44,7 +44,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TOTAL=${{ inputs.limit }}
+          TOTAL="${{ inputs.limit || '420' }}"
           CHUNK=25
           for ((OFFSET=0; OFFSET<TOTAL; OFFSET+=CHUNK)); do
             echo "BOOTSTRAP_DAILY offset=$OFFSET limit=$CHUNK"
@@ -57,7 +57,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TOTAL=${{ inputs.limit }}
+          TOTAL="${{ inputs.limit || '420' }}"
           CHUNK=25
           for ((OFFSET=0; OFFSET<TOTAL; OFFSET+=CHUNK)); do
             echo "BOOTSTRAP_INTRADAY offset=$OFFSET limit=$CHUNK"
