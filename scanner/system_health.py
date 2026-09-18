@@ -11,8 +11,11 @@ from .config import OUTPUT_DIR
 
 NY = ZoneInfo("America/New_York")
 
-CHECKS = [
-    ("Live Monitor / V7", "monitor_health.csv", "checked_at_et", 20, "REGULAR"),
+PRODUCTION_CHECKS = [
+    ("V3 Live Production", "monitor_health.csv", "checked_at_et", 20, "REGULAR"),
+]
+
+SHADOW_CHECKS = [
     ("V4 Live Intelligence", "v4_worker_health.json", "generated_at_utc", 25, "REGULAR"),
     ("Themes", "theme_health.csv", "updated_at_et", 20, "REGULAR"),
     ("Sector Rotation", "sector_rotation_health.csv", "updated_at_et", 20, "REGULAR"),
@@ -56,7 +59,7 @@ def run() -> pd.DataFrame:
     premarket_open=bool(premarket_start <= now_et_ts < open_et and now_et.weekday()<5)
 
     rows=[]
-    for module, filename, field, max_age, window in CHECKS:
+    for module, filename, field, max_age, window in PRODUCTION_CHECKS + SHADOW_CHECKS:
         ts,status=_read_timestamp(OUTPUT_DIR/filename, field)
         age_min=None
         if ts is not None:
@@ -78,19 +81,23 @@ def run() -> pd.DataFrame:
             "max_age_minutes":max_age,
             "status":status,
             "market_open":market_open,
+            "role":"PRODUCTION" if (module, filename, field, max_age, window) in PRODUCTION_CHECKS else "SHADOW",
             "checked_at_et":now_et.isoformat(timespec="seconds"),
         })
 
     out=pd.DataFrame(rows)
     out.to_csv(OUTPUT_DIR/"live_system_health.csv",index=False)
-    bad=out["status"].isin(["STALE","MISSING","INVALID"])
+    production=out[out["role"]=="PRODUCTION"]
+    bad=production["status"].isin(["STALE","MISSING","INVALID"])
     summary=pd.DataFrame([{
         "checked_at_et":now_et.isoformat(timespec="seconds"),
         "market_open":market_open,
-        "modules_checked":len(out),
-        "healthy_modules":int((out["status"]=="OK").sum()),
-        "stale_modules":int((out["status"]=="STALE").sum()),
-        "missing_or_invalid_modules":int(out["status"].isin(["MISSING","INVALID"]).sum()),
+        "modules_checked":len(production),
+        "healthy_modules":int((production["status"]=="OK").sum()),
+        "stale_modules":int((production["status"]=="STALE").sum()),
+        "missing_or_invalid_modules":int(production["status"].isin(["MISSING","INVALID"]).sum()),
+        "shadow_modules_checked":int((out["role"]=="SHADOW").sum()),
+        "shadow_modules_unhealthy":int(((out["role"]=="SHADOW") & out["status"].isin(["STALE","MISSING","INVALID"])).sum()),
         "overall_status":"DEGRADED" if bad.any() and market_open else "OK",
     }])
     summary.to_csv(OUTPUT_DIR/"live_system_health_summary.csv",index=False)
