@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal
-import yfinance as yf
+from .warehouse import history as warehouse_history
 
 from .order_flow import bar_order_flow_proxy
 
