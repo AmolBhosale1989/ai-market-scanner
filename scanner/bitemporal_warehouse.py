@@ -95,6 +95,20 @@ def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
     return df
 
 
+
+def latest_event_timestamps(tickers: list[str], data_type: str = "OHLCV", timeframe: str = "1d") -> dict[str, datetime]:
+    """Newest stored event time per symbol, used to make provider refreshes incremental."""
+    wanted = list(dict.fromkeys(str(x).upper() for x in tickers if x))
+    if not wanted:
+        return {}
+    sql = """SELECT i.canonical_symbol, max(o.event_timestamp)
+      FROM market_observation o JOIN instrument i ON i.instrument_id=o.instrument_id
+      WHERE i.canonical_symbol = ANY(%s) AND o.data_type=%s AND o.timeframe=%s
+      GROUP BY i.canonical_symbol"""
+    with _connect() as conn, conn.cursor() as cur:
+        cur.execute(sql, (wanted, data_type, timeframe))
+        return {str(symbol): ts for symbol, ts in cur.fetchall() if ts is not None}
+
 def ingest_observations(frame: pd.DataFrame, run_id: str, provider: str, data_type: str, timeframe: str):
     """Append immutable provider versions; never UPDATE historical observations."""
     required = {"ticker", "event_timestamp", "ingested_at"}
