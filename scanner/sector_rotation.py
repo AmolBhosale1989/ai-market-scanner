@@ -5,7 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-import yfinance as yf
+from .warehouse import DataRequirement, provide
 
 from .config import OUTPUT_DIR
 
@@ -82,14 +82,13 @@ def run():
     for members in THEME_CONSTITUENTS.values():
         symbols.update(members)
     tickers=sorted(symbols)
-    try:
-        raw=yf.download(tickers=tickers,period="5d",interval="5m",auto_adjust=True,
-                        progress=False,group_by="ticker",threads=True,prepost=True,timeout=45)
-    except TypeError:
-        raw=yf.download(tickers=tickers,period="5d",interval="5m",auto_adjust=True,
-                        progress=False,group_by="ticker",threads=True,prepost=True)
+    view=provide(DataRequirement(consumer="sector_rotation",tickers=tuple(tickers),interval="5m",period="5d",max_age_minutes=10,view_name="sector_rotation_5m"))
+    raw={}
+    for ticker,g in view.frame.groupby("ticker"):
+        x=g.copy(); x["bar_timestamp"]=pd.to_datetime(x["bar_timestamp"],utc=True,errors="coerce")
+        raw[str(ticker)]=x.dropna(subset=["bar_timestamp"]).set_index("bar_timestamp")
 
-    cache={t:_stats(_extract(raw,t),t) for t in tickers}
+    cache={t:_stats(_extract(raw.get(t,pd.DataFrame()),t),t) for t in tickers}
     spy=cache.get("SPY")
     spy_chg=float(spy["day_change_pct"]) if spy else 0.0
 
