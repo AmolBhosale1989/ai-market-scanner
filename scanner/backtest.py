@@ -8,7 +8,7 @@ from .config import (
     OUTPUT_DIR, MIN_HISTORY_DAYS, BACKTEST_PERIOD, BACKTEST_HORIZON_DAYS,
     BACKTEST_MAX_TICKERS, BACKTEST_SIGNAL_STRIDE, MIN_RUNWAY_PCT,
 )
-from .data import download_history
+from .warehouse import history as download_history
 from .stocks import analyze_dataframe
 from .regime import evaluate_regime
 
