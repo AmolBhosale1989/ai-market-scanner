@@ -12,6 +12,7 @@ on:
       - 'scanner/v3_live.py'
       - 'scanner/v3_live_refresh.py'
       - 'scanner/broad_breakout.py'
+      - 'scanner/system_health.py'
 
 permissions:
   contents: write
