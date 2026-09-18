@@ -1,2 +1,2 @@
 checked_at_et,session_date_et,high_conviction_candidates,new_alerts,telegram_sent,telegram_configured,status
-2026-09-18T15:35:18-04:00,2026-09-18,0,0,0,False,TELEGRAM_NOT_CONFIGURED
+2026-09-18T17:54:18-04:00,2026-09-18,1,1,0,False,TELEGRAM_NOT_CONFIGURED
