@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
+from .warehouse import DataRequirement, provide
 
 from .config import OUTPUT_DIR
 
@@ -152,12 +152,13 @@ def _monitor_row(row: pd.Series, now_et: datetime) -> pd.Series:
         return row
 
     try:
-        hist = yf.download(
-            ticker, period="10d", interval="5m", auto_adjust=False,
-            progress=False, prepost=True, threads=False
-        )
+        view=provide(DataRequirement(consumer="daily_pick_monitor",tickers=(ticker,),interval="5m",period="10d",max_age_minutes=10,view_name="daily_pick_monitor_5m"))
+        hist=view.frame.copy()
+        hist["bar_timestamp"]=pd.to_datetime(hist["bar_timestamp"],utc=True,errors="coerce")
+        hist=hist.dropna(subset=["bar_timestamp"]).set_index("bar_timestamp")
     except Exception:
-        hist = pd.DataFrame()
+        hist=pd.DataFrame()
+
 
     if hist is not None and not hist.empty:
         if isinstance(hist.columns, pd.MultiIndex):
