@@ -25,7 +25,7 @@ permissions:
 jobs:
   live-monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 15
     concurrency:
       group: market-hunt-live-core-monitor
       cancel-in-progress: true
@@ -59,9 +59,13 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PGSSLMODE: require
-        run: timeout 360s python -m scanner.warehouse_refresh --period 1y --interval 1d
+        run: |
+          timeout 300s python -m scanner.warehouse_refresh --period 1y --interval 1d --limit 420
+          timeout 240s python -m scanner.warehouse_refresh --period 3d --interval 5m --limit 420
       - name: Fresh provider discovery and V3 production
         env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: timeout 420s python -m scanner.v3_live --limit 30
@@ -72,10 +76,10 @@ jobs:
           test ! -e outputs/latest_scan.csv
           test -s outputs/v3_live_discovery.csv
           test "$(wc -l < outputs/v3_live_discovery.csv)" -gt 1
-          grep -q 'DIRECT_PROVIDER_DISCOVERY' outputs/v3_live_discovery.csv
+          grep -q 'POSTGRES_WAREHOUSE_DISCOVERY' outputs/v3_live_discovery.csv
           test -s outputs/v3_live_snapshot.csv
           test "$(wc -l < outputs/v3_live_snapshot.csv)" -gt 1
-          grep -q 'DIRECT_PROVIDER' outputs/v3_live_snapshot.csv
+          grep -q 'POSTGRES_WAREHOUSE' outputs/v3_live_snapshot.csv
           test -s outputs/intraday_live.csv
           test "$(wc -l < outputs/intraday_live.csv)" -gt 1
           test -s outputs/monitor_health.csv
@@ -94,7 +98,7 @@ jobs:
               cp "outputs/$f" "/tmp/market-hunt-live-core-monitor/dashboard-data/$f"
             fi
           done
-          printf "updated_at_utc,workflow_run_id,source_commit,data_status,data_source\n%s,%s,%s,FRESH,DIRECT_PROVIDER_DISCOVERY_TO_V3\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-monitor/dashboard-data/live_metadata.csv
+          printf "updated_at_utc,workflow_run_id,source_commit,data_status,data_source\n%s,%s,%s,FRESH,POSTGRES_WAREHOUSE_TO_V3\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-monitor/dashboard-data/live_metadata.csv
           cd /tmp/market-hunt-live-core-monitor
           git add dashboard-data
           if ! git diff --cached --quiet; then
