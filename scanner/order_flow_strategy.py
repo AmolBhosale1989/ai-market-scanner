@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -28,6 +28,7 @@ def run() -> pd.DataFrame:
         pd.DataFrame().to_csv(OUTPUT_DIR / "order_flow_strategy.csv", index=False)
         pd.DataFrame([{
             "updated_at_et": now.isoformat(timespec="seconds"),
+            "updated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "evaluated": 0,
             "buy_signals": 0,
             "watch_signals": 0,
@@ -167,6 +168,7 @@ def run() -> pd.DataFrame:
     out.to_csv(OUTPUT_DIR / "order_flow_strategy.csv", index=False)
     pd.DataFrame([{
         "updated_at_et": now.isoformat(timespec="seconds"),
+            "updated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "evaluated": len(out),
         "buy_signals": int(out["order_flow_strategy_signal"].eq("ORDER FLOW BUY").sum()),
         "watch_signals": int(out["order_flow_strategy_signal"].eq("WATCH / ACCUMULATION").sum()),
