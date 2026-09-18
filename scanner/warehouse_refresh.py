@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .bitemporal_warehouse import finish_run, ingest_observations, start_run, verify_health
+from .bitemporal_warehouse import finish_run, ingest_observations, latest_event_timestamps, start_run, verify_health
 from .config import OUTPUT_DIR
 from .data import download_batch
 
@@ -38,7 +38,7 @@ def _normalize(ticker: str, frame: pd.DataFrame, ingested_at: datetime) -> pd.Da
     return out
 
 
-def refresh(tickers: list[str], period: str = "1y", interval: str = "1d") -> dict:
+def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootstrap: bool = False) -> dict:
     """Provider access is confined to ingestion; PostgreSQL is the only warehouse sink."""
     verify_health()
     tickers = list(dict.fromkeys(str(t).upper() for t in tickers if t))
@@ -50,12 +50,33 @@ def refresh(tickers: list[str], period: str = "1y", interval: str = "1d") -> dic
         payload={"tickers": tickers, "period": period, "interval": interval},
     )
     try:
-        batch = download_batch(tickers, period=period, interval=interval)
+        watermarks = {} if bootstrap else latest_event_timestamps(tickers, timeframe=interval)
+        # Historical bootstrap is explicit. Normal live runs only request a small
+        # overlap window and discard bars already present at/before the watermark.
+        effective_period = period if bootstrap else ("5d" if interval == "1d" else "2d")
+        batch = download_batch(tickers, period=effective_period, interval=interval)
         ingested_at = datetime.now(timezone.utc)
-        frames = [_normalize(t, batch.get(t), ingested_at) for t in tickers if t in batch]
+        frames = []
+        for t in tickers:
+            if t not in batch:
+                continue
+            frame = _normalize(t, batch.get(t), ingested_at)
+            watermark = watermarks.get(t)
+            if watermark is not None and not frame.empty:
+                wm = pd.Timestamp(watermark)
+                if wm.tzinfo is None:
+                    wm = wm.tz_localize("UTC")
+                else:
+                    wm = wm.tz_convert("UTC")
+                frame = frame[frame["event_timestamp"] > wm]
+            if not frame.empty:
+                frames.append(frame)
         frames = [f for f in frames if not f.empty]
         if not frames:
-            raise RuntimeError("WAREHOUSE_REFRESH_FAILED: provider returned no usable data")
+            metadata = {"requested_symbols": len(tickers), "ingested_symbols": 0, "observations": 0,
+                        "period": period, "interval": interval, "mode": "BOOTSTRAP" if bootstrap else "INCREMENTAL"}
+            finish_run(run_id, "AVAILABLE", metadata=metadata)
+            return {"run_id": run_id, **metadata}
         combined = pd.concat(frames, ignore_index=True, sort=False)
         ingest_observations(
             combined,
@@ -70,6 +91,7 @@ def refresh(tickers: list[str], period: str = "1y", interval: str = "1d") -> dic
             "observations": int(len(combined)),
             "period": period,
             "interval": interval,
+            "mode": "BOOTSTRAP" if bootstrap else "INCREMENTAL",
         }
         finish_run(run_id, "AVAILABLE", metadata=metadata)
         return {"run_id": run_id, **metadata}
@@ -80,14 +102,15 @@ def refresh(tickers: list[str], period: str = "1y", interval: str = "1d") -> dic
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--period", default="1y")
+    p.add_argument("--period", default="5d")
     p.add_argument("--interval", default="1d")
     p.add_argument("--limit", type=int, default=0)
+    p.add_argument("--bootstrap", action="store_true")
     args = p.parse_args()
     tickers = _symbols()
     if args.limit > 0:
         tickers = tickers[:args.limit]
-    result = refresh(tickers, period=args.period, interval=args.interval)
+    result = refresh(tickers, period=args.period, interval=args.interval, bootstrap=args.bootstrap)
     print(
         "BITEMPORAL_WAREHOUSE_AVAILABLE "
         f"run_id={result['run_id']} interval={result['interval']} "
