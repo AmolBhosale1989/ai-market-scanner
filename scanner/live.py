@@ -194,23 +194,9 @@ def _volume_confirmation(d: pd.DataFrame, session_date, current_session: pd.Data
     return volume_vs_9ma, opening_rvol, opening_spike
 
 def _quote_spread(ticker: str, reference_price: float = math.nan):
-    try:
-        info=yf.Ticker(ticker).get_info()
-    except Exception:
-        return math.nan,math.nan,math.nan
-    try:
-        bid=float(info.get("bid",math.nan)); ask=float(info.get("ask",math.nan))
-    except (TypeError,ValueError):
-        return math.nan,math.nan,math.nan
-    if not (math.isfinite(bid) and math.isfinite(ask) and bid>0 and ask>=bid):
-        return math.nan,math.nan,math.nan
-    midpoint=(bid+ask)/2
-    spread_pct=(ask-bid)/midpoint*100 if midpoint>0 else math.nan
-    if math.isfinite(reference_price) and reference_price>0 and abs(midpoint/reference_price-1)>0.03:
-        return bid,ask,math.nan
-    if math.isfinite(spread_pct) and spread_pct>5.0:
-        return bid,ask,math.nan
-    return bid,ask,spread_pct
+    # Quote-level bid/ask requires a warehouse quote dataset. Until that
+    # ingestion lane exists, fail closed instead of bypassing the warehouse.
+    return math.nan, math.nan, math.nan
 
 def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, catalyst_score: float,
                            rr_to_8pct: float, runway_pct: float, negative_catalyst_risk: bool,
@@ -218,11 +204,9 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
                            formation_score: float = 0.0, avg_dollar_volume: float = 0.0):
     result=_empty_live(); now_et=datetime.now(NY); state=_market_state(now_et)
     try:
-        raw=yf.download(ticker,period=LIVE_PERIOD,interval=LIVE_INTERVAL,auto_adjust=True,progress=False,threads=False,prepost=True,timeout=20)
-    except TypeError:
-        raw=yf.download(ticker,period=LIVE_PERIOD,interval=LIVE_INTERVAL,auto_adjust=True,progress=False,threads=False,prepost=True)
+        raw=warehouse_history(ticker, LIVE_PERIOD, LIVE_INTERVAL, max_age_minutes=10)
     except Exception:
-        result["live_status"]="ERROR"; return result
+        result["live_status"]="WAREHOUSE DATA UNAVAILABLE"; return result
     d=_normalize_intraday(raw)
     if d.empty:
         result["live_status"]="NO INTRADAY DATA"; return result
