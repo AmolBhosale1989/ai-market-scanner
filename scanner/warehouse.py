@@ -45,6 +45,25 @@ def _pit(tickers: Iterable[str], interval: str, consumer: str) -> pd.DataFrame:
     ))
 
 
+def _assert_coverage(df: pd.DataFrame, tickers: Iterable[str], consumer: str) -> None:
+    wanted = set(_tickers(tickers))
+    have = set(df["ticker"].astype(str).str.upper()) if not df.empty and "ticker" in df.columns else set()
+    missing = sorted(wanted - have)
+    if missing:
+        sample = ",".join(missing[:10])
+        raise RuntimeError(f"WAREHOUSE_COVERAGE_INCOMPLETE: {consumer} missing={sample} count={len(missing)}")
+
+
+def _assert_fresh(df: pd.DataFrame, interval: str, max_age_minutes: int, consumer: str) -> pd.Timestamp:
+    newest = pd.to_datetime(df["ingested_at"], utc=True, errors="coerce").max()
+    if pd.isna(newest):
+        raise RuntimeError(f"WAREHOUSE_STALE: {consumer} {interval} has no valid ingestion timestamp")
+    age = (datetime.now(timezone.utc) - newest.to_pydatetime()).total_seconds() / 60
+    if age < 0 or age > max_age_minutes:
+        raise RuntimeError(f"WAREHOUSE_STALE: {consumer} {interval} age={age:.1f}m max={max_age_minutes}m")
+    return newest
+
+
 def _compat_frame(df: pd.DataFrame) -> pd.DataFrame:
     x = df.copy()
     x["bar_timestamp"] = pd.to_datetime(x["event_timestamp"], utc=True, errors="coerce")
@@ -71,12 +90,8 @@ def is_fresh(max_age_minutes: int = 20, interval: str | None = None) -> bool:
 def ensure(tickers: Iterable[str], period: str = "1y", interval: str = "1d", max_age_minutes: int = 20):
     """Compatibility preflight. Ingestion is a workflow responsibility, never a consumer side effect."""
     df = _pit(tickers, interval, "warehouse.ensure")
-    newest = pd.to_datetime(df["ingested_at"], utc=True, errors="coerce").max()
-    if pd.isna(newest):
-        raise RuntimeError(f"WAREHOUSE_STALE: {interval} has no valid ingestion timestamp")
-    age = (datetime.now(timezone.utc) - newest.to_pydatetime()).total_seconds() / 60
-    if age > max_age_minutes:
-        raise RuntimeError(f"WAREHOUSE_STALE: {interval} data age={age:.1f}m max={max_age_minutes}m")
+    _assert_coverage(df, tickers, "warehouse.ensure")
+    newest = _assert_fresh(df, interval, max_age_minutes, "warehouse.ensure")
     return {"backend": "POSTGRESQL_BITEMPORAL", "updated_at_utc": newest.isoformat()}
 
 
@@ -85,11 +100,9 @@ def get(tickers: Iterable[str] | None = None, interval: str = "1d", max_age_minu
     if not wanted:
         raise RuntimeError("WAREHOUSE_REQUIREMENT_INVALID: PostgreSQL reads require explicit tickers")
     df = _compat_frame(_pit(wanted, interval, "warehouse.get"))
+    _assert_coverage(df, wanted, "warehouse.get")
     if require_fresh:
-        newest = pd.to_datetime(df["ingested_at"], utc=True, errors="coerce").max()
-        age = (datetime.now(timezone.utc) - newest.to_pydatetime()).total_seconds() / 60
-        if pd.isna(newest) or age > max_age_minutes:
-            raise RuntimeError(f"WAREHOUSE_STALE: {interval} data is not current")
+        _assert_fresh(df, interval, max_age_minutes, "warehouse.get")
     return df
 
 
