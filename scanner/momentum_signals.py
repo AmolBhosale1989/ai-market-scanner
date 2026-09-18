@@ -5,7 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-import yfinance as yf
+from .warehouse import DataRequirement, provide
 
 from .config import OUTPUT_DIR
 from .order_flow import bar_order_flow_proxy
@@ -95,18 +95,17 @@ def run(limit: int = 40):
     leaders["candidate_priority"]=leaders[["theme_rotation_score","rotation_leader_score","broad_breakout_score"]].max(axis=1)
     leaders=leaders.sort_values(["candidate_priority","rel_vs_spy_pct"],ascending=[False,False]).drop_duplicates("ticker").head(limit)
     tickers=leaders["ticker"].astype(str).tolist()
-    try:
-        raw=yf.download(tickers=tickers,period="5d",interval="5m",auto_adjust=True,
-                        progress=False,group_by="ticker",threads=True,prepost=True,timeout=45)
-    except TypeError:
-        raw=yf.download(tickers=tickers,period="5d",interval="5m",auto_adjust=True,
-                        progress=False,group_by="ticker",threads=True,prepost=True)
+    view=provide(DataRequirement(consumer="momentum_signals",tickers=tuple(tickers),interval="5m",period="5d",max_age_minutes=10,view_name="momentum_signals_5m"))
+    raw={}
+    for ticker,g in view.frame.groupby("ticker"):
+        x=g.copy(); x["bar_timestamp"]=pd.to_datetime(x["bar_timestamp"],utc=True,errors="coerce")
+        raw[str(ticker)]=x.dropna(subset=["bar_timestamp"]).set_index("bar_timestamp")
 
     now=datetime.now(NY)
     rows=[]
     for _,meta in leaders.iterrows():
         ticker=str(meta["ticker"])
-        d=_extract(raw,ticker)
+        d=_extract(raw.get(ticker,pd.DataFrame()),ticker)
         if d.empty:
             continue
         today=d[d.index.date==now.date()].between_time("09:30","16:00")
