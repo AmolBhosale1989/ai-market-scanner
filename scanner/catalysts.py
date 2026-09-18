@@ -5,7 +5,7 @@ import math
 import re
 import time
 import pandas as pd
-import yfinance as yf
+from .warehouse import request_dataset
 
 from .config import (
     CATALYST_LOOKBACK_HOURS,
@@ -175,131 +175,23 @@ def _next_earnings_days(ticker_obj):
     return math.nan
 
 def analyze_catalyst(ticker,company_name=""):
-    now=datetime.now(timezone.utc)
-    obj=yf.Ticker(ticker)
-    relevant_items=[]
-    rejected_count=0
-
-    try:
-        try: raw_news=obj.get_news(count=12)
-        except TypeError: raw_news=obj.news
-        for raw in raw_news or []:
-            parsed=_extract_news_item(raw)
-            if not parsed: continue
-            relevant,reason=_news_relevance(ticker,company_name,parsed)
-            parsed["relevance_reason"]=reason
-            if relevant: relevant_items.append(parsed)
-            else: rejected_count+=1
-    except Exception:
-        relevant_items=[]
-
-    best=None
-    best_value=-1
-    for item in relevant_items:
-        published=item["published"]
-        age_hours=max(0.0,(now-published).total_seconds()/3600) if published else math.nan
-        factor,recency,status,fresh=_freshness(age_hours)
-        signal,matched=_headline_signal(item["title"])
-        effective_signal=signal*factor
-        # Historical headlines may be retained as context but cannot win against
-        # a genuinely fresh relevant headline solely because of strong keywords.
-        value=recency+abs(effective_signal)
-        if best is None or value>best_value:
-            best_value=value
-            best={**item,"age_hours":age_hours,"signal":signal,"matched":matched,
-                  "freshness_factor":factor,"freshness_status":status,"fresh":fresh,
-                  "effective_signal":effective_signal}
-
-    earnings_days=_next_earnings_days(obj)
-    earnings_score=0
-    earnings_active=False
-    if math.isfinite(earnings_days):
-        if 0<=earnings_days<=3:
-            earnings_score=24; earnings_active=True
-        elif earnings_days<=CATALYST_LOOKAHEAD_DAYS:
-            earnings_score=18; earnings_active=True
-        elif earnings_days<=14:
-            earnings_score=8
-
-    news_score=0
-    bias="NEUTRAL"
-    headline=""
-    provider=""
-    age_hours=math.nan
-    catalyst_type="NONE"
-    relevance="NO VERIFIED NEWS"
-    freshness_status="NO NEWS"
-    catalyst_fresh=False
-    materiality="NONE"
-
-    if best:
-        headline=best["title"]
-        provider=best["provider"]
-        age_hours=best["age_hours"]
-        relevance=best.get("relevance_reason","VERIFIED")
-        freshness_status=best["freshness_status"]
-        catalyst_fresh=bool(best["fresh"])
-        signal=best["signal"]
-        effective_signal=best["effective_signal"]
-        recency=_freshness(age_hours)[1]
-        news_score=max(-30,min(45,effective_signal+recency))
-        materiality="HIGH" if abs(signal)>=14 else ("MEDIUM" if abs(signal)>=8 else "LOW")
-
-        if freshness_status=="HISTORICAL":
-            catalyst_type="HISTORICAL NEWS"
-        elif signal>=8:
-            bias="BULLISH"; catalyst_type="NEWS" if catalyst_fresh else "CONTEXT NEWS"
-        elif signal<=-8:
-            bias="BEARISH"; catalyst_type="NEGATIVE NEWS" if catalyst_fresh else "CONTEXT NEWS"
-        elif catalyst_fresh:
-            catalyst_type="FRESH NEWS"
-        else:
-            catalyst_type="CONTEXT NEWS"
-
-    catalyst_score=max(0,min(100,20+news_score+earnings_score))
-    negative_risk=bool(
-        best and best["signal"]<=-10 and catalyst_fresh
-        and math.isfinite(age_hours) and age_hours<=CATALYST_LOOKBACK_HOURS
-    )
-
-    if earnings_active:
-        catalyst_type="UPCOMING EARNINGS" if catalyst_type in {"NONE","HISTORICAL NEWS"} else f"{catalyst_type} + EARNINGS"
-        if bias=="NEUTRAL": bias="EVENT"
-
-    # ACTIVE/STRONG requires a fresh relevant news item or a near-term earnings event.
-    active_event=catalyst_fresh or earnings_active
-    if not active_event:
-        if best and freshness_status=="HISTORICAL":
-            status="HISTORICAL / CONTEXT"
-        elif relevant_items or math.isfinite(earnings_days):
-            status="WEAK"
-        else:
-            status="NO VERIFIED CATALYST"
-    elif negative_risk:
-        status="NEGATIVE RISK"
-    elif catalyst_score>=45:
-        status="STRONG"
-    elif catalyst_score>=30:
-        status="ACTIVE"
-    else:
-        status="WEAK"
-
-    return {
-        "catalyst_score":int(round(catalyst_score)),
-        "catalyst_status":status,
-        "catalyst_type":catalyst_type,
-        "catalyst_bias":bias,
-        "catalyst_headline":headline[:220],
-        "catalyst_provider":provider[:80],
-        "catalyst_age_hours":round(age_hours,1) if math.isfinite(age_hours) else math.nan,
-        "catalyst_relevance":relevance,
-        "catalyst_fresh":catalyst_fresh,
-        "news_freshness_status":freshness_status,
-        "catalyst_materiality":materiality,
-        "rejected_news_count":int(rejected_count),
-        "earnings_days":earnings_days,
-        "negative_catalyst_risk":negative_risk,
-    }
+    # Catalyst/news/earnings data is supplied only by the warehouse manager.
+    data=request_dataset("catalyst_context",consumer="catalysts",tickers=(str(ticker),),max_age_minutes=60)
+    if data is None or data.empty:
+        return {
+            "catalyst_score":0,"catalyst_status":"WAREHOUSE DATA UNAVAILABLE","catalyst_type":"NONE",
+            "catalyst_bias":"NEUTRAL","catalyst_headline":"","catalyst_provider":"",
+            "catalyst_age_hours":math.nan,"catalyst_relevance":"NO WAREHOUSE DATA",
+            "catalyst_fresh":False,"news_freshness_status":"UNAVAILABLE","catalyst_materiality":"NONE",
+            "rejected_news_count":0,"earnings_days":math.nan,"negative_catalyst_risk":False,
+        }
+    row=data.iloc[0]
+    return {k:row.get(k) for k in [
+        "catalyst_score","catalyst_status","catalyst_type","catalyst_bias","catalyst_headline",
+        "catalyst_provider","catalyst_age_hours","catalyst_relevance","catalyst_fresh",
+        "news_freshness_status","catalyst_materiality","rejected_news_count","earnings_days",
+        "negative_catalyst_risk"
+    ]}
 
 def enrich_candidates(df: pd.DataFrame,limit: int):
     if df.empty: return df
