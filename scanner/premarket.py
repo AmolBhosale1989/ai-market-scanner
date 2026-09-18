@@ -7,7 +7,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-import yfinance as yf
+from .warehouse import DataRequirement, provide
 
 from .config import OUTPUT_DIR
 
@@ -40,31 +40,14 @@ def _normalize(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     return out.dropna(subset=["Close"]).sort_index()
 
 
-def _download_batch(tickers: list[str]) -> pd.DataFrame:
-    try:
-        return yf.download(
-            tickers=tickers,
-            period="1d",
-            interval="5m",
-            auto_adjust=True,
-            progress=False,
-            group_by="ticker",
-            threads=True,
-            prepost=True,
-            timeout=30,
-        )
-    except TypeError:
-        return yf.download(
-            tickers=tickers,
-            period="1d",
-            interval="5m",
-            auto_adjust=True,
-            progress=False,
-            group_by="ticker",
-            threads=True,
-            prepost=True,
-        )
-
+def _warehouse_batch(tickers: list[str], consumer: str, period: str="5d") -> dict[str,pd.DataFrame]:
+    view=provide(DataRequirement(consumer=consumer,tickers=tuple(tickers),interval="5m",period=period,max_age_minutes=10,view_name=consumer+"_5m"))
+    out={}
+    for ticker,g in view.frame.groupby("ticker"):
+        x=g.copy()
+        x["bar_timestamp"]=pd.to_datetime(x["bar_timestamp"],utc=True,errors="coerce")
+        out[str(ticker)]=x.dropna(subset=["bar_timestamp"]).set_index("bar_timestamp")
+    return out
 
 def run(input_file: str | None = None, batch_size: int = 80, top_n: int = 100):
     source = Path(input_file) if input_file else OUTPUT_DIR / "tradable_universe.csv"
@@ -95,7 +78,7 @@ def run(input_file: str | None = None, batch_size: int = 80, top_n: int = 100):
         batch = tickers[start:start + batch_size]
         print(f"Premarket batch {bi}/{batches}: {batch[0]} ... {batch[-1]}")
         try:
-            raw = _download_batch(batch)
+            raw = _warehouse_batch(batch,"premarket",period="1d")
         except Exception as exc:
             print(f"Batch failed: {exc}")
             continue
@@ -103,7 +86,7 @@ def run(input_file: str | None = None, batch_size: int = 80, top_n: int = 100):
             continue
 
         for ticker in batch:
-            d = _normalize(raw, ticker)
+            d = _normalize(raw.get(ticker,pd.DataFrame()), ticker)
             if d.empty:
                 continue
             today = d[d.index.date == now_et.date()]
