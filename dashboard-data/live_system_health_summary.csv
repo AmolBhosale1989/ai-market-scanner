@@ -1,2 +1,2 @@
-checked_at_et,market_open,modules_checked,healthy_modules,stale_modules,missing_or_invalid_modules,overall_status
-2026-09-17T22:44:07-04:00,False,10,10,0,0,OK
+checked_at_et,market_open,modules_checked,healthy_modules,stale_modules,missing_or_invalid_modules,shadow_modules_checked,shadow_modules_unhealthy,overall_status
+2026-09-17T22:45:09-04:00,False,1,1,0,0,9,1,OK
