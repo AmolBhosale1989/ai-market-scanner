@@ -125,6 +125,18 @@ def ingest_observations(frame: pd.DataFrame, run_id: str, provider: str, data_ty
             instrument_id = cur.fetchone()[0]
             payload = {k: (None if pd.isna(v) else v) for k, v in r.items()
                        if k not in {"ticker", "event_timestamp", "ingested_at", "Open", "High", "Low", "Close", "Volume"}}
+            # Idempotent on the logical provider bar. Re-running the same refresh
+            # must not manufacture another version solely because ingested_at/run_id changed.
+            cur.execute("""SELECT 1 FROM market_observation
+              WHERE instrument_id=%s AND data_type=%s AND timeframe=%s
+                AND event_timestamp=%s AND provider=%s
+                AND open IS NOT DISTINCT FROM %s AND high IS NOT DISTINCT FROM %s
+                AND low IS NOT DISTINCT FROM %s AND close IS NOT DISTINCT FROM %s
+                AND volume IS NOT DISTINCT FROM %s LIMIT 1""",
+              (instrument_id, data_type, timeframe, r["event_timestamp"], provider,
+               r.get("Open"), r.get("High"), r.get("Low"), r.get("Close"), r.get("Volume")))
+            if cur.fetchone():
+                continue
             cur.execute("""INSERT INTO market_observation
               (instrument_id,data_type,timeframe,event_timestamp,ingested_at,warehouse_run_id,
                provider,open,high,low,close,volume,payload)
