@@ -45,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           TOTAL="${{ inputs.limit || '420' }}"
-          CHUNK=25
+          CHUNK=10
           for ((OFFSET=0; OFFSET<TOTAL; OFFSET+=CHUNK)); do
             echo "BOOTSTRAP_DAILY offset=$OFFSET limit=$CHUNK"
             python -m scanner.warehouse_refresh --bootstrap --period 1y --interval 1d --offset "$OFFSET" --limit "$CHUNK"
@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           TOTAL="${{ inputs.limit || '420' }}"
-          CHUNK=25
+          CHUNK=10
           for ((OFFSET=0; OFFSET<TOTAL; OFFSET+=CHUNK)); do
             echo "BOOTSTRAP_INTRADAY offset=$OFFSET limit=$CHUNK"
             python -m scanner.warehouse_refresh --bootstrap --period 5d --interval 5m --offset "$OFFSET" --limit "$CHUNK"
