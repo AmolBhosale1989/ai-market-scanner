@@ -13,6 +13,8 @@ on:
       - 'scanner/v3_live_refresh.py'
       - 'scanner/broad_breakout.py'
       - 'scanner/system_health.py'
+      - 'scanner/warehouse.py'
+      - 'scanner/warehouse_refresh.py'
 
 permissions:
   contents: write
@@ -40,6 +42,16 @@ jobs:
           git show "origin/scan-data:dashboard-data/tradable_universe.csv" > outputs/tradable_universe.csv
           test -s outputs/tradable_universe.csv
           # Refactor 2 contract: latest_scan.csv is intentionally NOT restored.
+      - name: Refresh central daily warehouse
+        run: timeout 360s python -m scanner.warehouse_refresh --period 1y --interval 1d
+      - name: Validate warehouse availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s outputs/warehouse/manifest.json
+          test -s outputs/warehouse/market_1d.csv
+          grep -q '"status": "AVAILABLE"' outputs/warehouse/manifest.json
+          grep -q '"updated_at_utc"' outputs/warehouse/manifest.json
       - name: Fresh provider discovery and V3 production
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -69,6 +81,9 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-live-core-monitor scan-data
           mkdir -p /tmp/market-hunt-live-core-monitor/dashboard-data
+          mkdir -p /tmp/market-hunt-live-core-monitor/dashboard-data/warehouse
+          cp outputs/warehouse/manifest.json /tmp/market-hunt-live-core-monitor/dashboard-data/warehouse/
+          cp outputs/warehouse/market_1d.csv /tmp/market-hunt-live-core-monitor/dashboard-data/warehouse/
           for f in v3_live_discovery.csv broad_breakout_discovery.csv broad_breakout_health.csv v3_live_snapshot.csv recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json; do
             if [ -s "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-live-core-monitor/dashboard-data/$f"
