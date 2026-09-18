@@ -1,4 +1,4 @@
-from .data import download_history
+from .warehouse import history as download_history
 from .indicators import add_indicators
 
 def sector_score(etf: str):
