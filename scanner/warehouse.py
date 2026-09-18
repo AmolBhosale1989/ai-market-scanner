@@ -120,6 +120,49 @@ def is_fresh(max_age_minutes: int=20, interval: str | None=None) -> bool:
     except Exception:
         return False
 
+def ensure(tickers: Iterable[str], period: str="1y", interval: str="1d", max_age_minutes: int=20) -> WarehouseSnapshot:
+    """Warehouse-manager contract used by every scanner function.
+
+    Consumers declare symbols/timeframe/freshness only. The manager decides
+    whether the stored dataset is current and refreshes it from the provider
+    when necessary. Provider access must remain inside this module/data.py.
+    """
+    tickers=list(dict.fromkeys(str(t).upper() for t in tickers if t))
+    path=_dataset_path(interval)
+    needs_refresh=not is_fresh(max_age_minutes=max_age_minutes,interval=interval)
+    if not needs_refresh and path.exists():
+        try:
+            have=set(pd.read_csv(path,usecols=["ticker"])["ticker"].astype(str).str.upper())
+            needs_refresh=not set(tickers).issubset(have)
+        except Exception:
+            needs_refresh=True
+    if needs_refresh:
+        return update(tickers,period=period,interval=interval)
+    m=status()
+    df=pd.read_csv(path,usecols=["ticker"])
+    return WarehouseSnapshot(m["warehouse_run_id"],m["updated_at_utc"],interval,path,0,int(df["ticker"].nunique()))
+
+def request(tickers: Iterable[str], period: str="1y", interval: str="1d", max_age_minutes: int=20) -> pd.DataFrame:
+    """Declare a data requirement and receive a fresh warehouse-backed dataset."""
+    tickers=list(dict.fromkeys(str(t).upper() for t in tickers if t))
+    ensure(tickers,period=period,interval=interval,max_age_minutes=max_age_minutes)
+    return get(tickers=tickers,interval=interval,max_age_minutes=max_age_minutes,require_fresh=True)
+
+def frames(tickers: Iterable[str], period: str="1y", interval: str="1d", max_age_minutes: int=20) -> dict[str,pd.DataFrame]:
+    """Compatibility shape for analytical functions that expect ticker->OHLCV."""
+    df=request(tickers,period=period,interval=interval,max_age_minutes=max_age_minutes)
+    out={}
+    for ticker,g in df.groupby("ticker"):
+        x=g.copy()
+        x["bar_timestamp"]=pd.to_datetime(x["bar_timestamp"],utc=True,errors="coerce")
+        x=x.dropna(subset=["bar_timestamp"]).set_index("bar_timestamp")
+        drop=[c for c in ("ticker","interval","provider","retrieved_at_utc","warehouse_run_id") if c in x.columns]
+        out[str(ticker)]=x.drop(columns=drop)
+    return out
+
+def history(ticker: str, period: str="1y", interval: str="1d", max_age_minutes: int=20) -> pd.DataFrame:
+    return frames([ticker],period=period,interval=interval,max_age_minutes=max_age_minutes).get(str(ticker).upper(),pd.DataFrame())
+
 def get(tickers: Iterable[str] | None=None, interval: str="1d", max_age_minutes: int=20, require_fresh: bool=True) -> pd.DataFrame:
     if require_fresh and not is_fresh(max_age_minutes=max_age_minutes,interval=interval):
         raise RuntimeError(f"WAREHOUSE_STALE: {interval} data is not current")
