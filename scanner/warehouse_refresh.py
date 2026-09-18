@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from .bitemporal_warehouse import finish_run, ingest_observations, latest_event_timestamps, start_run, verify_health
-from .config import OUTPUT_DIR
+from .config import OUTPUT_DIR, RETRY_CHUNK_SIZE
 from .data import download_batch
 
 
@@ -51,50 +51,42 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
     )
     try:
         watermarks = {} if bootstrap else latest_event_timestamps(tickers, timeframe=interval)
-        # Historical bootstrap is explicit. Normal live runs only request a small
-        # overlap window and discard bars already present at/before the watermark.
         effective_period = period if bootstrap else ("5d" if interval == "1d" else "2d")
-        batch = download_batch(tickers, period=effective_period, interval=interval)
-        ingested_at = datetime.now(timezone.utc)
-        frames = []
-        for t in tickers:
-            if t not in batch:
+        provider_chunk = min(10, RETRY_CHUNK_SIZE)
+        ingested_symbols=set()
+        observations=0
+        # Download and commit each small provider batch immediately. A later
+        # provider failure cannot discard already committed successful chunks.
+        for i in range(0, len(tickers), provider_chunk):
+            chunk=tickers[i:i+provider_chunk]
+            batch=download_batch(chunk, period=effective_period, interval=interval)
+            ingested_at=datetime.now(timezone.utc)
+            frames=[]
+            for t in chunk:
+                if t not in batch:
+                    continue
+                frame=_normalize(t,batch.get(t),ingested_at)
+                watermark=watermarks.get(t)
+                if watermark is not None and not frame.empty:
+                    wm=pd.Timestamp(watermark)
+                    wm=wm.tz_localize("UTC") if wm.tzinfo is None else wm.tz_convert("UTC")
+                    frame=frame[frame["event_timestamp"] > wm]
+                if not frame.empty:
+                    frames.append(frame)
+            if not frames:
                 continue
-            frame = _normalize(t, batch.get(t), ingested_at)
-            watermark = watermarks.get(t)
-            if watermark is not None and not frame.empty:
-                wm = pd.Timestamp(watermark)
-                if wm.tzinfo is None:
-                    wm = wm.tz_localize("UTC")
-                else:
-                    wm = wm.tz_convert("UTC")
-                frame = frame[frame["event_timestamp"] > wm]
-            if not frame.empty:
-                frames.append(frame)
-        frames = [f for f in frames if not f.empty]
-        if not frames:
-            metadata = {"requested_symbols": len(tickers), "ingested_symbols": 0, "observations": 0,
-                        "period": period, "interval": interval, "mode": "BOOTSTRAP" if bootstrap else "INCREMENTAL"}
-            finish_run(run_id, "AVAILABLE", metadata=metadata)
-            return {"run_id": run_id, **metadata}
-        combined = pd.concat(frames, ignore_index=True, sort=False)
-        ingest_observations(
-            combined,
-            run_id=run_id,
-            provider="YAHOO_YFINANCE",
-            data_type="OHLCV",
-            timeframe=interval,
-        )
-        metadata = {
-            "requested_symbols": len(tickers),
-            "ingested_symbols": int(combined["ticker"].nunique()),
-            "observations": int(len(combined)),
-            "period": period,
-            "interval": interval,
-            "mode": "BOOTSTRAP" if bootstrap else "INCREMENTAL",
-        }
-        finish_run(run_id, "AVAILABLE", metadata=metadata)
-        return {"run_id": run_id, **metadata}
+            combined=pd.concat(frames,ignore_index=True,sort=False)
+            inserted=ingest_observations(combined,run_id=run_id,provider="YAHOO_YFINANCE",data_type="OHLCV",timeframe=interval)
+            observations += inserted
+            ingested_symbols.update(combined["ticker"].astype(str).str.upper().unique())
+            print(f"WAREHOUSE_CHUNK_COMMITTED offset={i} requested={len(chunk)} symbols={combined['ticker'].nunique()} inserted={inserted}", flush=True)
+        metadata={"requested_symbols":len(tickers),"ingested_symbols":len(ingested_symbols),
+                  "observations":observations,"period":period,"interval":interval,
+                  "mode":"BOOTSTRAP" if bootstrap else "INCREMENTAL"}
+        if not ingested_symbols and bootstrap:
+            raise RuntimeError("WAREHOUSE_REFRESH_FAILED: bootstrap provider returned no usable data")
+        finish_run(run_id,"AVAILABLE",metadata=metadata)
+        return {"run_id":run_id,**metadata}
     except Exception as exc:
         finish_run(run_id, "FAILED", error=str(exc))
         raise
