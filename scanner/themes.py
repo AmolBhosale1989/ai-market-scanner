@@ -3,10 +3,9 @@ from __future__ import annotations
 import math
 import time
 import pandas as pd
-import yfinance as yf
 
 from .config import OUTPUT_DIR, THEME_PROFILE_LIMIT, THEME_BONUS_MAX
-from .data import download_history
+from .warehouse import history as download_history
 from .indicators import add_indicators
 
 STATIC_THEME_MEMBERS = {
@@ -151,14 +150,10 @@ def enrich_candidate_themes(df: pd.DataFrame, theme_table: pd.DataFrame, limit: 
                         matched={**row_match,"confidence":1.0,"source":"STATIC_CONSTITUENT","reason":"verified theme membership"}
                     break
             if matched is None:
-                obj=yf.Ticker(ticker)
-                try:
-                    info=obj.get_info()
-                except Exception:
-                    info=obj.info
-                if not isinstance(info,dict):
-                    continue
-                matched=_match_theme(info,theme_table)
+                # Fundamental/profile classification must come from a warehouse
+                # profile view. Until that lane is populated, retain only
+                # verified static membership and fail closed on fuzzy matching.
+                matched=None
             if not matched:
                 continue
 
