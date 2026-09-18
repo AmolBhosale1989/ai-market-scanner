@@ -5,7 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-import yfinance as yf
+from .warehouse import frames as warehouse_frames, history as warehouse_history
 
 from .config import OUTPUT_DIR
 
@@ -78,7 +78,7 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
                .head(scan_limit)["ticker"].dropna().astype(str).unique().tolist())
     now=datetime.now(NY)
 
-    spy_raw=yf.download("SPY",period="3d",interval="5m",auto_adjust=True,progress=False,threads=False,prepost=True)
+    spy_raw=warehouse_history("SPY",period="3d",interval="5m",max_age_minutes=10)
     spy=_extract(spy_raw,"SPY")
     spy_today=spy[spy.index.date==now.date()].between_time("09:30","16:00") if not spy.empty else pd.DataFrame()
     spy_prior_dates=sorted({x for x in spy.index.date if x<now.date()},reverse=True) if not spy.empty else []
@@ -91,18 +91,9 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
     rows=[]
     for start in range(0,len(tickers),batch_size):
         batch=tickers[start:start+batch_size]
-        try:
-            raw=yf.download(
-                tickers=batch,period="3d",interval="5m",auto_adjust=True,
-                progress=False,group_by="ticker",threads=True,prepost=True,timeout=45
-            )
-        except TypeError:
-            raw=yf.download(
-                tickers=batch,period="3d",interval="5m",auto_adjust=True,
-                progress=False,group_by="ticker",threads=True,prepost=True
-            )
+        raw=warehouse_frames(batch,period="3d",interval="5m",max_age_minutes=10)
         for ticker in batch:
-            d=_extract(raw,ticker)
+            d=_extract(raw.get(ticker,pd.DataFrame()),ticker)
             if d.empty:
                 continue
             today=d[d.index.date==now.date()].between_time("09:30","16:00")
