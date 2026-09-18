@@ -1,2 +1,2 @@
 signals,open_signals,closed_signals,target1_hit_rate_pct,target2_hit_rate_pct,stop_rate_pct,win_rate_pct,avg_return_pct,avg_r_multiple,avg_mfe_pct,avg_mae_pct,updated_at_et,mode
-1,1,0,,,,,,,,,2026-09-17T22:44:05-04:00,ORDER_FLOW_FORWARD_VALIDATION
+1,1,0,,,,,,,,,2026-09-17T22:58:01-04:00,ORDER_FLOW_FORWARD_VALIDATION
