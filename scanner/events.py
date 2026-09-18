@@ -7,11 +7,11 @@ import os
 import re
 from io import StringIO
 import pandas as pd
-import requests
-import yfinance as yf
+
 
 from .config import EVENT_SCAN_LIMIT, EVENT_LOOKAHEAD_DAYS, EVENT_MAX_WORKERS, EVENT_NEWS_SCAN_LIMIT, OUTPUT_DIR
 from .catalysts import _extract_news_item, _news_relevance
+from .warehouse import request_dataset
 
 
 EVENT_PATTERNS = [
@@ -46,53 +46,14 @@ def _explicit_event_date(title: str):
         return None
 
 def _news_forward_event(ticker: str, company_name: str):
-    obj=yf.Ticker(ticker)
     try:
-        try:
-            raw=obj.get_news(count=12)
-        except TypeError:
-            raw=obj.news
+        data=request_dataset("event_news",consumer="events",tickers=(ticker,),max_age_minutes=60)
     except Exception:
         return None
-
-    now=pd.Timestamp.now(tz="UTC")
-    candidates=[]
-    for item in raw or []:
-        parsed=_extract_news_item(item)
-        if not parsed:
-            continue
-        relevant,_=_news_relevance(ticker,company_name,parsed)
-        if not relevant:
-            continue
-        title=parsed["title"]
-        lower=title.lower()
-        event_type=None
-        for kind,phrases in EVENT_PATTERNS:
-            if any(p in lower for p in phrases):
-                event_type=kind
-                break
-        if not event_type:
-            continue
-        ts=_explicit_event_date(title)
-        if ts is None:
-            continue
-        delta=(ts-now).total_seconds()/86400
-        if not (0 <= delta <= EVENT_LOOKAHEAD_DAYS):
-            continue
-        priority="HIGH" if delta<=3 else ("MEDIUM" if delta<=5 else "WATCH")
-        candidates.append({
-            "ticker":ticker,
-            "event_type":event_type,
-            "event_date_utc":ts.isoformat(),
-            "days_to_event":round(delta,2),
-            "event_priority":priority,
-            "event_source":"ANNOUNCED_NEWS",
-            "event_headline":title[:220],
-            "event_provider":parsed.get("provider","")[:80],
-        })
-    if not candidates:
+    if data.empty:
         return None
-    return min(candidates,key=lambda x:x["days_to_event"])
+    row=data.iloc[0].to_dict()
+    return row
 
 def _to_utc(value):
     try:
@@ -175,52 +136,11 @@ def _parse_alpha_vantage_calendar(body: str, tradable_df: pd.DataFrame, now=None
 
 
 def _alpha_vantage_earnings_events(tradable_df: pd.DataFrame):
-    """Fetch the broad earnings calendar once from Alpha Vantage, then intersect with our liquid universe."""
-    if tradable_df is None or tradable_df.empty:
-        return []
-
-    api_key=os.getenv("ALPHA_VANTAGE_API_KEY","").strip()
-    if not api_key:
-        print("Alpha Vantage earnings calendar disabled: ALPHA_VANTAGE_API_KEY is not configured.")
-        return []
-
-    now=pd.Timestamp.now(tz="UTC")
-
     try:
-        r=requests.get(
-            "https://www.alphavantage.co/query",
-            params={
-                "function":"EARNINGS_CALENDAR",
-                "horizon":"3month",
-                "apikey":api_key,
-            },
-            timeout=30,
-        )
-        r.raise_for_status()
-        body=r.text.strip()
-        if not body:
-            print("Alpha Vantage earnings calendar returned an empty response.")
-            return []
-
-        # Alpha Vantage may return JSON for quota/auth errors even though the
-        # successful earnings-calendar response is CSV.
-        if body.startswith("{"):
-            try:
-                payload=r.json()
-            except Exception:
-                payload={}
-            message=payload.get("Information") or payload.get("Note") or payload.get("Error Message") or "unexpected JSON response"
-            print(f"Alpha Vantage earnings calendar unavailable: {message}")
-            return []
-
-    except Exception as e:
-        print(f"Alpha Vantage earnings calendar unavailable: {type(e).__name__}: {e}")
+        data=request_dataset("earnings_calendar",consumer="events",tickers=tuple(tradable_df["ticker"].astype(str)),max_age_minutes=1440)
+        return data.to_dict("records")
+    except Exception:
         return []
-
-    rows=_parse_alpha_vantage_calendar(body,tradable_df,now=now)
-    if not rows and body and not body.startswith("{"):
-        print("Alpha Vantage earnings calendar returned no matching liquid events in the next 7 days.")
-    return rows
 
 def _write_event_status(status: str, count: int, detail: str=""):
     pd.DataFrame([{
