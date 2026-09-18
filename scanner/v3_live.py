@@ -13,7 +13,7 @@ from .v3_live_refresh import refresh_v3_candidates
 
 
 def _fresh_discovery() -> pd.DataFrame:
-    """Build the V3 production candidate set from the provider for this run.
+    """Build the V3 production candidate set from fresh PostgreSQL warehouse data.
 
     Persisted scan outputs are never accepted as production candidate inputs.
     The tradable-universe file is only a symbol/universe catalogue; the actual
@@ -22,17 +22,17 @@ def _fresh_discovery() -> pd.DataFrame:
     discovered = run_broad_discovery(top_n=max(80, LIVE_ENRICH_LIMIT * 3))
     if discovered is None or discovered.empty or "ticker" not in discovered.columns:
         raise RuntimeError(
-            "V3 LIVE ABORTED: fresh provider discovery returned no qualified candidates."
+            "V3 LIVE ABORTED: fresh PostgreSQL warehouse discovery returned no qualified candidates."
         )
     out = discovered.drop_duplicates("ticker").copy()
-    out["v3_discovery_source"] = "DIRECT_PROVIDER_DISCOVERY"
+    out["v3_discovery_source"] = "POSTGRES_WAREHOUSE_DISCOVERY"
     out["v3_discovered_at_utc"] = datetime.now(timezone.utc).isoformat()
     out.to_csv(OUTPUT_DIR / "v3_live_discovery.csv", index=False)
     return out
 
 
 def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
-    """Production V3: provider discovery -> provider refresh -> V3 decision.
+    """Production V3: PostgreSQL discovery -> warehouse refresh -> V3 decision.
 
     Refactor 2 deliberately removes latest_scan.csv from the production path.
     input_file is retained only as a compatibility argument and is rejected so
