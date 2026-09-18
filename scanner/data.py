@@ -97,13 +97,14 @@ def download_batch(
         if not remaining:
             break
 
-        if attempt==0:
-            chunks=[remaining]
-        else:
-            chunks=[
-                remaining[i:i+RETRY_CHUNK_SIZE]
-                for i in range(0,len(remaining),RETRY_CHUNK_SIZE)
-            ]
+        # Never send the full universe in one Yahoo request.  Large first
+        # requests are the main source of throttling in CI, and retries cannot
+        # recover before the live-core timeout once Yahoo has rate-limited the
+        # runner.  Use the same bounded chunks on every attempt.
+        chunks=[
+            remaining[i:i+RETRY_CHUNK_SIZE]
+            for i in range(0,len(remaining),RETRY_CHUNK_SIZE)
+        ]
 
         for chunk in chunks:
             try:
