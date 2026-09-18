@@ -13,7 +13,7 @@ from .config import (
     THEME_PROFILE_LIMIT, PREFILTER_PERIOD,
 )
 from .catalysts import enrich_candidates
-from .data import download_history, download_batch
+from .warehouse import frames as warehouse_frames, history as warehouse_history
 from .events import build_event_watchlist, merge_technical_context
 from .earnings_intel import enrich_earnings_intelligence
 from .indicators import add_indicators
@@ -27,7 +27,7 @@ from .themes import rank_themes, enrich_candidate_themes
 from .universe import load_or_build_universe
 
 def _benchmark_context():
-    df=download_history(BENCHMARK,"6mo","1d")
+    df=warehouse_history(BENCHMARK,"6mo","1d",max_age_minutes=20)
     if len(df)<70:
         raise RuntimeError("Benchmark data unavailable or incomplete for SPY.")
     d=add_indicators(df)
@@ -78,7 +78,7 @@ def _prefilter_universe(universe: pd.DataFrame):
     for bi,start in enumerate(range(0,expected,BATCH_SIZE),1):
         batch=tickers[start:start+BATCH_SIZE]
         print(f"Prefilter {bi}/{total_batches}: {batch[0]} ... {batch[-1]}")
-        histories=download_batch(batch,period=PREFILTER_PERIOD,interval="1d")
+        histories=warehouse_frames(batch,period=PREFILTER_PERIOD,interval="1d",max_age_minutes=20)
         fetched.update(histories.keys())
         pf=build_tradable_rows(histories)
         if not pf.empty:
@@ -193,7 +193,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     for bi,start in enumerate(range(0,tradable_count,BATCH_SIZE),1):
         batch=tradable_tickers[start:start+BATCH_SIZE]
         print(f"Deep scan {bi}/{total_batches}: {batch[0]} ... {batch[-1]}")
-        histories=download_batch(batch,period="1y",interval="1d")
+        histories=warehouse_frames(batch,period="1y",interval="1d",max_age_minutes=20)
         fetched.update(histories.keys())
 
         for ticker,hist in histories.items():
