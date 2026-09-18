@@ -14,6 +14,9 @@ on:
       - 'scanner/broad_breakout.py'
       - 'scanner/system_health.py'
       - 'scanner/warehouse.py'
+      - 'scanner/bitemporal_warehouse.py'
+      - 'scanner/warehouse_migrate.py'
+      - 'sql/001_bitemporal_warehouse.sql'
       - 'scanner/warehouse_refresh.py'
 
 permissions:
@@ -42,16 +45,21 @@ jobs:
           git show "origin/scan-data:dashboard-data/tradable_universe.csv" > outputs/tradable_universe.csv
           test -s outputs/tradable_universe.csv
           # Refactor 2 contract: latest_scan.csv is intentionally NOT restored.
+      - name: Migrate bitemporal PostgreSQL warehouse
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
+        run: python -m scanner.warehouse_migrate
+      - name: Validate bitemporal database availability
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
+        run: python -m scanner.bitemporal_warehouse --verify-health --as-of now
       - name: Refresh central daily warehouse
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
         run: timeout 360s python -m scanner.warehouse_refresh --period 1y --interval 1d
-      - name: Validate warehouse availability
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s outputs/warehouse/manifest.json
-          test -s outputs/warehouse/market_1d.csv
-          grep -q '"status": "AVAILABLE"' outputs/warehouse/manifest.json
-          grep -q '"updated_at_utc"' outputs/warehouse/manifest.json
       - name: Fresh provider discovery and V3 production
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
