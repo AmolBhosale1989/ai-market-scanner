@@ -1,2 +1,2 @@
 updated_at_et,updated_at_utc,evaluated,buy_signals,watch_signals,extended_waits,avoid_signals,mode
-2026-09-18T13:03:49-04:00,2026-09-18T17:03:49+00:00,40,1,1,0,5,ORDER_FLOW_PROXY_STRATEGY
+2026-09-18T15:35:16-04:00,2026-09-18T19:35:16+00:00,40,0,14,2,3,ORDER_FLOW_PROXY_STRATEGY
