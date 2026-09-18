@@ -1,6 +1,9 @@
 name: PostgreSQL Warehouse Bootstrap
 
 on:
+  push:
+    paths:
+      - '.github/workflows/postgres-warehouse-bootstrap.yml'
   workflow_dispatch:
     inputs:
       limit:
