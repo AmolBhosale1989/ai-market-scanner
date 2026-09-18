@@ -110,42 +110,48 @@ def latest_event_timestamps(tickers: list[str], data_type: str = "OHLCV", timefr
         return {str(symbol): ts for symbol, ts in cur.fetchall() if ts is not None}
 
 def ingest_observations(frame: pd.DataFrame, run_id: str, provider: str, data_type: str, timeframe: str):
-    """Append immutable provider versions; never UPDATE historical observations."""
+    """Bulk insert a provider batch in one transaction; identical logical bars are idempotent."""
     required = {"ticker", "event_timestamp", "ingested_at"}
     missing = required - set(frame.columns)
     if missing:
         raise RuntimeError(f"BITEMPORAL_INGEST_SCHEMA_FAILED: {sorted(missing)}")
+    if frame.empty:
+        return 0
+    tickers = list(dict.fromkeys(frame["ticker"].astype(str).str.upper()))
     with _connect() as conn, conn.cursor() as cur:
+        cur.executemany("""INSERT INTO instrument(canonical_symbol)
+            SELECT %s WHERE NOT EXISTS (
+              SELECT 1 FROM instrument WHERE canonical_symbol=%s
+            )""", [(t, t) for t in tickers])
+        cur.execute("""SELECT canonical_symbol,instrument_id FROM instrument
+            WHERE canonical_symbol = ANY(%s) ORDER BY instrument_id""", (tickers,))
+        instrument_ids = {}
+        for symbol, iid in cur.fetchall():
+            instrument_ids.setdefault(str(symbol), iid)
+        rows=[]
         for _, r in frame.iterrows():
-            ticker = str(r["ticker"]).upper()
-            cur.execute("""INSERT INTO instrument(canonical_symbol)
-                VALUES(%s) ON CONFLICT DO NOTHING""", (ticker,))
-            cur.execute("""SELECT instrument_id FROM instrument
-                WHERE canonical_symbol=%s ORDER BY instrument_id LIMIT 1""", (ticker,))
-            instrument_id = cur.fetchone()[0]
-            payload = {k: (None if pd.isna(v) else v) for k, v in r.items()
-                       if k not in {"ticker", "event_timestamp", "ingested_at", "Open", "High", "Low", "Close", "Volume"}}
-            # Idempotent on the logical provider bar. Re-running the same refresh
-            # must not manufacture another version solely because ingested_at/run_id changed.
-            cur.execute("""SELECT 1 FROM market_observation
-              WHERE instrument_id=%s AND data_type=%s AND timeframe=%s
-                AND event_timestamp=%s AND provider=%s
-                AND open IS NOT DISTINCT FROM %s AND high IS NOT DISTINCT FROM %s
-                AND low IS NOT DISTINCT FROM %s AND close IS NOT DISTINCT FROM %s
-                AND volume IS NOT DISTINCT FROM %s LIMIT 1""",
-              (instrument_id, data_type, timeframe, r["event_timestamp"], provider,
-               r.get("Open"), r.get("High"), r.get("Low"), r.get("Close"), r.get("Volume")))
-            if cur.fetchone():
-                continue
-            cur.execute("""INSERT INTO market_observation
-              (instrument_id,data_type,timeframe,event_timestamp,ingested_at,warehouse_run_id,
-               provider,open,high,low,close,volume,payload)
-              VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
-              ON CONFLICT DO NOTHING""",
-              (instrument_id, data_type, timeframe, r["event_timestamp"], r["ingested_at"], run_id,
-               provider, r.get("Open"), r.get("High"), r.get("Low"), r.get("Close"), r.get("Volume"),
-               __import__("json").dumps(payload, default=str)))
-
+            ticker=str(r["ticker"]).upper()
+            payload={k:(None if pd.isna(v) else v) for k,v in r.items()
+                     if k not in {"ticker","event_timestamp","ingested_at","Open","High","Low","Close","Volume"}}
+            rows.append((instrument_ids[ticker],data_type,timeframe,r["event_timestamp"],r["ingested_at"],run_id,
+                         provider,r.get("Open"),r.get("High"),r.get("Low"),r.get("Close"),r.get("Volume"),
+                         __import__("json").dumps(payload,default=str)))
+        before=0
+        cur.execute("SELECT count(*) FROM market_observation WHERE warehouse_run_id=%s",(run_id,))
+        before=cur.fetchone()[0]
+        cur.executemany("""INSERT INTO market_observation
+          (instrument_id,data_type,timeframe,event_timestamp,ingested_at,warehouse_run_id,
+           provider,open,high,low,close,volume,payload)
+          SELECT %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
+          WHERE NOT EXISTS (
+            SELECT 1 FROM market_observation o WHERE o.instrument_id=%s AND o.data_type=%s
+              AND o.timeframe=%s AND o.event_timestamp=%s AND o.provider=%s
+              AND o.open IS NOT DISTINCT FROM %s AND o.high IS NOT DISTINCT FROM %s
+              AND o.low IS NOT DISTINCT FROM %s AND o.close IS NOT DISTINCT FROM %s
+              AND o.volume IS NOT DISTINCT FROM %s
+          )""", [r + (r[0],r[1],r[2],r[3],r[6],r[7],r[8],r[9],r[10],r[11]) for r in rows])
+        cur.execute("SELECT count(*) FROM market_observation WHERE warehouse_run_id=%s",(run_id,))
+        return int(cur.fetchone()[0]-before)
 
 def main():
     parser = argparse.ArgumentParser(description="Bitemporal PostgreSQL warehouse")
