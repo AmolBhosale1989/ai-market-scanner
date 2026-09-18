@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import argparse
 import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Iterable
 
 import pandas as pd
+
 
 @dataclass(frozen=True)
 class PointInTimeRequirement:
@@ -18,38 +19,62 @@ class PointInTimeRequirement:
     max_age_minutes: int = 20
     columns: tuple[str, ...] = ()
 
+
 def _connect():
-    url=os.getenv("DATABASE_URL","").strip()
+    url = os.getenv("DATABASE_URL", "").strip()
     if not url:
         raise RuntimeError("BITEMPORAL_WAREHOUSE_UNAVAILABLE: DATABASE_URL is not configured")
     try:
         import psycopg
     except ImportError as e:
         raise RuntimeError("BITEMPORAL_WAREHOUSE_UNAVAILABLE: psycopg is not installed") from e
-    return psycopg.connect(url, sslmode=os.getenv("PGSSLMODE","require"))
+    return psycopg.connect(url, sslmode=os.getenv("PGSSLMODE", "require"))
+
+
+def verify_health() -> dict:
+    """Fail closed unless PostgreSQL, TLS, and the bitemporal schema are usable."""
+    required = ("warehouse_run_log", "instrument", "market_observation")
+    with _connect() as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1, current_setting('ssl', true)")
+        one, ssl_enabled = cur.fetchone()
+        if one != 1 or str(ssl_enabled).lower() not in {"on", "true"}:
+            raise RuntimeError("BITEMPORAL_WAREHOUSE_HEALTH_FAILED: TLS is not active")
+        cur.execute(
+            """SELECT table_name FROM information_schema.tables
+               WHERE table_schema=current_schema() AND table_name = ANY(%s)""",
+            (list(required),),
+        )
+        present = {row[0] for row in cur.fetchall()}
+    missing = sorted(set(required) - present)
+    if missing:
+        raise RuntimeError(f"BITEMPORAL_WAREHOUSE_HEALTH_FAILED: missing tables {missing}")
+    return {"status": "AVAILABLE", "tls": True, "tables": list(required)}
+
 
 def start_run(provider: str, request_type: str, payload: dict) -> str:
-    run_id=str(uuid.uuid4())
+    run_id = str(uuid.uuid4())
     with _connect() as conn, conn.cursor() as cur:
         cur.execute("""INSERT INTO warehouse_run_log
           (warehouse_run_id,provider,request_type,requested_at,status,request_payload)
           VALUES (%s,%s,%s,now(),'STARTED',%s::jsonb)""",
-          (run_id,provider,request_type,__import__("json").dumps(payload)))
+          (run_id, provider, request_type, __import__("json").dumps(payload)))
     return run_id
 
-def finish_run(run_id: str, status: str, metadata: dict | None=None, error: str | None=None):
+
+def finish_run(run_id: str, status: str, metadata: dict | None = None, error: str | None = None):
     with _connect() as conn, conn.cursor() as cur:
         cur.execute("""UPDATE warehouse_run_log SET completed_at=now(),status=%s,
           response_metadata=%s::jsonb,error_detail=%s WHERE warehouse_run_id=%s""",
-          (status,__import__("json").dumps(metadata or {}),error,run_id))
+          (status, __import__("json").dumps(metadata or {}), error, run_id))
+
 
 def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
     """Return only versions that were known by req.as_of. Never query future ingestion."""
-    as_of=req.as_of or datetime.now(timezone.utc)
-    tickers=[str(x).upper() for x in req.tickers if x]
+    as_of = req.as_of or datetime.now(timezone.utc)
+    tickers = [str(x).upper() for x in req.tickers if x]
     if not tickers:
         raise RuntimeError(f"WAREHOUSE_REQUIREMENT_INVALID: {req.consumer}")
-    sql="""WITH ranked AS (
+    sql = """WITH ranked AS (
       SELECT i.canonical_symbol AS ticker, o.*,
              row_number() OVER (
                PARTITION BY o.instrument_id,o.data_type,o.timeframe,o.event_timestamp
@@ -64,32 +89,49 @@ def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
     )
     SELECT * FROM ranked WHERE version_rank=1 ORDER BY ticker,event_timestamp"""
     with _connect() as conn:
-        df=pd.read_sql_query(sql,conn,params=(tickers,req.data_type,req.timeframe,as_of,as_of))
+        df = pd.read_sql_query(sql, conn, params=(tickers, req.data_type, req.timeframe, as_of, as_of))
     if df.empty:
         raise RuntimeError(f"WAREHOUSE_POINT_IN_TIME_EMPTY: {req.consumer}")
     return df
 
+
 def ingest_observations(frame: pd.DataFrame, run_id: str, provider: str, data_type: str, timeframe: str):
     """Append immutable provider versions; never UPDATE historical observations."""
-    required={"ticker","event_timestamp","ingested_at"}
-    missing=required-set(frame.columns)
+    required = {"ticker", "event_timestamp", "ingested_at"}
+    missing = required - set(frame.columns)
     if missing:
         raise RuntimeError(f"BITEMPORAL_INGEST_SCHEMA_FAILED: {sorted(missing)}")
     with _connect() as conn, conn.cursor() as cur:
-        for _,r in frame.iterrows():
-            ticker=str(r["ticker"]).upper()
+        for _, r in frame.iterrows():
+            ticker = str(r["ticker"]).upper()
             cur.execute("""INSERT INTO instrument(canonical_symbol)
-                VALUES(%s) ON CONFLICT DO NOTHING""",(ticker,))
+                VALUES(%s) ON CONFLICT DO NOTHING""", (ticker,))
             cur.execute("""SELECT instrument_id FROM instrument
-                WHERE canonical_symbol=%s ORDER BY instrument_id LIMIT 1""",(ticker,))
-            instrument_id=cur.fetchone()[0]
-            payload={k:(None if pd.isna(v) else v) for k,v in r.items()
-                     if k not in {"ticker","event_timestamp","ingested_at","Open","High","Low","Close","Volume"}}
+                WHERE canonical_symbol=%s ORDER BY instrument_id LIMIT 1""", (ticker,))
+            instrument_id = cur.fetchone()[0]
+            payload = {k: (None if pd.isna(v) else v) for k, v in r.items()
+                       if k not in {"ticker", "event_timestamp", "ingested_at", "Open", "High", "Low", "Close", "Volume"}}
             cur.execute("""INSERT INTO market_observation
               (instrument_id,data_type,timeframe,event_timestamp,ingested_at,warehouse_run_id,
                provider,open,high,low,close,volume,payload)
               VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
               ON CONFLICT DO NOTHING""",
-              (instrument_id,data_type,timeframe,r["event_timestamp"],r["ingested_at"],run_id,
-               provider,r.get("Open"),r.get("High"),r.get("Low"),r.get("Close"),r.get("Volume"),
-               __import__("json").dumps(payload,default=str)))
+              (instrument_id, data_type, timeframe, r["event_timestamp"], r["ingested_at"], run_id,
+               provider, r.get("Open"), r.get("High"), r.get("Low"), r.get("Close"), r.get("Volume"),
+               __import__("json").dumps(payload, default=str)))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Bitemporal PostgreSQL warehouse")
+    parser.add_argument("--verify-health", action="store_true")
+    parser.add_argument("--as-of", default="now", help="Reserved for health/PIT diagnostics")
+    args = parser.parse_args()
+    if args.verify_health:
+        result = verify_health()
+        print(f"BITEMPORAL_WAREHOUSE_AVAILABLE tls={result['tls']} tables={','.join(result['tables'])}")
+        return
+    parser.error("specify --verify-health")
+
+
+if __name__ == "__main__":
+    main()
