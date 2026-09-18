@@ -6,7 +6,7 @@ import math
 import pandas as pd
 
 from .config import BENCHMARK, MIN_DATA_COVERAGE
-from .data import download_batch, download_history
+from .warehouse import frames as warehouse_frames, history as warehouse_history
 from .indicators import add_indicators
 from .regime import evaluate_regime
 from .stocks import analyze_dataframe
@@ -20,7 +20,7 @@ REQUIRED_V3_LIVE_COLUMNS = {
 
 
 def _benchmark_context():
-    hist = download_history(BENCHMARK, "6mo", "1d")
+    hist = warehouse_history(BENCHMARK, "6mo", "1d", max_age_minutes=20)
     if hist is None or len(hist) < 70:
         raise RuntimeError("V3 LIVE REFRESH ABORTED: benchmark data unavailable.")
     d = add_indicators(hist)
@@ -61,7 +61,7 @@ def refresh_v3_candidates(base: pd.DataFrame) -> pd.DataFrame:
         raise RuntimeError("V3 LIVE REFRESH ABORTED: fresh candidate list is empty.")
 
     bench20, market_regime = _benchmark_context()
-    histories = download_batch(tickers, period="1y", interval="1d")
+    histories = warehouse_frames(tickers, period="1y", interval="1d", max_age_minutes=20)
     coverage = len(histories) / len(tickers)
     if coverage < MIN_DATA_COVERAGE:
         raise RuntimeError(
