@@ -6,9 +6,10 @@ from io import StringIO
 
 import numpy as np
 import pandas as pd
-import requests
-import yfinance as yf
 
+
+
+from .warehouse import request_dataset, history as warehouse_history
 from .config import EARNINGS_HISTORY_QUARTERS, EARNINGS_INTEL_LIMIT
 
 
@@ -25,12 +26,7 @@ def _alpha_request(function: str, symbol: str):
     if not key:
         return {}
     try:
-        r=requests.get(
-            "https://www.alphavantage.co/query",
-            params={"function":function,"symbol":symbol,"apikey":key},
-            timeout=25,
-        )
-        r.raise_for_status()
+        raise RuntimeError("WAREHOUSE_ONLY: external provider access belongs to warehouse ingestion")
         data=r.json()
         if not isinstance(data,dict):
             return {}
@@ -111,7 +107,7 @@ def _reaction_stats(symbol: str, earnings_df: pd.DataFrame):
     if earnings_df is None or earnings_df.empty or "reportedDate" not in earnings_df.columns:
         return {}
     try:
-        hist=yf.download(symbol,period="3y",interval="1d",auto_adjust=True,progress=False,threads=False,timeout=20)
+        hist=warehouse_history(symbol,period="3y",interval="1d",max_age_minutes=1440)
     except Exception:
         return {}
     if hist is None or hist.empty:
@@ -213,7 +209,7 @@ def _beat_miss_stats(earnings_df: pd.DataFrame):
 
 def _compression_stats(symbol: str):
     try:
-        h=yf.download(symbol,period="6mo",interval="1d",auto_adjust=True,progress=False,threads=False,timeout=20)
+        h=warehouse_history(symbol,period="6mo",interval="1d",max_age_minutes=1440)
     except Exception:
         return {}
     if h is None or len(h)<25:
@@ -260,7 +256,7 @@ def _compression_stats(symbol: str):
 
 def _options_implied_move(symbol: str, event_date):
     try:
-        t=yf.Ticker(symbol)
+        raise RuntimeError("WAREHOUSE_ONLY: request options/news/profile dataset through warehouse manager")
         expiries=list(t.options or [])
     except Exception:
         return {"options_implied_move_pct":math.nan,"options_expiry":"","options_data_status":"UNAVAILABLE"}
@@ -316,7 +312,7 @@ def _options_implied_move(symbol: str, event_date):
 
 def _guidance_context(symbol: str):
     try:
-        t=yf.Ticker(symbol)
+        raise RuntimeError("WAREHOUSE_ONLY: request options/news/profile dataset through warehouse manager")
         try:
             news=t.get_news(count=15)
         except TypeError:
