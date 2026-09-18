@@ -26,7 +26,7 @@ def _connect():
         import psycopg
     except ImportError as e:
         raise RuntimeError("BITEMPORAL_WAREHOUSE_UNAVAILABLE: psycopg is not installed") from e
-    return psycopg.connect(url)
+    return psycopg.connect(url, sslmode=os.getenv("PGSSLMODE","require"))
 
 def start_run(provider: str, request_type: str, payload: dict) -> str:
     run_id=str(uuid.uuid4())
