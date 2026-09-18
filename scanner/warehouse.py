@@ -240,3 +240,28 @@ def provide(req: DataRequirement) -> WarehouseView:
         row=pd.concat([old,row],ignore_index=True)
     row.to_csv(catalog_path,index=False)
     return WarehouseView(req.consumer,safe,m.get("warehouse_run_id",""),m.get("updated_at_utc",""),path,len(frame),frame.reset_index(drop=True))
+
+
+def _aux_path(dataset: str) -> Path:
+    return WAREHOUSE_DIR / f"{dataset}.csv"
+
+def request_dataset(dataset: str, consumer: str, tickers: Iterable[str] | None=None, max_age_minutes: int=60) -> pd.DataFrame:
+    """Single gateway for non-OHLCV datasets (news/events/options/profiles).
+
+    Consumers never call providers. Ingestion jobs/manager populate these
+    datasets. If unavailable or stale, this fails closed.
+    """
+    path=_aux_path(dataset)
+    if not path.exists() or not path.stat().st_size:
+        raise RuntimeError(f"WAREHOUSE_DATASET_UNAVAILABLE: {dataset} for {consumer}")
+    df=pd.read_csv(path)
+    ts_col=next((x for x in ("updated_at_utc","retrieved_at_utc","warehouse_updated_at_utc") if x in df.columns),None)
+    if ts_col is None:
+        raise RuntimeError(f"WAREHOUSE_DATASET_NO_TIMESTAMP: {dataset}")
+    newest=pd.to_datetime(df[ts_col],utc=True,errors="coerce").max()
+    if pd.isna(newest) or (_utc_now()-newest.to_pydatetime()).total_seconds()/60>max_age_minutes:
+        raise RuntimeError(f"WAREHOUSE_DATASET_STALE: {dataset}")
+    if tickers and "ticker" in df.columns:
+        wanted={str(t).upper() for t in tickers}
+        df=df[df["ticker"].astype(str).str.upper().isin(wanted)].copy()
+    return df
