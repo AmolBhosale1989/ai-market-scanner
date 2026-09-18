@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 
 import pandas as pd
 
@@ -14,6 +14,27 @@ from .data import download_batch
 WAREHOUSE_DIR = OUTPUT_DIR / "warehouse"
 WAREHOUSE_DIR.mkdir(parents=True, exist_ok=True)
 MANIFEST = WAREHOUSE_DIR / "manifest.json"
+
+@dataclass(frozen=True)
+class DataRequirement:
+    consumer: str
+    tickers: tuple[str, ...]
+    interval: str = "1d"
+    period: str = "1y"
+    max_age_minutes: int = 20
+    columns: tuple[str, ...] = ()
+    view_name: str = ""
+    latest_only: bool = False
+
+@dataclass(frozen=True)
+class WarehouseView:
+    consumer: str
+    view_name: str
+    run_id: str
+    updated_at_utc: str
+    path: Path
+    rows: int
+    frame: pd.DataFrame
 
 @dataclass(frozen=True)
 class WarehouseSnapshot:
@@ -181,3 +202,41 @@ def latest(tickers: Iterable[str] | None=None, interval: str="1d", max_age_minut
         return df
     df["bar_timestamp"]=pd.to_datetime(df["bar_timestamp"],utc=True,errors="coerce")
     return df.sort_values("bar_timestamp").groupby("ticker",as_index=False).tail(1).reset_index(drop=True)
+
+
+def provide(req: DataRequirement) -> WarehouseView:
+    """Create a consumer-specific warehouse view from a declared requirement."""
+    tickers=tuple(dict.fromkeys(str(t).upper() for t in req.tickers if t))
+    if not tickers:
+        raise RuntimeError(f"WAREHOUSE_REQUIREMENT_INVALID: {req.consumer} requested no tickers")
+    ensure(tickers,period=req.period,interval=req.interval,max_age_minutes=req.max_age_minutes)
+    frame=get(tickers=tickers,interval=req.interval,max_age_minutes=req.max_age_minutes,require_fresh=True)
+    frame["bar_timestamp"]=pd.to_datetime(frame["bar_timestamp"],utc=True,errors="coerce")
+    if req.latest_only and not frame.empty:
+        frame=frame.sort_values("bar_timestamp").groupby("ticker",as_index=False).tail(1)
+    mandatory=["ticker","bar_timestamp","interval","provider","retrieved_at_utc","warehouse_run_id"]
+    if req.columns:
+        wanted=list(dict.fromkeys(mandatory+[x for x in req.columns if x in frame.columns]))
+        frame=frame[wanted].copy()
+    safe=(req.view_name or req.consumer).lower().replace(" ","_").replace("/","_")
+    view_dir=WAREHOUSE_DIR/"views"
+    view_dir.mkdir(parents=True,exist_ok=True)
+    path=view_dir/f"{safe}.csv"
+    tmp=path.with_suffix(".tmp")
+    frame.to_csv(tmp,index=False)
+    tmp.replace(path)
+    m=status()
+    catalog_path=WAREHOUSE_DIR/"view_catalog.csv"
+    row=pd.DataFrame([{
+        "consumer":req.consumer,"view_name":safe,"interval":req.interval,"period":req.period,
+        "max_age_minutes":req.max_age_minutes,"latest_only":req.latest_only,
+        "rows":len(frame),"symbols":frame["ticker"].nunique() if not frame.empty else 0,
+        "warehouse_run_id":m.get("warehouse_run_id",""),"updated_at_utc":m.get("updated_at_utc",""),
+        "view_path":str(path),
+    }])
+    if catalog_path.exists() and catalog_path.stat().st_size:
+        old=pd.read_csv(catalog_path)
+        old=old[~((old["consumer"]==req.consumer)&(old["view_name"]==safe))]
+        row=pd.concat([old,row],ignore_index=True)
+    row.to_csv(catalog_path,index=False)
+    return WarehouseView(req.consumer,safe,m.get("warehouse_run_id",""),m.get("updated_at_utc",""),path,len(frame),frame.reset_index(drop=True))
