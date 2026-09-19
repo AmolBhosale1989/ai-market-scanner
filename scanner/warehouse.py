@@ -95,7 +95,11 @@ def _assert_fresh(df: pd.DataFrame, interval: str, max_age_minutes: int, consume
     if completed.empty:
         raise RuntimeError(f"WAREHOUSE_STALE: {consumer} {interval} has no completed NYSE session")
     latest_session = pd.Timestamp(completed.index[-1]).date()
-    newest_date = newest_bar.tz_convert("America/New_York").date()
+    if interval == "1d":
+        # Daily provider bars are session labels normalized to 00:00 UTC; compare the label directly.
+        newest_date = newest_bar.date()
+    else:
+        newest_date = newest_bar.tz_convert("America/New_York").date()
     if newest_date < latest_session:
         raise RuntimeError(
             f"WAREHOUSE_STALE: {consumer} {interval} newest_session={newest_date} expected={latest_session}"
