@@ -35,7 +35,9 @@ def test_missing_symbol_fails_closed(monkeypatch):
 
 
 def test_stale_postgres_data_fails_closed(monkeypatch):
-    monkeypatch.setattr(warehouse, "point_in_time", lambda req: _rows(req.tickers, age_minutes=120))
+    stale = _rows(("AAPL",))
+    stale["event_timestamp"] = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=5)
+    monkeypatch.setattr(warehouse, "point_in_time", lambda req: stale)
     with pytest.raises(RuntimeError, match="WAREHOUSE_STALE"):
         warehouse.history("AAPL", interval="1d", max_age_minutes=20)
 
