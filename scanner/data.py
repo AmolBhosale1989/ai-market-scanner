@@ -65,10 +65,17 @@ def _download_once(tickers, period, interval):
             lvl0=set(map(str,df.columns.get_level_values(0)))
             lvl1=set(map(str,df.columns.get_level_values(1)))
             t=str(tickers[0])
+            price_names={"Open","High","Low","Close","Adj Close","Volume"}
             if t in lvl0:
                 df=df[t].copy()
             elif t in lvl1:
                 df=df.xs(t,axis=1,level=1).copy()
+            elif price_names.intersection(lvl0):
+                df=df.copy()
+                df.columns=[str(col[0]) for col in df.columns]
+            elif price_names.intersection(lvl1):
+                df=df.copy()
+                df.columns=[str(col[1]) for col in df.columns]
             else:
                 df=_normalize_single(df)
         else:
