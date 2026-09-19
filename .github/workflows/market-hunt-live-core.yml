@@ -60,7 +60,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PGSSLMODE: require
         run: |
-          timeout 150s python -m scanner.warehouse_refresh --period 5d --interval 1d --limit 420
+          timeout 300s python -m scanner.warehouse_refresh --period 5d --interval 1d --limit 420
           timeout 180s python -m scanner.warehouse_refresh --period 2d --interval 5m --limit 420
       - name: Fresh provider discovery and V3 production
         env:
