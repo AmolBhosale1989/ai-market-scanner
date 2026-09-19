@@ -42,6 +42,10 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
     """Provider access is confined to ingestion; PostgreSQL is the only warehouse sink."""
     verify_health()
     tickers = list(dict.fromkeys(str(t).upper() for t in tickers if t))
+    # V3 market-regime discovery always requires SPY even when the tradable
+    # universe catalogue excludes ETFs. Keep the benchmark in PostgreSQL.
+    if "SPY" not in tickers:
+        tickers.append("SPY")
     if not tickers:
         raise RuntimeError("WAREHOUSE_REFRESH_FAILED: no tickers requested")
     run_id = start_run(
