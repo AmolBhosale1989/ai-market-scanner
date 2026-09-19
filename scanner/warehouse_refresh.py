@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .bitemporal_warehouse import finish_run, ingest_observations, latest_event_timestamps, start_run, verify_health
+from .bitemporal_warehouse import _connect, finish_run, ingest_observations, latest_event_timestamps, start_run, verify_health
 from .config import OUTPUT_DIR, RETRY_CHUNK_SIZE
 from .data import download_batch
 
@@ -38,7 +38,7 @@ def _normalize(ticker: str, frame: pd.DataFrame, ingested_at: datetime) -> pd.Da
     return out
 
 
-def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootstrap: bool = False) -> dict:
+def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootstrap: bool = False, benchmark_backfill: bool = True) -> dict:
     """Provider access is confined to ingestion; PostgreSQL is the only warehouse sink."""
     verify_health()
     tickers = list(dict.fromkeys(str(t).upper() for t in tickers if t))
@@ -46,6 +46,19 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
     # universe catalogue excludes ETFs. Keep the benchmark in PostgreSQL.
     if "SPY" not in tickers:
         tickers.append("SPY")
+    # V3 needs >=70 daily benchmark observations for regime/RET20. A benchmark
+    # introduced after the universe bootstrap must be backfilled once, not left
+    # with only the incremental 5-day window.
+    if interval == "1d" and not bootstrap and benchmark_backfill:
+        spy_watermark = latest_event_timestamps(["SPY"], timeframe="1d").get("SPY")
+        with _connect() as conn, conn.cursor() as cur:
+            cur.execute("""SELECT count(*) FROM market_observation o
+                JOIN instrument i ON i.instrument_id=o.instrument_id
+                WHERE i.canonical_symbol='SPY' AND o.data_type='OHLCV' AND o.timeframe='1d'""")
+            spy_rows = int(cur.fetchone()[0])
+        if spy_rows < 70:
+            benchmark_run = refresh(["SPY"], period="1y", interval="1d", bootstrap=True, benchmark_backfill=False)
+            print(f"WAREHOUSE_BENCHMARK_BACKFILLED rows_before={spy_rows} inserted={benchmark_run['observations']}", flush=True)
     if not tickers:
         raise RuntimeError("WAREHOUSE_REFRESH_FAILED: no tickers requested")
     run_id = start_run(
