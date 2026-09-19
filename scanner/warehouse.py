@@ -111,8 +111,13 @@ def request(tickers: Iterable[str], period: str = "1y", interval: str = "1d", ma
     return get(tickers, interval=interval, max_age_minutes=max_age_minutes)
 
 
-def frames(tickers: Iterable[str], period: str = "1y", interval: str = "1d", max_age_minutes: int = 20) -> dict[str, pd.DataFrame]:
-    df = request(tickers, period=period, interval=interval, max_age_minutes=max_age_minutes)
+def frames(tickers: Iterable[str], period: str = "1y", interval: str = "1d", max_age_minutes: int = 20, require_complete: bool = True) -> dict[str, pd.DataFrame]:
+    # Discovery scans may tolerate provider-unavailable symbols; targeted consumers default fail-closed.
+    wanted = _tickers(tickers)
+    df = _compat_frame(_pit(wanted, interval, "warehouse.frames"))
+    if require_complete:
+        _assert_coverage(df, wanted, "warehouse.frames")
+    _assert_fresh(df, interval, max_age_minutes, "warehouse.frames")
     out = {}
     for ticker, group in df.groupby("ticker"):
         x = group.copy().set_index("bar_timestamp")
