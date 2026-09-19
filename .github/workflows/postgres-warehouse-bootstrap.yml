@@ -37,19 +37,6 @@ jobs:
         run: |
           python -m scanner.warehouse_migrate
           python -m scanner.bitemporal_warehouse --verify-health
-      - name: Bootstrap daily history in resumable chunks
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          PGSSLMODE: require
-        shell: bash
-        run: |
-          set -euo pipefail
-          TOTAL="${{ inputs.limit || '420' }}"
-          CHUNK=10
-          for ((OFFSET=0; OFFSET<TOTAL; OFFSET+=CHUNK)); do
-            echo "BOOTSTRAP_DAILY offset=$OFFSET limit=$CHUNK"
-            python -m scanner.warehouse_refresh --bootstrap --period 1y --interval 1d --offset "$OFFSET" --limit "$CHUNK"
-          done
       - name: Bootstrap recent intraday history in resumable chunks
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -59,7 +46,8 @@ jobs:
           set -euo pipefail
           TOTAL="${{ inputs.limit || '420' }}"
           CHUNK=10
-          for ((OFFSET=0; OFFSET<TOTAL; OFFSET+=CHUNK)); do
+          START=310
+          for ((OFFSET=START; OFFSET<TOTAL; OFFSET+=CHUNK)); do
             echo "BOOTSTRAP_INTRADAY offset=$OFFSET limit=$CHUNK"
-            python -m scanner.warehouse_refresh --bootstrap --period 5d --interval 5m --offset "$OFFSET" --limit "$CHUNK"
+            python -m scanner.warehouse_refresh --period 5d --interval 5m --offset "$OFFSET" --limit "$CHUNK"
           done
