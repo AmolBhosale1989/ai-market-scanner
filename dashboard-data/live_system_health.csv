@@ -1,11 +1,11 @@
 module,file,last_update_utc,age_minutes,max_age_minutes,status,market_open,role,checked_at_et
-V3 Live Production,monitor_health.csv,2026-09-18T02:44:36+00:00,1364.8,20,OK,False,PRODUCTION,2026-09-18T21:29:26-04:00
-V4 Live Intelligence,v4_worker_health.json,,,25,MISSING,False,SHADOW,2026-09-18T21:29:26-04:00
-Themes,theme_health.csv,2026-09-18T02:57:15+00:00,1352.2,20,OK,False,SHADOW,2026-09-18T21:29:26-04:00
-Sector Rotation,sector_rotation_health.csv,2026-09-18T23:53:03+00:00,96.4,20,OK,False,SHADOW,2026-09-18T21:29:26-04:00
-Momentum,momentum_health.csv,2026-09-18T23:53:35+00:00,95.9,20,OK,False,SHADOW,2026-09-18T21:29:26-04:00
-Broad Breakout,broad_breakout_health.csv,2026-09-18T23:53:04+00:00,96.4,20,OK,False,SHADOW,2026-09-18T21:29:26-04:00
-Order Flow,order_flow_strategy_health.csv,2026-09-18T23:53:35+00:00,95.9,20,OK,False,SHADOW,2026-09-18T21:29:26-04:00
-High Conviction Alerts,high_conviction_alert_health.csv,2026-09-18T23:53:37+00:00,95.8,20,OK,False,SHADOW,2026-09-18T21:29:26-04:00
-Premarket Discovery,premarket_health.csv,2026-09-17T22:58:25+00:00,1591.0,45,OK,False,SHADOW,2026-09-18T21:29:26-04:00
-Daily Pick Validation,daily_top_pick_summary.csv,2026-09-17T22:59:31.526797+00:00,1589.9,90,OK,False,SHADOW,2026-09-18T21:29:26-04:00
+V3 Live Production,monitor_health.csv,2026-09-18T02:44:36+00:00,1370.9,20,OK,False,PRODUCTION,2026-09-18T21:35:28-04:00
+V4 Live Intelligence,v4_worker_health.json,,,25,MISSING,False,SHADOW,2026-09-18T21:35:28-04:00
+Themes,theme_health.csv,2026-09-18T02:57:15+00:00,1358.2,20,OK,False,SHADOW,2026-09-18T21:35:28-04:00
+Sector Rotation,sector_rotation_health.csv,2026-09-18T23:53:03+00:00,102.4,20,OK,False,SHADOW,2026-09-18T21:35:28-04:00
+Momentum,momentum_health.csv,2026-09-18T23:53:35+00:00,101.9,20,OK,False,SHADOW,2026-09-18T21:35:28-04:00
+Broad Breakout,broad_breakout_health.csv,2026-09-18T23:53:04+00:00,102.4,20,OK,False,SHADOW,2026-09-18T21:35:28-04:00
+Order Flow,order_flow_strategy_health.csv,2026-09-18T23:53:35+00:00,101.9,20,OK,False,SHADOW,2026-09-18T21:35:28-04:00
+High Conviction Alerts,high_conviction_alert_health.csv,2026-09-18T23:53:37+00:00,101.9,20,OK,False,SHADOW,2026-09-18T21:35:28-04:00
+Premarket Discovery,premarket_health.csv,2026-09-17T22:58:25+00:00,1597.1,45,OK,False,SHADOW,2026-09-18T21:35:28-04:00
+Daily Pick Validation,daily_top_pick_summary.csv,2026-09-17T22:59:31.526797+00:00,1596.0,90,OK,False,SHADOW,2026-09-18T21:35:28-04:00
