@@ -119,6 +119,19 @@ def ingest_observations(frame: pd.DataFrame, run_id: str, provider: str, data_ty
         return 0
     tickers = list(dict.fromkeys(frame["ticker"].astype(str).str.upper()))
     with _connect() as conn, conn.cursor() as cur:
+        # Repair malformed legacy versions for bars present in this corrected batch.
+        # These rows were written before provider MultiIndex OHLCV columns were flattened.
+        events = [pd.Timestamp(x).to_pydatetime() for x in frame["event_timestamp"].dropna().unique()]
+        if events:
+            cur.execute(
+                """DELETE FROM market_observation o USING instrument i
+                   WHERE o.instrument_id=i.instrument_id
+                     AND i.canonical_symbol = ANY(%s)
+                     AND o.data_type=%s AND o.timeframe=%s
+                     AND o.event_timestamp = ANY(%s)
+                     AND (o.open IS NULL OR o.high IS NULL OR o.low IS NULL OR o.close IS NULL)""",
+                (tickers, data_type, timeframe, events),
+            )
         cur.executemany("""INSERT INTO instrument(canonical_symbol)
             SELECT %s WHERE NOT EXISTS (
               SELECT 1 FROM instrument WHERE canonical_symbol=%s
