@@ -36,6 +36,8 @@ jobs:
       - name: Run full-market prefilter plus ranked deep scan
         env:
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
         run: python -m scanner.main --top 50 --deep-limit 1500
       - name: Generate approval-first social drafts
         run: python -m scanner.social_engine --input-dir outputs --output-dir outputs
