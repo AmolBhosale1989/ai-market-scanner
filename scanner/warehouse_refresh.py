@@ -29,8 +29,14 @@ def _symbols() -> list[str]:
 def _normalize(ticker: str, frame: pd.DataFrame, ingested_at: datetime) -> pd.DataFrame:
     if frame is None or frame.empty:
         return pd.DataFrame()
-    out = frame.copy().reset_index()
+    out = frame.copy()
+    if isinstance(out.columns, pd.MultiIndex):
+        out.columns = [str(col[0]) for col in out.columns]
+    out = out.reset_index()
     out = out.rename(columns={out.columns[0]: "event_timestamp"})
+    required_ohlc = {"Open", "High", "Low", "Close"}
+    if not required_ohlc.issubset(out.columns):
+        raise RuntimeError(f"WAREHOUSE_REFRESH_FAILED: {ticker} missing OHLC columns")
     out["event_timestamp"] = pd.to_datetime(out["event_timestamp"], utc=True, errors="coerce")
     out = out.dropna(subset=["event_timestamp"])
     out.insert(0, "ticker", str(ticker).upper())
