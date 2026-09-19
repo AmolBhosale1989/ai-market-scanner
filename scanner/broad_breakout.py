@@ -34,6 +34,11 @@ def _extract(raw: pd.DataFrame, ticker: str) -> pd.DataFrame:
     return d.dropna(subset=["Close"]).sort_index()
 
 
+def _latest_session_date(frame: pd.DataFrame, fallback):
+    """Return the latest market-data session represented in the warehouse frame."""
+    return max(frame.index.date) if frame is not None and not frame.empty else fallback
+
+
 def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float:
     if today.empty:
         return math.nan
@@ -83,7 +88,7 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
     # Use the latest warehouse market session, not the wall-clock date. This
     # keeps discovery valid on weekends/holidays while preserving live-session
     # behavior when today's bars exist.
-    session_date=max(spy.index.date) if not spy.empty else now.date()
+    session_date=_latest_session_date(spy, now.date())
     spy_today=spy[spy.index.date==session_date].between_time("09:30","16:00") if not spy.empty else pd.DataFrame()
     spy_prior_dates=sorted({x for x in spy.index.date if x<session_date},reverse=True) if not spy.empty else []
     spy_change=0.0
