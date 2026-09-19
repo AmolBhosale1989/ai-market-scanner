@@ -57,6 +57,8 @@ jobs:
       - name: Run 300-stock representative smoke test with health gate
         env:
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
         run: python -m scanner.main --refresh-universe --limit 300 --top 20 --deep-limit 150
 
       - name: Run focused backtest smoke
