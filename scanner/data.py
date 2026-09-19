@@ -58,7 +58,22 @@ def _download_once(tickers, period, interval):
 
     out={}
     if len(tickers)==1:
-        df=_normalize_single(raw)
+        df=raw.copy()
+        if isinstance(df.columns,pd.MultiIndex):
+            # yfinance group_by="ticker" may return either (Ticker, Price)
+            # or (Price, Ticker), depending on version/request shape.
+            lvl0=set(map(str,df.columns.get_level_values(0)))
+            lvl1=set(map(str,df.columns.get_level_values(1)))
+            t=str(tickers[0])
+            if t in lvl0:
+                df=df[t].copy()
+            elif t in lvl1:
+                df=df.xs(t,axis=1,level=1).copy()
+            else:
+                df=_normalize_single(df)
+        else:
+            df=_normalize_single(df)
+        df=df.dropna(how="all")
         if not df.empty:
             out[tickers[0]]=df
         return out
