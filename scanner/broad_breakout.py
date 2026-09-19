@@ -91,7 +91,7 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
     rows=[]
     for start in range(0,len(tickers),batch_size):
         batch=tickers[start:start+batch_size]
-        raw=warehouse_frames(batch,period="3d",interval="5m",max_age_minutes=10)
+        raw=warehouse_frames(batch,period="3d",interval="5m",max_age_minutes=10,require_complete=False)
         for ticker in batch:
             d=_extract(raw.get(ticker,pd.DataFrame()),ticker)
             if d.empty:
