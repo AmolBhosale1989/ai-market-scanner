@@ -1,2 +1,2 @@
 candidate_signals,pre_entry_invalidated,signals,open_signals,closed_signals,target_hits,failed_breakouts,invalidated,win_rate_pct,target_hit_rate_pct,hit_5pct_rate,hit_8pct_rate,hit_10pct_rate,avg_return_pct,avg_mfe_pct,avg_mae_pct,median_return_pct,avg_r_multiple,median_r_multiple,profit_factor_r,expectancy_r
-194,57,11,7,4,0,4,0,50.0,0.0,0.0,0.0,0.0,-0.76,0.19,-4.26,-0.27,-0.12,-0.04,0.4,-0.12
+8,0,0,0,0,0,0,0,,,,,,,,,,,,,
