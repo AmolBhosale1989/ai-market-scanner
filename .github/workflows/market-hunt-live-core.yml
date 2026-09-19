@@ -18,6 +18,7 @@ on:
       - 'scanner/warehouse_migrate.py'
       - 'sql/001_bitemporal_warehouse.sql'
       - 'scanner/warehouse_refresh.py'
+      - 'scanner/data.py'
 
 permissions:
   contents: write
