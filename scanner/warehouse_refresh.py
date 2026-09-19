@@ -55,21 +55,22 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
     # V3 needs >=70 daily benchmark observations for regime/RET20. A benchmark
     # introduced after the universe bootstrap must be backfilled once, not left
     # with only the incremental 5-day window.
-    if interval == "1d" and not bootstrap and benchmark_backfill:
-        spy_watermark = latest_event_timestamps(["SPY"], timeframe="1d").get("SPY")
+    if interval in {"1d", "5m"} and not bootstrap and benchmark_backfill:
+        benchmark_period = "1y" if interval == "1d" else "5d"
+        min_benchmark_rows = 70 if interval == "1d" else 150
         with _connect() as conn, conn.cursor() as cur:
             cur.execute("""SELECT count(*) FROM market_observation o
                 JOIN instrument i ON i.instrument_id=o.instrument_id
-                WHERE i.canonical_symbol='SPY' AND o.data_type='OHLCV' AND o.timeframe='1d'""")
+                WHERE i.canonical_symbol='SPY' AND o.data_type='OHLCV' AND o.timeframe=%s""", (interval,))
             spy_rows = int(cur.fetchone()[0])
         with _connect() as conn, conn.cursor() as cur:
             cur.execute("""SELECT count(*) FROM market_observation o
                 JOIN instrument i ON i.instrument_id=o.instrument_id
-                WHERE i.canonical_symbol='SPY' AND o.data_type='OHLCV' AND o.timeframe='1d'
-                  AND (o.open IS NULL OR o.high IS NULL OR o.low IS NULL OR o.close IS NULL)""")
+                WHERE i.canonical_symbol='SPY' AND o.data_type='OHLCV' AND o.timeframe=%s
+                  AND (o.open IS NULL OR o.high IS NULL OR o.low IS NULL OR o.close IS NULL)""", (interval,))
             spy_malformed = int(cur.fetchone()[0])
-        if spy_rows < 70 or spy_malformed > 0:
-            benchmark_run = refresh(["SPY"], period="1y", interval="1d", bootstrap=True, benchmark_backfill=False)
+        if spy_rows < min_benchmark_rows or spy_malformed > 0:
+            benchmark_run = refresh(["SPY"], period=benchmark_period, interval=interval, bootstrap=True, benchmark_backfill=False)
             print(f"WAREHOUSE_BENCHMARK_BACKFILLED rows_before={spy_rows} malformed_before={spy_malformed} inserted={benchmark_run['observations']}", flush=True)
     if not tickers:
         raise RuntimeError("WAREHOUSE_REFRESH_FAILED: no tickers requested")
