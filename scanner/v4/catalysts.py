@@ -794,8 +794,8 @@ class CompositeCatalystAdapter:
     def __init__(self, adapters: list[Any]):
         self.adapters = adapters
 
-    def poll(self, candidates: pd.DataFrame) -> CatalystPollResult:
-        now = datetime.now(timezone.utc)
+    def poll(self, candidates: pd.DataFrame, now: datetime | None = None) -> CatalystPollResult:
+        now = now or datetime.now(timezone.utc)
         events: list[MarketEvent] = []
         providers = []
         for adapter in self.adapters:
