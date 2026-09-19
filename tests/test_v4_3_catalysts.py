@@ -233,7 +233,7 @@ def test_composite_adapter_surfaces_review_and_source_lag():
 
     adapter = CompositeCatalystAdapter([StaticProvider()])
     # Pin the source time rather than asserting wall-clock lag.
-    result = adapter.poll(pd.DataFrame([{"ticker": "CRDO"}]))
+    result = adapter.poll(pd.DataFrame([{"ticker": "CRDO"}]), now=NOW)
     assert isinstance(result, CatalystPollResult)
     assert result.health["review_required_events"] == 1
     assert result.health["status"] == "OK"

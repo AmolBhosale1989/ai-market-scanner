@@ -14,7 +14,11 @@ on:
       - 'scanner/broad_breakout.py'
       - 'scanner/system_health.py'
       - 'scanner/warehouse.py'
+      - 'scanner/bitemporal_warehouse.py'
+      - 'scanner/warehouse_migrate.py'
+      - 'sql/001_bitemporal_warehouse.sql'
       - 'scanner/warehouse_refresh.py'
+      - 'scanner/data.py'
 
 permissions:
   contents: write
@@ -22,7 +26,7 @@ permissions:
 jobs:
   live-monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 15
     concurrency:
       group: market-hunt-live-core-monitor
       cancel-in-progress: true
@@ -42,18 +46,27 @@ jobs:
           git show "origin/scan-data:dashboard-data/tradable_universe.csv" > outputs/tradable_universe.csv
           test -s outputs/tradable_universe.csv
           # Refactor 2 contract: latest_scan.csv is intentionally NOT restored.
+      - name: Migrate bitemporal PostgreSQL warehouse
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
+        run: python -m scanner.warehouse_migrate
+      - name: Validate bitemporal database availability
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
+        run: python -m scanner.bitemporal_warehouse --verify-health --as-of now
       - name: Refresh central daily warehouse
-        run: timeout 360s python -m scanner.warehouse_refresh --period 1y --interval 1d
-      - name: Validate warehouse availability
-        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
         run: |
-          set -euo pipefail
-          test -s outputs/warehouse/manifest.json
-          test -s outputs/warehouse/market_1d.csv
-          grep -q '"status": "AVAILABLE"' outputs/warehouse/manifest.json
-          grep -q '"updated_at_utc"' outputs/warehouse/manifest.json
+          timeout 300s python -m scanner.warehouse_refresh --period 5d --interval 1d --limit 420
+          timeout 180s python -m scanner.warehouse_refresh --period 2d --interval 5m --limit 420
       - name: Fresh provider discovery and V3 production
         env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: timeout 420s python -m scanner.v3_live --limit 30
@@ -64,10 +77,10 @@ jobs:
           test ! -e outputs/latest_scan.csv
           test -s outputs/v3_live_discovery.csv
           test "$(wc -l < outputs/v3_live_discovery.csv)" -gt 1
-          grep -q 'DIRECT_PROVIDER_DISCOVERY' outputs/v3_live_discovery.csv
+          grep -q 'POSTGRES_WAREHOUSE_DISCOVERY' outputs/v3_live_discovery.csv
           test -s outputs/v3_live_snapshot.csv
           test "$(wc -l < outputs/v3_live_snapshot.csv)" -gt 1
-          grep -q 'DIRECT_PROVIDER' outputs/v3_live_snapshot.csv
+          grep -q 'POSTGRES_WAREHOUSE' outputs/v3_live_snapshot.csv
           test -s outputs/intraday_live.csv
           test "$(wc -l < outputs/intraday_live.csv)" -gt 1
           test -s outputs/monitor_health.csv
@@ -81,15 +94,12 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-live-core-monitor scan-data
           mkdir -p /tmp/market-hunt-live-core-monitor/dashboard-data
-          mkdir -p /tmp/market-hunt-live-core-monitor/dashboard-data/warehouse
-          cp outputs/warehouse/manifest.json /tmp/market-hunt-live-core-monitor/dashboard-data/warehouse/
-          cp outputs/warehouse/market_1d.csv /tmp/market-hunt-live-core-monitor/dashboard-data/warehouse/
           for f in v3_live_discovery.csv broad_breakout_discovery.csv broad_breakout_health.csv v3_live_snapshot.csv recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json; do
             if [ -s "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-live-core-monitor/dashboard-data/$f"
             fi
           done
-          printf "updated_at_utc,workflow_run_id,source_commit,data_status,data_source\n%s,%s,%s,FRESH,DIRECT_PROVIDER_DISCOVERY_TO_V3\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-monitor/dashboard-data/live_metadata.csv
+          printf "updated_at_utc,workflow_run_id,source_commit,data_status,data_source\n%s,%s,%s,FRESH,POSTGRES_WAREHOUSE_TO_V3\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-monitor/dashboard-data/live_metadata.csv
           cd /tmp/market-hunt-live-core-monitor
           git add dashboard-data
           if ! git diff --cached --quiet; then

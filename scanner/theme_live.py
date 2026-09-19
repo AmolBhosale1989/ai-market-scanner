@@ -67,7 +67,7 @@ def run():
     out=base.copy()
     moves=[]; rels=[]; bars=[]
     for _,row in out.iterrows():
-        move,bar=_stats(_extract(raw.get(str(row["etf"],pd.DataFrame()),str(row["etf"])))
+        move,bar=_stats(_extract(raw.get(str(row["etf"]),pd.DataFrame()),str(row["etf"])))
         moves.append(round(move,2) if math.isfinite(move) else math.nan)
         rel=move-spy_move if math.isfinite(move) and math.isfinite(spy_move) else math.nan
         rels.append(round(rel,2) if math.isfinite(rel) else math.nan)
