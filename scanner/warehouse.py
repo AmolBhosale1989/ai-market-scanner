@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 import pandas as pd
+import pandas_market_calendars as mcal
 
 from .bitemporal_warehouse import PointInTimeRequirement, point_in_time, verify_health
 
@@ -55,13 +56,51 @@ def _assert_coverage(df: pd.DataFrame, tickers: Iterable[str], consumer: str) ->
 
 
 def _assert_fresh(df: pd.DataFrame, interval: str, max_age_minutes: int, consumer: str) -> pd.Timestamp:
-    newest = pd.to_datetime(df["ingested_at"], utc=True, errors="coerce").max()
-    if pd.isna(newest):
-        raise RuntimeError(f"WAREHOUSE_STALE: {consumer} {interval} has no valid ingestion timestamp")
-    age = (datetime.now(timezone.utc) - newest.to_pydatetime()).total_seconds() / 60
-    if age < 0 or age > max_age_minutes:
-        raise RuntimeError(f"WAREHOUSE_STALE: {consumer} {interval} age={age:.1f}m max={max_age_minutes}m")
-    return newest
+    """Session-aware NYSE freshness: tight intraday while open, last completed session otherwise."""
+    ingested = pd.to_datetime(df["ingested_at"], utc=True, errors="coerce").max()
+    newest_bar = pd.to_datetime(df["event_timestamp"], utc=True, errors="coerce").max()
+    if pd.isna(ingested) or pd.isna(newest_bar):
+        raise RuntimeError(f"WAREHOUSE_STALE: {consumer} {interval} has no valid timestamp")
+
+    now = pd.Timestamp.now(tz="UTC")
+    cal = mcal.get_calendar("NYSE")
+    schedule = cal.schedule(
+        start_date=(now - pd.Timedelta(days=10)).date(),
+        end_date=(now + pd.Timedelta(days=1)).date(),
+    )
+    if schedule.empty:
+        raise RuntimeError(f"WAREHOUSE_STALE: {consumer} cannot resolve NYSE session")
+
+    open_now = False
+    current_open = current_close = None
+    for _, row in schedule.iterrows():
+        market_open = pd.Timestamp(row["market_open"]).tz_convert("UTC")
+        market_close = pd.Timestamp(row["market_close"]).tz_convert("UTC")
+        if market_open <= now <= market_close:
+            open_now = True
+            current_open, current_close = market_open, market_close
+            break
+
+    if interval != "1d" and open_now:
+        # During the live session, require a recent market event bar, not merely a recent ingestion timestamp.
+        bar_age = (now - newest_bar).total_seconds() / 60
+        if bar_age < 0 or bar_age > max_age_minutes:
+            raise RuntimeError(
+                f"WAREHOUSE_STALE: {consumer} {interval} market_open bar_age={bar_age:.1f}m max={max_age_minutes}m"
+            )
+        return ingested
+
+    # Closed market/weekend and daily bars: newest event must belong to the latest completed NYSE session.
+    completed = schedule[pd.to_datetime(schedule["market_close"], utc=True) < now]
+    if completed.empty:
+        raise RuntimeError(f"WAREHOUSE_STALE: {consumer} {interval} has no completed NYSE session")
+    latest_session = pd.Timestamp(completed.index[-1]).date()
+    newest_date = newest_bar.tz_convert("America/New_York").date()
+    if newest_date < latest_session:
+        raise RuntimeError(
+            f"WAREHOUSE_STALE: {consumer} {interval} newest_session={newest_date} expected={latest_session}"
+        )
+    return ingested
 
 
 def _compat_frame(df: pd.DataFrame) -> pd.DataFrame:
