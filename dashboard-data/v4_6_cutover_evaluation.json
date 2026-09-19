@@ -13,7 +13,7 @@
     "MARKET_UPTIME",
     "EVENT_LAG"
   ],
-  "generated_at_utc": "2026-09-19T00:38:28.982410+00:00",
+  "generated_at_utc": "2026-09-19T15:17:22.714698+00:00",
   "market_hours_uptime_pct": null,
   "model_monitor_status": "COLLECTING",
   "rollback_drill_passed": true,
