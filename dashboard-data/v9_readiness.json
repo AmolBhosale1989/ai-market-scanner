@@ -22,10 +22,10 @@
     "v4_cutover_evidence",
     "paper_validation"
   ],
-  "generated_at_utc": "2026-09-18T00:47:21.039797+00:00",
+  "generated_at_utc": "2026-09-19T00:38:30.021606+00:00",
   "live_orders_enabled": false,
   "manual_approval_required": true,
-  "mature_evidence": 0,
+  "mature_evidence": 20,
   "minimum_mature_evidence": 220,
   "production_applied": false,
   "schema_version": "9.1.0-readiness-only",

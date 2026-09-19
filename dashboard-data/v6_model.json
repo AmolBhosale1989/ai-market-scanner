@@ -1,7 +1,7 @@
 {
   "model_version": "untrained",
   "promotion_status": "INSUFFICIENT_DATA",
-  "reason": "no outcomes",
-  "samples": 0,
+  "reason": "need >= 220 resolved samples and all target labels",
+  "samples": 20,
   "schema_version": "6.0.0-shadow"
 }

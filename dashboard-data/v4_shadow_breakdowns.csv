@@ -1,1 +1,11 @@
-
+strategy,dimension,segment,samples,hit_5pct_rate,hit_10pct_rate,hit_15pct_rate,avg_return_5d_pct,avg_r_multiple_5d
+V3,theme,Biotechnology,1,100.0,0.0,0.0,,
+V3,theme,Energy,8,37.5,0.0,0.0,,
+V3,theme,Gold Miners,2,0.0,0.0,0.0,,
+V3,theme,Oil Services,1,0.0,0.0,0.0,,
+V3,theme,UNCLASSIFIED,8,25.0,0.0,0.0,,
+V3,catalyst_type,CONTEXT NEWS,4,75.0,0.0,0.0,,
+V3,catalyst_type,FRESH NEWS,5,20.0,0.0,0.0,,
+V3,catalyst_type,HISTORICAL NEWS,10,20.0,0.0,0.0,,
+V3,catalyst_type,NEWS,1,0.0,0.0,0.0,,
+V3,market_regime_state,WEAK,20,30.0,0.0,0.0,,
