@@ -62,9 +62,15 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
                 JOIN instrument i ON i.instrument_id=o.instrument_id
                 WHERE i.canonical_symbol='SPY' AND o.data_type='OHLCV' AND o.timeframe='1d'""")
             spy_rows = int(cur.fetchone()[0])
-        if spy_rows < 70:
+        with _connect() as conn, conn.cursor() as cur:
+            cur.execute("""SELECT count(*) FROM market_observation o
+                JOIN instrument i ON i.instrument_id=o.instrument_id
+                WHERE i.canonical_symbol='SPY' AND o.data_type='OHLCV' AND o.timeframe='1d'
+                  AND (o.open IS NULL OR o.high IS NULL OR o.low IS NULL OR o.close IS NULL)""")
+            spy_malformed = int(cur.fetchone()[0])
+        if spy_rows < 70 or spy_malformed > 0:
             benchmark_run = refresh(["SPY"], period="1y", interval="1d", bootstrap=True, benchmark_backfill=False)
-            print(f"WAREHOUSE_BENCHMARK_BACKFILLED rows_before={spy_rows} inserted={benchmark_run['observations']}", flush=True)
+            print(f"WAREHOUSE_BENCHMARK_BACKFILLED rows_before={spy_rows} malformed_before={spy_malformed} inserted={benchmark_run['observations']}", flush=True)
     if not tickers:
         raise RuntimeError("WAREHOUSE_REFRESH_FAILED: no tickers requested")
     run_id = start_run(
