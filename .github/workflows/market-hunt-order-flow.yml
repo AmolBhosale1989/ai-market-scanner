@@ -23,6 +23,9 @@ jobs:
   order-flow-live:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSLMODE: require
     concurrency:
       group: market-hunt-order-flow-live
       cancel-in-progress: true
