@@ -16,6 +16,8 @@ REQUIRED_ARTIFACTS={
     "daily":(
         "warehouse_snapshot.json","warehouse_coverage.csv","master_universe.csv",
         "tradable_universe.csv","scan_health.csv","all_candidates.csv","product_feed.json",
+        "quant_shadow_signals.csv","quant_shadow_ledger.json",
+        "quant_shadow_performance.csv","quant_shadow_health.json",
     ),
     "live":(
         "warehouse_snapshot.json","warehouse_coverage.csv","live_universe.csv",

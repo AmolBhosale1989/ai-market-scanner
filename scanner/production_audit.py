@@ -10,6 +10,7 @@ PRODUCTION_MARKET_MODULES=(
     "momentum_signals.py","live.py","intraday.py","v3_live.py",
     "v3_live_refresh.py","order_flow.py","order_flow_strategy.py",
     "order_flow_validation.py","premarket.py","daily_pick.py",
+    "quant_shadow.py",
 )
 PERSISTED_MARKET_INPUTS={"latest_scan.csv","all_candidates.csv","watchlist.csv"}
 
@@ -52,7 +53,7 @@ def main():
     violations=audit(args.scanner_dir)
     if violations:
         raise RuntimeError("PROVIDER_BYPASS_AUDIT_FAILED:\n"+"\n".join(violations))
-    print("PROVIDER_BYPASS_AUDIT_PASS production_market_modules=14")
+    print(f"PROVIDER_BYPASS_AUDIT_PASS production_market_modules={len(PRODUCTION_MARKET_MODULES)}")
 
 
 if __name__ == "__main__":

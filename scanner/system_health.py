@@ -28,6 +28,7 @@ SHADOW_CHECKS = [
     ("High Conviction Alerts", "high_conviction_alert_health.csv", "checked_at_et", 20, "REGULAR"),
     ("Premarket Discovery", "premarket_health.csv", "checked_at_et", 45, "PREMARKET"),
     ("Daily Pick Validation", "daily_top_pick_summary.csv", "updated_at_et", 90, "SESSION"),
+    ("Quant Strategy Suite", "quant_shadow_health.json", "generated_at_utc", 1800, "SESSION"),
 ]
 
 
