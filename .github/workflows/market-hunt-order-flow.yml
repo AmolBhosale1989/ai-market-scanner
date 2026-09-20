@@ -56,6 +56,10 @@ jobs:
           for f in master_universe.csv tradable_universe.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv high_conviction_alert_log.csv high_conviction_alert_health.csv intraday_live.csv v31_challenger_log.csv v31_challenger_summary.csv v31_challenger_decisions.csv; do
             git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
           done
+          if [ ! -s outputs/master_universe.csv ]; then
+            echo "Published master catalogue is not available yet; rebuilding it from exchange directories."
+            python -m scanner.universe --refresh
+          fi
           test -s outputs/tradable_universe.csv
           test -s outputs/master_universe.csv
           # Authoritative live inputs are PostgreSQL only. Persisted candidate

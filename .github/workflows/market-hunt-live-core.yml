@@ -43,7 +43,10 @@ jobs:
           set -euo pipefail
           mkdir -p outputs .state
           git fetch origin scan-data:refs/remotes/origin/scan-data
-          git show "origin/scan-data:dashboard-data/master_universe.csv" > outputs/master_universe.csv
+          if ! git show "origin/scan-data:dashboard-data/master_universe.csv" > outputs/master_universe.csv; then
+            echo "Published master catalogue is not available yet; rebuilding it from exchange directories."
+            python -m scanner.universe --refresh
+          fi
           git show "origin/scan-data:dashboard-data/tradable_universe.csv" > outputs/tradable_universe.csv
           for f in order_flow_strategy_journal.csv order_flow_strategy_performance.csv high_conviction_alert_log.csv high_conviction_alert_health.csv; do
             git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
