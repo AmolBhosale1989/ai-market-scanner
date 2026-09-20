@@ -37,3 +37,12 @@ def test_live_enrichment_accepts_preconfirmation_v3_score(monkeypatch):
     frame=pd.DataFrame([{"ticker":"TEST","stage":"ARMED","final_score":81.0}])
     result=module.enrich_live_candidates(frame,limit=1)
     assert result.loc[0,"live_status"]=="MARKET CLOSED"
+
+
+def test_live_workflows_gate_the_same_frozen_universe_they_refresh():
+    expected="--live-file outputs/live_universe.csv --tier CRITICAL_DAILY"
+    for path in (
+        Path(".github/workflows/market-hunt-live-core.yml"),
+        Path(".github/workflows/market-hunt-order-flow.yml"),
+    ):
+        assert expected in path.read_text()

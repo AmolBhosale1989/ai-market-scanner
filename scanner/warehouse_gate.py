@@ -160,7 +160,7 @@ def run(master_file: Path, live_file: Path, as_of: datetime | None = None, selec
 def main():
     p=argparse.ArgumentParser(description="Fail-closed production warehouse coverage gate")
     p.add_argument("--master-file",type=Path,default=OUTPUT_DIR/"master_universe.csv")
-    p.add_argument("--live-file",type=Path,default=OUTPUT_DIR/"tradable_universe.csv")
+    p.add_argument("--live-file",type=Path,default=OUTPUT_DIR/"live_universe.csv")
     p.add_argument("--tier",action="append",choices=["MASTER_DAILY","CRITICAL_DAILY","CRITICAL_INTRADAY","LIVE_INTRADAY"])
     p.add_argument("--as-of",default="now")
     args=p.parse_args()

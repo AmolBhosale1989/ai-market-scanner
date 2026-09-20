@@ -86,7 +86,7 @@ jobs:
       - name: Revalidate warehouse after ingestion
         run: |
           python -m scanner.bitemporal_warehouse --verify-health --as-of now
-          python -m scanner.warehouse_gate --tier CRITICAL_DAILY --tier CRITICAL_INTRADAY --tier LIVE_INTRADAY
+          python -m scanner.warehouse_gate --live-file outputs/live_universe.csv --tier CRITICAL_DAILY --tier CRITICAL_INTRADAY --tier LIVE_INTRADAY
 
       - name: Refresh live themes
         run: timeout 150s python -m scanner.theme_live
