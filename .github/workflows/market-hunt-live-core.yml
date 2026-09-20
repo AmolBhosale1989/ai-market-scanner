@@ -171,7 +171,7 @@ jobs:
           set -euo pipefail
           mkdir -p outputs
           git fetch origin scan-data:refs/remotes/origin/scan-data
-          for f in monitor_health.csv theme_health.csv sector_rotation_health.csv momentum_health.csv broad_breakout_health.csv order_flow_strategy_health.csv high_conviction_alert_health.csv premarket_health.csv daily_top_pick_summary.csv; do
+          for f in warehouse_snapshot.json monitor_health.csv theme_health.csv sector_rotation_health.csv momentum_health.csv broad_breakout_health.csv order_flow_strategy_health.csv high_conviction_alert_health.csv premarket_health.csv daily_top_pick_summary.csv; do
             git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
           done
       - name: Build unified live health
