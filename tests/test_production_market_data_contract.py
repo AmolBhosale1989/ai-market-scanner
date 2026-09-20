@@ -46,3 +46,21 @@ def test_live_workflows_gate_the_same_frozen_universe_they_refresh():
         Path(".github/workflows/market-hunt-order-flow.yml"),
     ):
         assert expected in path.read_text()
+
+
+def test_smoke_calibration_fixture_represents_entered_wins_and_losses():
+    from scanner.performance import build_empirical_calibration, build_performance_reports
+    rows=[]
+    for i in range(24):
+        rows.append({
+            "ticker":f"T{i}","outcome":"TARGET_HIT" if i%2==0 else "FAILED_BREAKOUT",
+            "return_pct":5.0 if i%2==0 else -2.0,"r_multiple":2.0 if i%2==0 else -1.0,
+            "market_hunt_score":70 if i<20 else 50,"technical_score":70,
+            "effective_rr":3.0,"live_confirmation_score":80,
+        })
+    journal=pd.DataFrame(rows)
+    summary,_=build_performance_reports(journal)
+    calibration=build_empirical_calibration(journal,min_samples=20)
+    assert int(summary.iloc[0]["closed_signals"])==24
+    assert float(summary.iloc[0]["win_rate_pct"])==50.0
+    assert "USABLE" in set(calibration["calibration_status"])

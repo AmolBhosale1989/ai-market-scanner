@@ -129,7 +129,7 @@ jobs:
           for i in range(24):
               rows.append({
                   "ticker":f"T{i}",
-                  "outcome":"TARGET_HIT" if i%2==0 else "INVALIDATED",
+                  "outcome":"TARGET_HIT" if i%2==0 else "FAILED_BREAKOUT",
                   "return_pct":5.0 if i%2==0 else -2.0,
                   "r_multiple":2.0 if i%2==0 else -1.0,
                   "entry_model":"RESISTANCE_BREAKOUT",
