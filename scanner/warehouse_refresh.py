@@ -7,12 +7,12 @@ from pathlib import Path
 import pandas as pd
 
 from .bitemporal_warehouse import _connect, finish_run, ingest_observations, latest_event_timestamps, start_run, verify_health
-from .config import OUTPUT_DIR, RETRY_CHUNK_SIZE
+from .config import CRITICAL_MARKET_SYMBOLS, OUTPUT_DIR, RETRY_CHUNK_SIZE
 from .data import download_batch
 
 
 def _symbols() -> list[str]:
-    paths = [OUTPUT_DIR / "tradable_universe.csv", Path("data/universe.csv")]
+    paths = [OUTPUT_DIR / "master_universe.csv", Path("data/universe.csv"), OUTPUT_DIR / "tradable_universe.csv"]
     for path in paths:
         if not path.exists() or not path.stat().st_size:
             continue
@@ -50,8 +50,7 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
     tickers = list(dict.fromkeys(str(t).upper() for t in tickers if t))
     # V3 market-regime discovery always requires SPY even when the tradable
     # universe catalogue excludes ETFs. Keep the benchmark in PostgreSQL.
-    if "SPY" not in tickers:
-        tickers.append("SPY")
+    tickers = list(dict.fromkeys(tickers + list(CRITICAL_MARKET_SYMBOLS)))
     # V3 needs >=70 daily benchmark observations for regime/RET20. A benchmark
     # introduced after the universe bootstrap must be backfilled once, not left
     # with only the incremental 5-day window.
@@ -81,7 +80,7 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
     )
     try:
         watermarks = {} if bootstrap else latest_event_timestamps(tickers, timeframe=interval)
-        effective_period = period if bootstrap else ("5d" if interval == "1d" else "2d")
+        incremental_period = "5d" if interval == "1d" else "2d"
         provider_chunk = min(10, RETRY_CHUNK_SIZE)
         ingested_symbols=set()
         observations=0
@@ -89,7 +88,15 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
         # provider failure cannot discard already committed successful chunks.
         for i in range(0, len(tickers), provider_chunk):
             chunk=tickers[i:i+provider_chunk]
-            batch=download_batch(chunk, period=effective_period, interval=interval)
+            # A newly listed/missed symbol must receive the requested history;
+            # existing symbols use the bounded incremental window.
+            existing=[t for t in chunk if t in watermarks]
+            missing=[t for t in chunk if t not in watermarks]
+            batch={}
+            if existing:
+                batch.update(download_batch(existing, period=incremental_period, interval=interval))
+            if missing:
+                batch.update(download_batch(missing, period=period, interval=interval))
             ingested_at=datetime.now(timezone.utc)
             frames=[]
             for t in chunk:
@@ -112,7 +119,9 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
             print(f"WAREHOUSE_CHUNK_COMMITTED offset={i} requested={len(chunk)} symbols={combined['ticker'].nunique()} inserted={inserted}", flush=True)
         metadata={"requested_symbols":len(tickers),"ingested_symbols":len(ingested_symbols),
                   "observations":observations,"period":period,"interval":interval,
-                  "mode":"BOOTSTRAP" if bootstrap else "INCREMENTAL"}
+                  "mode":"BOOTSTRAP" if bootstrap else "INCREMENTAL_WITH_MISSING_BACKFILL",
+                  "preexisting_symbols":len(watermarks),
+                  "missing_symbols_backfilled":len(set(tickers)-set(watermarks))}
         if not ingested_symbols and bootstrap:
             raise RuntimeError("WAREHOUSE_REFRESH_FAILED: bootstrap provider returned no usable data")
         finish_run(run_id,"AVAILABLE",metadata=metadata)

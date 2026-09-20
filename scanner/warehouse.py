@@ -20,6 +20,8 @@ class DataRequirement:
     columns: tuple[str, ...] = ()
     view_name: str = ""
     latest_only: bool = False
+    as_of: datetime | None = None
+    min_bars_per_symbol: int = 1
 
 
 @dataclass(frozen=True)
@@ -37,12 +39,12 @@ def _tickers(values: Iterable[str] | None) -> tuple[str, ...]:
     return tuple(dict.fromkeys(str(x).upper() for x in (values or ()) if x))
 
 
-def _pit(tickers: Iterable[str], interval: str, consumer: str) -> pd.DataFrame:
+def _pit(tickers: Iterable[str], interval: str, consumer: str, as_of: datetime | None = None) -> pd.DataFrame:
     wanted = _tickers(tickers)
     if not wanted:
         raise RuntimeError(f"WAREHOUSE_REQUIREMENT_INVALID: {consumer} requested no tickers")
     return point_in_time(PointInTimeRequirement(
-        consumer=consumer, tickers=wanted, data_type="OHLCV", timeframe=interval,
+        consumer=consumer, tickers=wanted, data_type="OHLCV", timeframe=interval, as_of=as_of,
     ))
 
 
@@ -58,7 +60,8 @@ def _assert_coverage(df: pd.DataFrame, tickers: Iterable[str], consumer: str) ->
 def _assert_fresh(df: pd.DataFrame, interval: str, max_age_minutes: int, consumer: str) -> pd.Timestamp:
     """Session-aware NYSE freshness: tight intraday while open, last completed session otherwise."""
     ingested = pd.to_datetime(df["ingested_at"], utc=True, errors="coerce").max()
-    newest_bar = pd.to_datetime(df["event_timestamp"], utc=True, errors="coerce").max()
+    event_times = pd.to_datetime(df["event_timestamp"], utc=True, errors="coerce")
+    newest_bar = event_times.max()
     if pd.isna(ingested) or pd.isna(newest_bar):
         raise RuntimeError(f"WAREHOUSE_STALE: {consumer} {interval} has no valid timestamp")
 
@@ -83,10 +86,13 @@ def _assert_fresh(df: pd.DataFrame, interval: str, max_age_minutes: int, consume
 
     if interval != "1d" and open_now:
         # During the live session, require a recent market event bar, not merely a recent ingestion timestamp.
-        bar_age = (now - newest_bar).total_seconds() / 60
-        if bar_age < 0 or bar_age > max_age_minutes:
+        newest_by_symbol=(df.assign(_event=event_times).groupby("ticker")["_event"].max())
+        ages=(now-newest_by_symbol).dt.total_seconds()/60
+        stale=ages[(ages < 0) | (ages > max_age_minutes)]
+        if not stale.empty:
             raise RuntimeError(
-                f"WAREHOUSE_STALE: {consumer} {interval} market_open bar_age={bar_age:.1f}m max={max_age_minutes}m"
+                f"WAREHOUSE_STALE: {consumer} {interval} market_open stale_symbols={len(stale)} "
+                f"sample={','.join(stale.index.astype(str)[:10])} max={max_age_minutes}m"
             )
         return ingested
 
@@ -95,16 +101,51 @@ def _assert_fresh(df: pd.DataFrame, interval: str, max_age_minutes: int, consume
     if completed.empty:
         raise RuntimeError(f"WAREHOUSE_STALE: {consumer} {interval} has no completed NYSE session")
     latest_session = pd.Timestamp(completed.index[-1]).date()
+    newest_by_symbol=(df.assign(_event=event_times).groupby("ticker")["_event"].max())
     if interval == "1d":
-        # Daily provider bars are session labels normalized to 00:00 UTC; compare the label directly.
-        newest_date = newest_bar.date()
+        newest_dates=newest_by_symbol.dt.date
     else:
-        newest_date = newest_bar.tz_convert("America/New_York").date()
-    if newest_date < latest_session:
+        newest_dates=newest_by_symbol.dt.tz_convert("America/New_York").dt.date
+    stale=newest_dates[newest_dates < latest_session]
+    if not stale.empty:
         raise RuntimeError(
-            f"WAREHOUSE_STALE: {consumer} {interval} newest_session={newest_date} expected={latest_session}"
+            f"WAREHOUSE_STALE: {consumer} {interval} stale_symbols={len(stale)} "
+            f"sample={','.join(stale.index.astype(str)[:10])} expected={latest_session}"
         )
     return ingested
+
+
+def _assert_quality(df: pd.DataFrame, consumer: str, min_bars_per_symbol: int = 1) -> None:
+    required=("ticker","event_timestamp","open","high","low","close","volume")
+    missing=[c for c in required if c not in df.columns]
+    if missing:
+        raise RuntimeError(f"WAREHOUSE_QUALITY_FAILED: {consumer} missing_columns={','.join(missing)}")
+    x=df.copy()
+    for c in ("open","high","low","close","volume"):
+        x[c]=pd.to_numeric(x[c],errors="coerce")
+    invalid=(
+        x[["open","high","low","close"]].isna().any(axis=1)
+        | x[["open","high","low","close"]].le(0).any(axis=1)
+        | x["volume"].isna() | x["volume"].lt(0)
+        | x["high"].lt(x[["open","close","low"]].max(axis=1))
+        | x["low"].gt(x[["open","close","high"]].min(axis=1))
+    )
+    if invalid.any():
+        symbols=x.loc[invalid,"ticker"].astype(str).drop_duplicates().tolist()
+        raise RuntimeError(
+            f"WAREHOUSE_QUALITY_FAILED: {consumer} invalid_rows={int(invalid.sum())} "
+            f"sample={','.join(symbols[:10])}"
+        )
+    duplicate=x.duplicated(["ticker","event_timestamp"],keep=False)
+    if duplicate.any():
+        raise RuntimeError(f"WAREHOUSE_QUALITY_FAILED: {consumer} duplicate_logical_bars={int(duplicate.sum())}")
+    counts=x.groupby("ticker").size()
+    short=counts[counts < min_bars_per_symbol]
+    if not short.empty:
+        raise RuntimeError(
+            f"WAREHOUSE_HISTORY_INCOMPLETE: {consumer} symbols={len(short)} "
+            f"min_bars={min_bars_per_symbol} sample={','.join(short.index.astype(str)[:10])}"
+        )
 
 
 def _compat_frame(df: pd.DataFrame) -> pd.DataFrame:
@@ -142,7 +183,9 @@ def get(tickers: Iterable[str] | None = None, interval: str = "1d", max_age_minu
     wanted = _tickers(tickers)
     if not wanted:
         raise RuntimeError("WAREHOUSE_REQUIREMENT_INVALID: PostgreSQL reads require explicit tickers")
-    df = _compat_frame(_pit(wanted, interval, "warehouse.get"))
+    raw = _pit(wanted, interval, "warehouse.get")
+    _assert_quality(raw, "warehouse.get")
+    df = _compat_frame(raw)
     _assert_coverage(df, wanted, "warehouse.get")
     if require_fresh:
         _assert_fresh(df, interval, max_age_minutes, "warehouse.get")
@@ -157,7 +200,9 @@ def request(tickers: Iterable[str], period: str = "1y", interval: str = "1d", ma
 def frames(tickers: Iterable[str], period: str = "1y", interval: str = "1d", max_age_minutes: int = 20, require_complete: bool = True) -> dict[str, pd.DataFrame]:
     # Discovery scans may tolerate provider-unavailable symbols; targeted consumers default fail-closed.
     wanted = _tickers(tickers)
-    df = _compat_frame(_pit(wanted, interval, "warehouse.frames"))
+    raw = _pit(wanted, interval, "warehouse.frames")
+    _assert_quality(raw, "warehouse.frames")
+    df = _compat_frame(raw)
     if require_complete:
         _assert_coverage(df, wanted, "warehouse.frames")
     _assert_fresh(df, interval, max_age_minutes, "warehouse.frames")
@@ -179,7 +224,11 @@ def latest(tickers: Iterable[str] | None = None, interval: str = "1d", max_age_m
 
 
 def provide(req: DataRequirement) -> WarehouseView:
-    frame = request(req.tickers, period=req.period, interval=req.interval, max_age_minutes=req.max_age_minutes)
+    raw=_pit(req.tickers, req.interval, req.consumer, as_of=req.as_of)
+    _assert_coverage(raw, req.tickers, req.consumer)
+    _assert_quality(raw, req.consumer, min_bars_per_symbol=req.min_bars_per_symbol)
+    _assert_fresh(raw, req.interval, req.max_age_minutes, req.consumer)
+    frame=_compat_frame(raw)
     if req.latest_only and not frame.empty:
         frame = frame.sort_values("bar_timestamp").groupby("ticker", as_index=False).tail(1)
     mandatory = ["ticker", "bar_timestamp", "provider", "ingested_at", "warehouse_run_id"]
