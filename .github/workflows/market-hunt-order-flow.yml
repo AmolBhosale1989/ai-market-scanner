@@ -15,6 +15,12 @@ on:
       - 'scanner/v31_challenger.py'
       - 'scanner/sector_rotation.py'
       - 'scanner/theme_live.py'
+      - 'scanner/warehouse.py'
+      - 'scanner/bitemporal_warehouse.py'
+      - 'scanner/warehouse_migrate.py'
+      - 'scanner/warehouse_refresh.py'
+      - 'scanner/data.py'
+      - 'sql/001_bitemporal_warehouse.sql'
 
 permissions:
   contents: write
@@ -47,10 +53,32 @@ jobs:
           set -euo pipefail
           mkdir -p outputs
           git fetch origin scan-data:refs/remotes/origin/scan-data
-          for f in tradable_universe.csv latest_scan.csv all_candidates.csv trending_themes.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv high_conviction_alert_log.csv high_conviction_alert_health.csv intraday_live.csv v31_challenger_log.csv v31_challenger_summary.csv v31_challenger_decisions.csv; do
+          for f in tradable_universe.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv high_conviction_alert_log.csv high_conviction_alert_health.csv intraday_live.csv v31_challenger_log.csv v31_challenger_summary.csv v31_challenger_decisions.csv; do
             git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
           done
           test -s outputs/tradable_universe.csv
+          # Authoritative live inputs are PostgreSQL only. Persisted candidate
+          # snapshots are deliberately not restored into this workflow.
+          test ! -e outputs/latest_scan.csv
+          test ! -e outputs/all_candidates.csv
+
+      - name: Migrate bitemporal PostgreSQL warehouse
+        run: python -m scanner.warehouse_migrate
+
+      - name: Validate authoritative warehouse
+        run: python -m scanner.bitemporal_warehouse --verify-health --as-of now
+
+      - name: Refresh authoritative live OHLCV
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Order flow owns its ingestion prerequisite instead of racing the
+          # separately scheduled Live Core workflow.
+          timeout 300s python -m scanner.warehouse_refresh --period 5d --interval 1d --limit 420
+          timeout 180s python -m scanner.warehouse_refresh --period 2d --interval 5m --limit 420
+
+      - name: Revalidate warehouse after ingestion
+        run: python -m scanner.bitemporal_warehouse --verify-health --as-of now
 
       - name: Refresh live themes
         continue-on-error: true
