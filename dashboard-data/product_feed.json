@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_at_utc": "2026-09-20T08:48:45.239636+00:00",
+  "generated_at_utc": "2026-09-20T14:23:12.773652+00:00",
   "research_only": true,
   "market_hunt": {
     "recommendations": [],
@@ -90,11 +90,11 @@
         "broad_rvol": 1.8,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 74.2,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 2,
@@ -141,7 +141,7 @@
         "previous_state": "NEW",
         "monitor_state": "FORMING",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "SG",
@@ -221,11 +221,11 @@
         "broad_rvol": 1.3,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 72.4,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 2,
@@ -272,7 +272,7 @@
         "previous_state": "NEW",
         "monitor_state": "FORMING",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "HUT",
@@ -352,11 +352,11 @@
         "broad_rvol": 1.29,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 71.5,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 2,
@@ -403,7 +403,7 @@
         "previous_state": "NEW",
         "monitor_state": "FORMING",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "INBX",
@@ -483,11 +483,11 @@
         "broad_rvol": 1.34,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 66.8,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 2,
@@ -534,7 +534,7 @@
         "previous_state": "NEW",
         "monitor_state": "FORMING",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "RXRX",
@@ -614,11 +614,11 @@
         "broad_rvol": 1.29,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 51.8,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 2,
@@ -665,7 +665,7 @@
         "previous_state": "NEW",
         "monitor_state": "FORMING",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "RIOT",
@@ -745,11 +745,11 @@
         "broad_rvol": 1.32,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 47.9,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 2,
@@ -796,7 +796,7 @@
         "previous_state": "NEW",
         "monitor_state": "FORMING",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "BTDR",
@@ -876,11 +876,11 @@
         "broad_rvol": 2.02,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 43.4,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 2,
@@ -927,7 +927,7 @@
         "previous_state": "NEW",
         "monitor_state": "FORMING",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "HIVE",
@@ -1007,11 +1007,11 @@
         "broad_rvol": 1.42,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 43.4,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 2,
@@ -1058,7 +1058,7 @@
         "previous_state": "NEW",
         "monitor_state": "FORMING",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "CLSK",
@@ -1138,11 +1138,11 @@
         "broad_rvol": 1.43,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 42.9,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 2,
@@ -1189,7 +1189,7 @@
         "previous_state": "NEW",
         "monitor_state": "FORMING",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "HALO",
@@ -1269,11 +1269,11 @@
         "broad_rvol": 5.77,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 40.8,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 2,
@@ -1320,7 +1320,7 @@
         "previous_state": "NEW",
         "monitor_state": "FORMING",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "ASST",
@@ -1400,11 +1400,11 @@
         "broad_rvol": 1.47,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 39.1,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 2,
@@ -1451,7 +1451,7 @@
         "previous_state": "NEW",
         "monitor_state": "FORMING",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "FORM",
@@ -1531,11 +1531,11 @@
         "broad_rvol": 1.49,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 33.2,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 2,
@@ -1582,7 +1582,7 @@
         "previous_state": "NEW",
         "monitor_state": "FORMING",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "SBET",
@@ -1662,11 +1662,11 @@
         "broad_rvol": 1.67,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 68.7,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 1,
@@ -1713,7 +1713,7 @@
         "previous_state": "NEW",
         "monitor_state": "DISCOVER",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "SNDK",
@@ -1793,11 +1793,11 @@
         "broad_rvol": 1.82,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 68.7,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 1,
@@ -1844,7 +1844,7 @@
         "previous_state": "NEW",
         "monitor_state": "DISCOVER",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "BTBT",
@@ -1924,11 +1924,11 @@
         "broad_rvol": 1.49,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 64.3,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 1,
@@ -1975,7 +1975,7 @@
         "previous_state": "NEW",
         "monitor_state": "DISCOVER",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "HOOD",
@@ -2055,11 +2055,11 @@
         "broad_rvol": 1.31,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 64.1,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 1,
@@ -2106,7 +2106,7 @@
         "previous_state": "NEW",
         "monitor_state": "DISCOVER",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "GLXY",
@@ -2186,11 +2186,11 @@
         "broad_rvol": 1.29,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 63.2,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 1,
@@ -2237,7 +2237,7 @@
         "previous_state": "NEW",
         "monitor_state": "DISCOVER",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       },
       {
         "ticker": "MU",
@@ -2317,11 +2317,11 @@
         "broad_rvol": 1.44,
         "last_bar_et": "2026-09-18T15:55:00-04:00",
         "v3_discovery_source": "POSTGRES_WAREHOUSE_DISCOVERY",
-        "v3_discovered_at_utc": "2026-09-20T08:47:38.597655+00:00",
+        "v3_discovered_at_utc": "2026-09-20T14:22:09.555748+00:00",
         "market_hunt_score": 61.8,
         "v3_rank_source": "V3_NATIVE_POSTGRES_WAREHOUSE",
         "v3_market_data_source": "POSTGRES_WAREHOUSE",
-        "v3_market_data_refreshed_at_utc": "2026-09-20T08:47:47.962895+00:00",
+        "v3_market_data_refreshed_at_utc": "2026-09-20T14:22:18.602600+00:00",
         "v3_provider_coverage": 1.0,
         "v3_analyzable_coverage": 0.8485,
         "live_stage_priority": 1,
@@ -2368,13 +2368,13 @@
         "previous_state": "NEW",
         "monitor_state": "DISCOVER",
         "state_changed": true,
-        "checked_at_et": "2026-09-20T04:48:45-04:00"
+        "checked_at_et": "2026-09-20T10:23:12-04:00"
       }
     ],
     "monitor_health": [
       {
         "status": "OK",
-        "checked_at_et": "2026-09-20T04:48:45-04:00",
+        "checked_at_et": "2026-09-20T10:23:12-04:00",
         "monitored_candidates": 18,
         "live_rows": 0,
         "actionable_states": 0,
