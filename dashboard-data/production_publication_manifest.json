@@ -1,47 +1,82 @@
 {
   "artifacts": [
     {
-      "bytes": 2077,
+      "bytes": 1987,
       "name": "warehouse_snapshot.json",
-      "sha256": "f7c22186aee91115e75042dbd8689e915a8040fcd4a6005588f665d0a1d85665"
+      "sha256": "4af18e71ac924eed4dd239592347bc62ccbe192cc72e934e6f6bba6dd204af42"
     },
     {
-      "bytes": 382,
+      "bytes": 387,
       "name": "warehouse_coverage.csv",
-      "sha256": "ddbf6faab04d37a5a06bef3ff4864c7c163cbfadb64e6914d10552beceb1fb04"
+      "sha256": "ad3f33b67ef8eda8a2179786baf175d7c79afc6e34ae5a104798c945aca6ed2e"
     },
     {
-      "bytes": 281698,
-      "name": "master_universe.csv",
-      "sha256": "12f0f4a19eb7152860f506a1d1f07115884773bb7bdd02bd3e7852551d671c01"
+      "bytes": 59564,
+      "name": "live_universe.csv",
+      "sha256": "68f0834b0a97a0e2d426068755dbc1c227ec30229d6f5020c46aec8fc86afe1b"
     },
     {
-      "bytes": 776403,
-      "name": "tradable_universe.csv",
-      "sha256": "49c8de044968bbfe8f003c173de7a7cb5e7309edb5ea56c8444a134a94d2f650"
+      "bytes": 6637,
+      "name": "v3_live_discovery.csv",
+      "sha256": "7f275d2c12323397c6e1e14fa1d8a25643efbeb7dae8563fee455552d3ca99b2"
     },
     {
-      "bytes": 433,
-      "name": "scan_health.csv",
-      "sha256": "133b5c32d84429d1fb7a886a6c964daf430650fe5e19ad4f669b3e69ad48c739"
+      "bytes": 22066,
+      "name": "v3_live_snapshot.csv",
+      "sha256": "7557d61db9f2ad1890f90aaf7cff45b31701d43f169b6febce79c10415101cf1"
     },
     {
-      "bytes": 724675,
-      "name": "all_candidates.csv",
-      "sha256": "6172d45f5c30a5c73d0a897df7e84129f3e702493365f50afb7303221076c96e"
+      "bytes": 21652,
+      "name": "intraday_live.csv",
+      "sha256": "e08beee48a01f9172e13d047e35c3a40c2759ba80913be5e9b4b2452402abb54"
     },
     {
-      "bytes": 598650,
+      "bytes": 171,
+      "name": "monitor_health.csv",
+      "sha256": "7bdf24d9708a3d06a03c7be2b46a51dc9ca203ca20d0b2fba4f3b865911b830e"
+    },
+    {
+      "bytes": 148,
+      "name": "theme_health.csv",
+      "sha256": "886d655646f9db1aab226316b1c7124e63723f739f6127d6180230e7b8c0bf9e"
+    },
+    {
+      "bytes": 143,
+      "name": "sector_rotation_health.csv",
+      "sha256": "ff66af2cb45a8749cbafb5f8da9adeb38071e6aed029712290bd61597adc082e"
+    },
+    {
+      "bytes": 121,
+      "name": "momentum_health.csv",
+      "sha256": "0fb083e29d8b804792b67165edc65778c7cd8c4404bbbc309f1cee345027afdf"
+    },
+    {
+      "bytes": 1,
+      "name": "order_flow_strategy.csv",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "bytes": 170,
+      "name": "order_flow_strategy_health.csv",
+      "sha256": "9cc087a728d1e929643538dbe22cfd292fc150b54eb7efd5ac835a05706193c7"
+    },
+    {
+      "bytes": 209,
+      "name": "live_system_health_summary.csv",
+      "sha256": "3ea6b1e13975b276fcddbe5bf2211937eca2f25d5312650c3f2f1d21d41bacbd"
+    },
+    {
+      "bytes": 87542,
       "name": "product_feed.json",
-      "sha256": "8d107dc72bc57a7e82dd50485034a3bd95ace9655241b0964f8e77e751d1c755"
+      "sha256": "a88849ba5f7c460d57cee232378299bb367a00d07eeb89ec883486e5a0f97927"
     }
   ],
-  "finalized_at_utc": "2026-09-20T08:29:50.488442+00:00",
-  "mode": "daily",
-  "production_run_id": "818e0b8b-07c2-49b7-a2c3-d104ed4490f9",
+  "finalized_at_utc": "2026-09-20T08:50:37.440647+00:00",
+  "mode": "live",
+  "production_run_id": "f13934af-248e-4116-b63a-9bab6016c564",
   "schema_version": 1,
-  "source_commit": "ad6663a63663a5cf24b52fe1107089382d9dda21",
+  "source_commit": "ac94de5472772fb0fde5320f4edb8318e442d96d",
   "status": "PASS",
-  "warehouse_as_of_utc": "2026-09-20T08:07:14.796533+00:00",
-  "workflow_run_id": "35498618583"
+  "warehouse_as_of_utc": "2026-09-20T08:46:20.484068+00:00",
+  "workflow_run_id": "35500321532"
 }
