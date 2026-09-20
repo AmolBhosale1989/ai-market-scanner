@@ -2,7 +2,7 @@
   "block_model_promotion": true,
   "detail": "forward evidence is accumulating normally",
   "failed_checks": [],
-  "generated_at_utc": "2026-09-19T15:17:20.069823+00:00",
+  "generated_at_utc": "2026-09-20T08:06:23.724580+00:00",
   "latest_snapshot_candidates": 20,
   "latest_snapshot_session": "2026-09-17",
   "mature_training_samples": 20,
@@ -21,7 +21,7 @@
     "resolution_stalled_after_days": 15,
     "stale_after_calendar_days": 4
   },
-  "snapshot_age_calendar_days": 2,
+  "snapshot_age_calendar_days": 3,
   "status": "COLLECTING",
   "unresolved_observations": 80
 }

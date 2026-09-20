@@ -9,7 +9,7 @@
   },
   "detail": "forward outcomes are accumulating; no performance conclusion is permitted yet",
   "failed_checks": [],
-  "generated_at_utc": "2026-09-19T15:17:23.570922+00:00",
+  "generated_at_utc": "2026-09-20T08:06:26.448808+00:00",
   "latest_snapshot_candidates": 20,
   "latest_snapshot_session": "2026-09-17",
   "mature_samples": 20,
@@ -35,7 +35,7 @@
     "v5_samples": 100,
     "v9_samples": 220
   },
-  "snapshot_age_calendar_days": 2,
+  "snapshot_age_calendar_days": 3,
   "status": "HEALTHY_COLLECTING",
   "unresolved_observations": 80
 }

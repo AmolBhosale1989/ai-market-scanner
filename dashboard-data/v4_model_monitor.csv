@@ -1,2 +1,2 @@
 schema_version,generated_at_utc,status,model_version,mature_samples,failed_checks,model_versions_seen,detail
-4.monitor.1,2026-09-19T15:17:15.860661+00:00,COLLECTING,untrained,0,[],0,need >= 30 mature out-of-sample observations
+4.monitor.1,2026-09-20T08:06:20.227090+00:00,COLLECTING,untrained,0,[],0,need >= 30 mature out-of-sample observations
