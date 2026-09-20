@@ -78,7 +78,7 @@ def _prefilter_universe(universe: pd.DataFrame):
     for bi,start in enumerate(range(0,expected,BATCH_SIZE),1):
         batch=tickers[start:start+BATCH_SIZE]
         print(f"Prefilter {bi}/{total_batches}: {batch[0]} ... {batch[-1]}")
-        histories=warehouse_frames(batch,period=PREFILTER_PERIOD,interval="1d",max_age_minutes=20)
+        histories=warehouse_frames(batch,period=PREFILTER_PERIOD,interval="1d",max_age_minutes=20,require_complete=False)
         fetched.update(histories.keys())
         pf=build_tradable_rows(histories)
         if not pf.empty:
@@ -193,7 +193,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     for bi,start in enumerate(range(0,tradable_count,BATCH_SIZE),1):
         batch=tradable_tickers[start:start+BATCH_SIZE]
         print(f"Deep scan {bi}/{total_batches}: {batch[0]} ... {batch[-1]}")
-        histories=warehouse_frames(batch,period="1y",interval="1d",max_age_minutes=20)
+        histories=warehouse_frames(batch,period="1y",interval="1d",max_age_minutes=20,require_complete=False)
         fetched.update(histories.keys())
 
         for ticker,hist in histories.items():

@@ -94,10 +94,15 @@ def evaluate_tier(tier: CoverageTier, frame: pd.DataFrame) -> dict:
             _assert_fresh(frame,tier.timeframe,tier.max_age_minutes,f"warehouse_gate.{tier.name}")
         except RuntimeError as exc:
             stale_error=str(exc)
-    passed=(coverage>=tier.minimum_coverage and not short and not invalid and not stale_error)
+    quarantined=set(short)|set(invalid)
+    usable_symbols=len(have-quarantined)
+    usable_coverage=usable_symbols/len(wanted) if wanted else 0.0
+    strict=tier.minimum_coverage>=1.0
+    passed=(usable_coverage>=tier.minimum_coverage and not stale_error and (not strict or not quarantined))
     return {
         "tier":tier.name,"timeframe":tier.timeframe,"expected_symbols":len(wanted),
         "covered_symbols":len(have),"coverage":round(coverage,6),
+        "usable_symbols":usable_symbols,"usable_coverage":round(usable_coverage,6),
         "minimum_coverage":tier.minimum_coverage,"minimum_bars":tier.minimum_bars,
         "missing_count":len(missing),"short_history_count":len(short),
         "invalid_symbol_count":len(invalid),"stale_error":stale_error,

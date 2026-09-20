@@ -45,3 +45,17 @@ def test_tier_gate_fails_missing_symbol_even_if_newest_symbol_is_fresh(monkeypat
     result=evaluate_tier(tier,frame)
     assert result["status"]=="FAIL"
     assert result["missing_sample"]==["B"]
+
+
+def test_tolerant_tier_quarantines_bad_symbol_when_coverage_still_passes(monkeypatch):
+    tier=CoverageTier("MASTER",tuple("ABCDEFGHIJ"),"5m",0.90,1,10)
+    frame=pd.DataFrame([
+        {"ticker":symbol,"event_timestamp":"2026-09-18T19:55:00Z","ingested_at":"2026-09-18T19:55:00Z",
+         "bars":2,"invalid_bars":1 if symbol=="J" else 0}
+        for symbol in tier.symbols
+    ])
+    monkeypatch.setattr(pd.Timestamp,"now",classmethod(lambda cls,tz=None: pd.Timestamp("2026-09-18T20:00:00Z")))
+    result=evaluate_tier(tier,frame)
+    assert result["status"]=="PASS"
+    assert result["usable_coverage"]==0.9
+    assert result["invalid_sample"]==["J"]

@@ -115,11 +115,11 @@ def _assert_fresh(df: pd.DataFrame, interval: str, max_age_minutes: int, consume
     return ingested
 
 
-def _assert_quality(df: pd.DataFrame, consumer: str, min_bars_per_symbol: int = 1) -> None:
+def _quality_failures(df: pd.DataFrame, min_bars_per_symbol: int = 1) -> tuple[list[str], list[str]]:
     required=("ticker","event_timestamp","open","high","low","close","volume")
     missing=[c for c in required if c not in df.columns]
     if missing:
-        raise RuntimeError(f"WAREHOUSE_QUALITY_FAILED: {consumer} missing_columns={','.join(missing)}")
+        raise RuntimeError(f"WAREHOUSE_QUALITY_FAILED: missing_columns={','.join(missing)}")
     x=df.copy()
     for c in ("open","high","low","close","volume"):
         x[c]=pd.to_numeric(x[c],errors="coerce")
@@ -130,21 +130,27 @@ def _assert_quality(df: pd.DataFrame, consumer: str, min_bars_per_symbol: int = 
         | x["high"].lt(x[["open","close","low"]].max(axis=1))
         | x["low"].gt(x[["open","close","high"]].min(axis=1))
     )
-    if invalid.any():
-        symbols=x.loc[invalid,"ticker"].astype(str).drop_duplicates().tolist()
-        raise RuntimeError(
-            f"WAREHOUSE_QUALITY_FAILED: {consumer} invalid_rows={int(invalid.sum())} "
-            f"sample={','.join(symbols[:10])}"
-        )
+    invalid_symbols=x.loc[invalid,"ticker"].astype(str).drop_duplicates().tolist()
     duplicate=x.duplicated(["ticker","event_timestamp"],keep=False)
     if duplicate.any():
-        raise RuntimeError(f"WAREHOUSE_QUALITY_FAILED: {consumer} duplicate_logical_bars={int(duplicate.sum())}")
+        invalid_symbols=list(dict.fromkeys(invalid_symbols+x.loc[duplicate,"ticker"].astype(str).tolist()))
     counts=x.groupby("ticker").size()
     short=counts[counts < min_bars_per_symbol]
-    if not short.empty:
+    return invalid_symbols,short.index.astype(str).tolist()
+
+
+def _assert_quality(df: pd.DataFrame, consumer: str, min_bars_per_symbol: int = 1) -> None:
+    invalid_symbols,short_symbols=_quality_failures(df,min_bars_per_symbol)
+    if invalid_symbols:
+        invalid_rows=int(df["ticker"].astype(str).isin(invalid_symbols).sum())
         raise RuntimeError(
-            f"WAREHOUSE_HISTORY_INCOMPLETE: {consumer} symbols={len(short)} "
-            f"min_bars={min_bars_per_symbol} sample={','.join(short.index.astype(str)[:10])}"
+            f"WAREHOUSE_QUALITY_FAILED: {consumer} invalid_rows={invalid_rows} "
+            f"sample={','.join(invalid_symbols[:10])}"
+        )
+    if short_symbols:
+        raise RuntimeError(
+            f"WAREHOUSE_HISTORY_INCOMPLETE: {consumer} symbols={len(short_symbols)} "
+            f"min_bars={min_bars_per_symbol} sample={','.join(short_symbols[:10])}"
         )
 
 
@@ -201,7 +207,15 @@ def frames(tickers: Iterable[str], period: str = "1y", interval: str = "1d", max
     # Discovery scans may tolerate provider-unavailable symbols; targeted consumers default fail-closed.
     wanted = _tickers(tickers)
     raw = _pit(wanted, interval, "warehouse.frames")
-    _assert_quality(raw, "warehouse.frames")
+    if require_complete:
+        _assert_quality(raw, "warehouse.frames")
+    else:
+        invalid,short=_quality_failures(raw)
+        quarantined=set(invalid+short)
+        if quarantined:
+            raw=raw[~raw["ticker"].astype(str).isin(quarantined)].copy()
+        if raw.empty:
+            raise RuntimeError("WAREHOUSE_QUALITY_FAILED: warehouse.frames no usable symbols")
     df = _compat_frame(raw)
     if require_complete:
         _assert_coverage(df, wanted, "warehouse.frames")
