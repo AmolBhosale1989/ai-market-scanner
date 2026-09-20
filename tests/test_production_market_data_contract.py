@@ -53,6 +53,8 @@ def test_live_core_exposes_postgres_to_every_production_stage():
     live_job_header=workflow.split("    steps:",1)[0]
     assert "DATABASE_URL: ${{ secrets.DATABASE_URL }}" in live_job_header
     assert "PGSSLMODE: require" in live_job_header
+    for module in ("theme_live.py","sector_rotation.py","momentum_signals.py","order_flow_strategy.py"):
+        assert f"scanner/{module}" in workflow
 
 
 def test_smoke_calibration_fixture_represents_entered_wins_and_losses():
