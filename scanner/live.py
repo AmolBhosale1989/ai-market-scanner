@@ -250,9 +250,10 @@ def enrich_live_candidates(df: pd.DataFrame, limit: int = LIVE_ENRICH_LIMIT):
     for col,value in defaults.items(): out[col]=value
     eligible=out[out["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
     eligible["live_stage_priority"]=eligible["stage"].map({"CONFIRMED":4,"ARMED":3,"FORMING":2,"DISCOVER":1}).fillna(0)
-    if "market_hunt_score" not in eligible.columns:
-        raise RuntimeError("V3_INPUT_SCHEMA_FAILED: market_hunt_score")
-    eligible=eligible.sort_values(["live_stage_priority","market_hunt_score"],ascending=[False,False]).head(limit)
+    score_column="market_hunt_score" if "market_hunt_score" in eligible.columns else "final_score"
+    if score_column not in eligible.columns:
+        raise RuntimeError("V3_INPUT_SCHEMA_FAILED: market_hunt_score or final_score")
+    eligible=eligible.sort_values(["live_stage_priority",score_column],ascending=[False,False]).head(limit)
     for idx,row in eligible.iterrows():
         try:
             live=analyze_live_candidate(ticker=str(row["ticker"]),entry_trigger=float(row.get("entry_trigger",math.nan)),stage=str(row.get("stage","")),catalyst_score=float(pd.to_numeric(pd.Series([row.get("catalyst_score",0)]),errors="coerce").fillna(0).iloc[0]),rr_to_8pct=float(pd.to_numeric(pd.Series([row.get("effective_rr",row.get("rr_to_8pct",math.nan))]),errors="coerce").iloc[0]),runway_pct=float(pd.to_numeric(pd.Series([row.get("runway_to_next_resistance_pct",math.nan)]),errors="coerce").iloc[0]),negative_catalyst_risk=bool(row.get("negative_catalyst_risk",False)),entry_condition=str(row.get("entry_condition","BREAKOUT")),technical_score=float(pd.to_numeric(pd.Series([row.get("technical_score",0)]),errors="coerce").fillna(0).iloc[0]),formation_score=float(pd.to_numeric(pd.Series([row.get("formation_score",0)]),errors="coerce").fillna(0).iloc[0]),avg_dollar_volume=float(pd.to_numeric(pd.Series([row.get("avg_dollar_volume",0)]),errors="coerce").fillna(0).iloc[0]))

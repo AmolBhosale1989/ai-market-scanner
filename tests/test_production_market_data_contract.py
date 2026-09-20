@@ -29,3 +29,11 @@ def test_order_flow_validation_uses_warehouse(monkeypatch,tmp_path):
                    "signal_date_et":"2026-09-18"})
     updated=module._update_open(row,pd.Timestamp("2026-09-18T16:00:00Z").to_pydatetime())
     assert updated["status"]=="TARGET2_HIT"
+
+
+def test_live_enrichment_accepts_preconfirmation_v3_score(monkeypatch):
+    import scanner.live as module
+    monkeypatch.setattr(module,"analyze_live_candidate",lambda **kwargs: {"live_status":"MARKET CLOSED"})
+    frame=pd.DataFrame([{"ticker":"TEST","stage":"ARMED","final_score":81.0}])
+    result=module.enrich_live_candidates(frame,limit=1)
+    assert result.loc[0,"live_status"]=="MARKET CLOSED"

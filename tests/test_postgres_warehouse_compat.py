@@ -42,6 +42,14 @@ def test_stale_postgres_data_fails_closed(monkeypatch):
         warehouse.history("AAPL", interval="1d", max_age_minutes=20)
 
 
+def test_tolerant_frames_quarantines_stale_symbol(monkeypatch):
+    rows=_rows(("AAPL","STALE"))
+    rows.loc[rows["ticker"].eq("STALE"),"event_timestamp"]=pd.Timestamp.now(tz="UTC")-pd.Timedelta(days=5)
+    monkeypatch.setattr(warehouse,"point_in_time",lambda req: rows)
+    result=warehouse.frames(["AAPL","STALE"],interval="1d",max_age_minutes=20,require_complete=False)
+    assert set(result)=={"AAPL"}
+
+
 def test_update_cannot_recreate_csv_warehouse():
     with pytest.raises(RuntimeError, match="WAREHOUSE_UPDATE_REMOVED"):
         warehouse.update(["AAPL"])

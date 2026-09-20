@@ -22,7 +22,7 @@ from .config import (
     MASTER_UNIVERSE_MINIMUM,
     OUTPUT_DIR,
 )
-from .warehouse import _assert_fresh
+from .warehouse import _freshness_failures
 
 
 @dataclass(frozen=True)
@@ -84,30 +84,33 @@ def evaluate_tier(tier: CoverageTier, frame: pd.DataFrame) -> dict:
     coverage=len(have)/len(wanted) if wanted else 0.0
     short=[]
     invalid=[]
-    stale_error=""
+    stale=[]
+    stale_expectation=""
     if not frame.empty:
         bars=pd.to_numeric(frame.get("bars"),errors="coerce").fillna(0)
         short=frame.loc[bars<tier.minimum_bars,"ticker"].astype(str).tolist()
         bad=pd.to_numeric(frame.get("invalid_bars"),errors="coerce").fillna(0)
         invalid=frame.loc[bad>0,"ticker"].astype(str).tolist()
-        try:
-            _assert_fresh(frame,tier.timeframe,tier.max_age_minutes,f"warehouse_gate.{tier.name}")
-        except RuntimeError as exc:
-            stale_error=str(exc)
-    quarantined=set(short)|set(invalid)
+        stale,_,stale_expectation=_freshness_failures(
+            frame,tier.timeframe,tier.max_age_minutes,f"warehouse_gate.{tier.name}"
+        )
+    quarantined=set(short)|set(invalid)|set(stale)
     usable_symbols=len(have-quarantined)
     usable_coverage=usable_symbols/len(wanted) if wanted else 0.0
     strict=tier.minimum_coverage>=1.0
-    passed=(usable_coverage>=tier.minimum_coverage and not stale_error and (not strict or not quarantined))
+    passed=(usable_coverage>=tier.minimum_coverage and (not strict or not quarantined))
     return {
         "tier":tier.name,"timeframe":tier.timeframe,"expected_symbols":len(wanted),
         "covered_symbols":len(have),"coverage":round(coverage,6),
         "usable_symbols":usable_symbols,"usable_coverage":round(usable_coverage,6),
         "minimum_coverage":tier.minimum_coverage,"minimum_bars":tier.minimum_bars,
         "missing_count":len(missing),"short_history_count":len(short),
-        "invalid_symbol_count":len(invalid),"stale_error":stale_error,
+        "invalid_symbol_count":len(invalid),"stale_symbol_count":len(stale),
+        "stale_error":(
+            f"stale_symbols={len(stale)} sample={','.join(stale[:10])} {stale_expectation}" if stale else ""
+        ),
         "missing_sample":missing[:20],"short_history_sample":short[:20],
-        "invalid_sample":invalid[:20],"status":"PASS" if passed else "FAIL",
+        "invalid_sample":invalid[:20],"stale_sample":stale[:20],"status":"PASS" if passed else "FAIL",
     }
 
 
@@ -121,7 +124,7 @@ def build_tiers(master: Iterable[str], live: Iterable[str]) -> tuple[CoverageTie
     return (
         CoverageTier("MASTER_DAILY",master_symbols,"1d",MASTER_DAILY_MIN_COVERAGE,40,20),
         CoverageTier("CRITICAL_DAILY",tuple(CRITICAL_MARKET_SYMBOLS),"1d",CRITICAL_DAILY_MIN_COVERAGE,220,20),
-        CoverageTier("CRITICAL_INTRADAY",tuple(CRITICAL_MARKET_SYMBOLS),"5m",CRITICAL_INTRADAY_MIN_COVERAGE,150,10),
+        CoverageTier("CRITICAL_INTRADAY",tuple(CRITICAL_MARKET_SYMBOLS),"5m",CRITICAL_INTRADAY_MIN_COVERAGE,120,10),
         CoverageTier("LIVE_INTRADAY",live_symbols,"5m",LIVE_INTRADAY_MIN_COVERAGE,20,10),
     )
 
@@ -145,7 +148,7 @@ def run(master_file: Path, live_file: Path, as_of: datetime | None = None, selec
     }
     OUTPUT_DIR.mkdir(parents=True,exist_ok=True)
     (OUTPUT_DIR/"warehouse_snapshot.json").write_text(json.dumps(snapshot,indent=2,sort_keys=True))
-    pd.DataFrame(results).drop(columns=["missing_sample","short_history_sample","invalid_sample"]).to_csv(
+    pd.DataFrame(results).drop(columns=["missing_sample","short_history_sample","invalid_sample","stale_sample"]).to_csv(
         OUTPUT_DIR/"warehouse_coverage.csv",index=False
     )
     if snapshot["status"]!="PASS":

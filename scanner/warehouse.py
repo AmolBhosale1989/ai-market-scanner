@@ -57,8 +57,10 @@ def _assert_coverage(df: pd.DataFrame, tickers: Iterable[str], consumer: str) ->
         raise RuntimeError(f"WAREHOUSE_COVERAGE_INCOMPLETE: {consumer} missing={sample} count={len(missing)}")
 
 
-def _assert_fresh(df: pd.DataFrame, interval: str, max_age_minutes: int, consumer: str) -> pd.Timestamp:
-    """Session-aware NYSE freshness: tight intraday while open, last completed session otherwise."""
+def _freshness_failures(
+    df: pd.DataFrame, interval: str, max_age_minutes: int, consumer: str
+) -> tuple[list[str], pd.Timestamp, str]:
+    """Return stale symbols using session-aware NYSE rules."""
     ingested = pd.to_datetime(df["ingested_at"], utc=True, errors="coerce").max()
     event_times = pd.to_datetime(df["event_timestamp"], utc=True, errors="coerce")
     newest_bar = event_times.max()
@@ -90,11 +92,8 @@ def _assert_fresh(df: pd.DataFrame, interval: str, max_age_minutes: int, consume
         ages=(now-newest_by_symbol).dt.total_seconds()/60
         stale=ages[(ages < 0) | (ages > max_age_minutes)]
         if not stale.empty:
-            raise RuntimeError(
-                f"WAREHOUSE_STALE: {consumer} {interval} market_open stale_symbols={len(stale)} "
-                f"sample={','.join(stale.index.astype(str)[:10])} max={max_age_minutes}m"
-            )
-        return ingested
+            return stale.index.astype(str).tolist(), ingested, f"market_open max={max_age_minutes}m"
+        return [], ingested, f"market_open max={max_age_minutes}m"
 
     # Closed market/weekend and daily bars: newest event must belong to the latest completed NYSE session.
     completed = schedule[pd.to_datetime(schedule["market_close"], utc=True) < now]
@@ -107,10 +106,16 @@ def _assert_fresh(df: pd.DataFrame, interval: str, max_age_minutes: int, consume
     else:
         newest_dates=newest_by_symbol.dt.tz_convert("America/New_York").dt.date
     stale=newest_dates[newest_dates < latest_session]
-    if not stale.empty:
+    return stale.index.astype(str).tolist(), ingested, f"expected={latest_session}"
+
+
+def _assert_fresh(df: pd.DataFrame, interval: str, max_age_minutes: int, consumer: str) -> pd.Timestamp:
+    """Fail closed when any requested symbol violates the session freshness rule."""
+    stale, ingested, expectation = _freshness_failures(df, interval, max_age_minutes, consumer)
+    if stale:
         raise RuntimeError(
             f"WAREHOUSE_STALE: {consumer} {interval} stale_symbols={len(stale)} "
-            f"sample={','.join(stale.index.astype(str)[:10])} expected={latest_session}"
+            f"sample={','.join(stale[:10])} {expectation}"
         )
     return ingested
 
@@ -216,6 +221,11 @@ def frames(tickers: Iterable[str], period: str = "1y", interval: str = "1d", max
             raw=raw[~raw["ticker"].astype(str).isin(quarantined)].copy()
         if raw.empty:
             raise RuntimeError("WAREHOUSE_QUALITY_FAILED: warehouse.frames no usable symbols")
+        stale,_,_=_freshness_failures(raw,interval,max_age_minutes,"warehouse.frames")
+        if stale:
+            raw=raw[~raw["ticker"].astype(str).isin(stale)].copy()
+        if raw.empty:
+            raise RuntimeError("WAREHOUSE_STALE: warehouse.frames no fresh symbols")
     df = _compat_frame(raw)
     if require_complete:
         _assert_coverage(df, wanted, "warehouse.frames")

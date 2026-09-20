@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from scanner.warehouse import _assert_fresh, _assert_quality
-from scanner.warehouse_gate import CoverageTier, evaluate_tier
+from scanner.warehouse_gate import CoverageTier, build_tiers, evaluate_tier
 
 
 def _rows(now="2026-09-18T19:55:00Z"):
@@ -59,3 +59,23 @@ def test_tolerant_tier_quarantines_bad_symbol_when_coverage_still_passes(monkeyp
     assert result["status"]=="PASS"
     assert result["usable_coverage"]==0.9
     assert result["invalid_sample"]==["J"]
+
+
+def test_tolerant_tier_quarantines_stale_symbol_when_coverage_still_passes(monkeypatch):
+    tier=CoverageTier("LIVE",tuple("ABCDEFGHIJ"),"5m",0.90,1,10)
+    frame=pd.DataFrame([
+        {"ticker":symbol,"event_timestamp":"2026-09-17T19:55:00Z" if symbol=="J" else "2026-09-18T19:55:00Z",
+         "ingested_at":"2026-09-18T19:55:00Z","bars":2,"invalid_bars":0}
+        for symbol in tier.symbols
+    ])
+    monkeypatch.setattr(pd.Timestamp,"now",classmethod(lambda cls,tz=None: pd.Timestamp("2026-09-18T20:00:00Z")))
+    result=evaluate_tier(tier,frame)
+    assert result["status"]=="PASS"
+    assert result["usable_coverage"]==0.9
+    assert result["stale_sample"]==["J"]
+
+
+def test_critical_intraday_history_floor_accepts_thin_valid_etfs():
+    master=[f"M{i}" for i in range(5_341)]
+    critical=next(tier for tier in build_tiers(master,["AAPL"]) if tier.name=="CRITICAL_INTRADAY")
+    assert critical.minimum_bars==120
