@@ -1,0 +1,23 @@
+{
+  "as_of_session": "2026-09-18",
+  "automatic_promotion_allowed": false,
+  "broker_execution_enabled": false,
+  "closed_records": 0,
+  "generated_at_utc": "2026-09-20T17:26:45.749816+00:00",
+  "ledger_records": 60,
+  "market_data_source": "POSTGRESQL_DERIVED_SHADOW",
+  "minimum_closed_per_strategy": 30,
+  "production_applied": false,
+  "promotion_contract": "manual review only after >=30 closed, expectancy >=0.25R, profit factor >=1.20",
+  "shadow_only": true,
+  "signals_this_session": 60,
+  "status": "COLLECTING",
+  "strategies": [
+    "CROSS_SECTIONAL_MOMENTUM",
+    "VOLATILITY_CONTRACTION_BREAKOUT",
+    "TREND_PULLBACK",
+    "RESIDUAL_SECTOR_STRENGTH",
+    "REGIME_ENSEMBLE"
+  ],
+  "v3_production_primary": true
+}
