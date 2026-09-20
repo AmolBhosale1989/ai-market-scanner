@@ -54,25 +54,30 @@ def _catalogue_hash(symbols: Iterable[str]) -> str:
 
 
 def coverage_frame(tier: CoverageTier, as_of: datetime) -> pd.DataFrame:
-    """Aggregate point-in-time quality/freshness by symbol without loading bar history."""
-    sql="""WITH ranked AS (
-      SELECT i.canonical_symbol AS ticker,o.event_timestamp,o.ingested_at,
-             o.open,o.high,o.low,o.close,o.volume,o.warehouse_run_id,
-             row_number() OVER (
-               PARTITION BY o.instrument_id,o.data_type,o.timeframe,o.event_timestamp
-               ORDER BY o.ingested_at DESC,o.observation_id DESC
-             ) AS version_rank
-      FROM market_observation o JOIN instrument i ON i.instrument_id=o.instrument_id
-      WHERE i.canonical_symbol = ANY(%s) AND o.data_type='OHLCV' AND o.timeframe=%s
-        AND o.event_timestamp <= %s AND o.ingested_at <= %s
+    """Aggregate point-in-time quality per symbol with bounded per-instrument sorts."""
+    sql="""WITH wanted AS (
+      SELECT DISTINCT ON (i.canonical_symbol) i.instrument_id,i.canonical_symbol AS ticker
+      FROM instrument i WHERE i.canonical_symbol = ANY(%s)
+      ORDER BY i.canonical_symbol,i.instrument_id
     )
-    SELECT ticker,count(*) AS bars,max(event_timestamp) AS event_timestamp,
-           max(ingested_at) AS ingested_at,
-           count(*) FILTER (WHERE open IS NULL OR high IS NULL OR low IS NULL OR close IS NULL
-             OR open<=0 OR high<=0 OR low<=0 OR close<=0 OR volume IS NULL OR volume<0
-             OR high<GREATEST(open,close,low) OR low>LEAST(open,close,high)) AS invalid_bars,
-           (array_agg(warehouse_run_id ORDER BY event_timestamp DESC,ingested_at DESC))[1] AS warehouse_run_id
-    FROM ranked WHERE version_rank=1 GROUP BY ticker ORDER BY ticker"""
+    SELECT w.ticker,s.bars,s.event_timestamp,s.ingested_at,s.invalid_bars,s.warehouse_run_id
+    FROM wanted w CROSS JOIN LATERAL (
+      SELECT count(*) AS bars,max(v.event_timestamp) AS event_timestamp,
+             max(v.ingested_at) AS ingested_at,
+             count(*) FILTER (WHERE v.open IS NULL OR v.high IS NULL OR v.low IS NULL OR v.close IS NULL
+               OR v.open<=0 OR v.high<=0 OR v.low<=0 OR v.close<=0 OR v.volume IS NULL OR v.volume<0
+               OR v.high<GREATEST(v.open,v.close,v.low)
+               OR v.low>LEAST(v.open,v.close,v.high)) AS invalid_bars,
+             (array_agg(v.warehouse_run_id ORDER BY v.event_timestamp DESC,v.ingested_at DESC))[1] AS warehouse_run_id
+      FROM (
+        SELECT DISTINCT ON (o.event_timestamp) o.event_timestamp,o.ingested_at,
+               o.open,o.high,o.low,o.close,o.volume,o.warehouse_run_id
+        FROM market_observation o
+        WHERE o.instrument_id=w.instrument_id AND o.data_type='OHLCV' AND o.timeframe=%s
+          AND o.event_timestamp <= %s AND o.ingested_at <= %s
+        ORDER BY o.event_timestamp,o.ingested_at DESC,o.observation_id DESC
+      ) v
+    ) s WHERE s.bars>0 ORDER BY w.ticker"""
     with _connect() as conn:
         return pd.read_sql_query(sql,conn,params=(list(tier.symbols),tier.timeframe,as_of,as_of))
 

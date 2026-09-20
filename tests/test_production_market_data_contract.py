@@ -93,3 +93,14 @@ def test_sector_rotation_keeps_core_etfs_strict_and_constituents_tolerant(monkey
     assert not captured["strict"] & captured["tolerant"]
     assert captured["require_complete"] is False
     assert raw=={}
+
+
+def test_momentum_emits_valid_empty_artifacts_when_session_has_no_leaders(monkeypatch,tmp_path):
+    import scanner.momentum_signals as module
+    monkeypatch.setattr(module,"OUTPUT_DIR",tmp_path)
+    (tmp_path/"rotation_leaders.csv").write_text("\n")
+    result=module.run()
+    assert result.empty
+    assert "ticker" in pd.read_csv(tmp_path/"momentum_signals.csv").columns
+    health=pd.read_csv(tmp_path/"momentum_health.csv")
+    assert int(health.loc[0,"leaders_evaluated"])==0

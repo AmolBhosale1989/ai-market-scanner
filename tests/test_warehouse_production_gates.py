@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from scanner.warehouse import _assert_fresh, _assert_quality
-from scanner.warehouse_gate import CoverageTier, build_tiers, evaluate_tier
+from scanner.warehouse_gate import CoverageTier, build_tiers, coverage_frame, evaluate_tier
 
 
 def _rows(now="2026-09-18T19:55:00Z"):
@@ -79,3 +79,22 @@ def test_critical_intraday_history_floor_accepts_thin_valid_etfs():
     master=[f"M{i}" for i in range(5_341)]
     critical=next(tier for tier in build_tiers(master,["AAPL"]) if tier.name=="CRITICAL_INTRADAY")
     assert critical.minimum_bars==120
+
+
+def test_coverage_query_bounds_version_selection_per_instrument(monkeypatch):
+    import scanner.warehouse_gate as module
+    captured={}
+    class Connection:
+        def __enter__(self): return self
+        def __exit__(self,*args): return False
+    monkeypatch.setattr(module,"_connect",lambda:Connection())
+    def read(sql,conn,params):
+        captured["sql"]=sql
+        captured["params"]=params
+        return pd.DataFrame()
+    monkeypatch.setattr(pd,"read_sql_query",read)
+    tier=CoverageTier("MASTER",("A","B"),"1d",0.75,40,20)
+    coverage_frame(tier,datetime(2026,9,18,tzinfo=timezone.utc))
+    assert "CROSS JOIN LATERAL" in captured["sql"]
+    assert "row_number()" not in captured["sql"]
+    assert captured["params"][0]==["A","B"]
