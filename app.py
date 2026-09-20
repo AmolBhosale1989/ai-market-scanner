@@ -374,6 +374,9 @@ files = {
     "v4_live_snapshot":"v4_live_snapshot.csv",
     "v4_worker_cycles":"v4_worker_cycles.csv",
     "v4_options_microstructure":"v4_options_microstructure.csv",
+    "quant_shadow_signals":"quant_shadow_signals.csv",
+    "quant_shadow_ledger":"quant_shadow_ledger.csv",
+    "quant_shadow_performance":"quant_shadow_performance.csv",
 }
 json_files = [
     "production_publication_manifest.json",
@@ -381,7 +384,7 @@ json_files = [
     "v6_model.json", "v7_allocation_health.json", "v7_1_evidence_health.json",
     "v7_2_criteria_proposal.json", "v7_3_challenger_health.json",
     "social_engine_health.json", "v8_1_operational_health.json", "v8_2_evidence_scorecard.json",
-    "v9_readiness.json", "v9_1_pilot_health.json",
+    "v9_readiness.json", "v9_1_pilot_health.json", "quant_shadow_health.json",
 ]
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -408,6 +411,7 @@ v81_health, v81_health_source = load_json("v8_1_operational_health.json")
 v82_scorecard, v82_scorecard_source = load_json("v8_2_evidence_scorecard.json")
 v9_readiness, v9_readiness_source = load_json("v9_readiness.json")
 v91_pilot, v91_pilot_source = load_json("v9_1_pilot_health.json")
+quant_shadow_health, quant_shadow_health_source = load_json("quant_shadow_health.json")
 
 # Resilience fallback: if the full-scan publisher is delayed or GitHub Actions
 # is queued, derive legendary-agent lists from the latest published deep-scan
@@ -497,8 +501,8 @@ if not live_system_health.empty:
     health_cols=["module","status","age_minutes","max_age_minutes","last_update_ist","last_update_utc","market_open"]
     st.dataframe(health_display[columns(health_display,health_cols)], hide_index=True, use_container_width=True)
 
-overview, opportunities, legendary_tab, live_tab, event_tab, v4_tab, social_tab, validation, system = st.tabs(
-    ["Overview", "Opportunities", "Legendary setups", "Live monitor", "Events", "V4 Intelligence", "Social Studio", "Validation", "System"]
+overview, opportunities, legendary_tab, live_tab, event_tab, v4_tab, social_tab, validation, quant_tab, system = st.tabs(
+    ["Overview", "Opportunities", "Legendary setups", "Live monitor", "Events", "V4 Intelligence", "Social Studio", "Validation", "Quant Shadow", "System"]
 )
 
 with overview:
@@ -1373,6 +1377,69 @@ with validation:
         usable=calibration[calibration["calibration_status"].eq("USABLE")] if "calibration_status" in calibration else pd.DataFrame()
         if usable.empty: st.warning("Probabilities remain provisional until score buckets have enough closed trades.")
         st.dataframe(calibration,hide_index=True,use_container_width=True)
+
+with quant_tab:
+    st.subheader("Quant Strategy Shadow Lab")
+    st.markdown(
+        '<div class="section-note">PostgreSQL is the sole authoritative OHLCV source. '
+        'The tables below are immutable, derived publication artifacts for audit, forward validation and dashboard display only; '
+        'they are never provider or CSV market-data fallbacks. V3 remains production-primary and broker execution is disabled.</div>',
+        unsafe_allow_html=True,
+    )
+    quant_signals = data["quant_shadow_signals"]
+    quant_ledger = data["quant_shadow_ledger"]
+    quant_performance = data["quant_shadow_performance"]
+    status = str(quant_shadow_health.get("status", "WAITING"))
+    q1,q2,q3,q4,q5,q6 = st.columns(6)
+    q1.metric("Evidence state", status)
+    q2.metric("As-of session", str(quant_shadow_health.get("as_of_session", "—")))
+    q3.metric("Signals", int(number(quant_shadow_health.get("signals_this_session"))))
+    q4.metric("Ledger records", int(number(quant_shadow_health.get("ledger_records"))))
+    q5.metric("Closed", int(number(quant_shadow_health.get("closed_records"))))
+    q6.metric("Execution", "DISABLED" if not bool(quant_shadow_health.get("broker_execution_enabled", False)) else "ENABLED")
+
+    if bool(quant_shadow_health.get("production_applied", False)) or bool(quant_shadow_health.get("broker_execution_enabled", False)):
+        st.error("Shadow safety invariant failed: production application and broker execution must remain disabled.")
+    elif status == "REVIEW_REQUIRED":
+        st.warning("One or more strategies reached the evidence threshold. Manual review is required; promotion is never automatic.")
+    else:
+        st.info(
+            "Forward evidence is collecting. Promotion stays blocked until each strategy has at least "
+            f'{int(number(quant_shadow_health.get("minimum_closed_per_strategy"), 30))} closed trades, '
+            "expectancy of at least +0.25R and profit factor of at least 1.20."
+        )
+
+    st.subheader("Strategy scorecard")
+    if quant_performance.empty:
+        st.info("Quant performance evidence has not been published yet.")
+    else:
+        perf_cols=["strategy","signals","pending_or_open","closed","win_rate_pct","expectancy_r","profit_factor",
+                   "hit_5pct","hit_10pct","hit_15pct","manual_review_eligible","production_applied"]
+        st.dataframe(quant_performance[columns(quant_performance,perf_cols)], hide_index=True, use_container_width=True)
+
+    st.subheader("Current shadow signals")
+    if quant_signals.empty:
+        st.info("No shadow cohort is available for the latest completed session.")
+    else:
+        strategy_options = sorted(quant_signals["strategy"].dropna().astype(str).unique()) if "strategy" in quant_signals else []
+        selected_strategy = st.selectbox("Strategy", ["ALL", *strategy_options], key="quant_shadow_strategy")
+        visible_signals = quant_signals if selected_strategy == "ALL" else quant_signals[quant_signals["strategy"].astype(str).eq(selected_strategy)]
+        signal_cols=["as_of_session","strategy","ticker","strategy_score","reference_close","stop_price","target_price",
+                     "vote_count","market_regime_state","theme","theme_state","shadow_status","market_data_source"]
+        st.dataframe(visible_signals[columns(visible_signals,signal_cols)], hide_index=True, use_container_width=True)
+
+    st.subheader("Forward outcome ledger")
+    if quant_ledger.empty:
+        st.info("The immutable outcome ledger is waiting for its first cohort.")
+    else:
+        ledger_cols=["as_of_session","strategy","ticker","status","entry_session","entry_price","exit_session","exit_price",
+                     "exit_reason","sessions_held","return_1d_pct","return_3d_pct","return_5d_pct","return_7d_pct",
+                     "mfe_pct","mae_pct","hit_5pct","hit_10pct","hit_15pct","r_multiple"]
+        st.dataframe(quant_ledger[columns(quant_ledger,ledger_cols)], hide_index=True, use_container_width=True)
+    st.caption(
+        f'Health source: {quant_shadow_health_source} · signals: {sources["quant_shadow_signals"]} · '
+        f'performance: {sources["quant_shadow_performance"]} · ledger: {sources["quant_shadow_ledger"]}'
+    )
 
 with system:
     st.subheader("Pipeline and data health")
