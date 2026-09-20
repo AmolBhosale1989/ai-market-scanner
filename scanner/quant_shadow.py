@@ -301,9 +301,12 @@ def performance_table(ledger: Mapping[str, Mapping[str, Any]]) -> pd.DataFrame:
 
 
 def _read_ledger(path: Path) -> dict[str, dict[str, Any]]:
-    if not path.exists():
+    if not path.exists() or not path.stat().st_size:
         return {}
-    payload = json.loads(path.read_text())
+    text = path.read_text().strip()
+    if not text:
+        return {}
+    payload = json.loads(text)
     return dict(payload.get("records", payload))
 
 
