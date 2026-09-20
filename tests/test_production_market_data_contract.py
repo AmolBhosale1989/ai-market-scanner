@@ -48,6 +48,13 @@ def test_live_workflows_gate_the_same_frozen_universe_they_refresh():
         assert expected in path.read_text()
 
 
+def test_live_core_exposes_postgres_to_every_production_stage():
+    workflow=Path(".github/workflows/market-hunt-live-core.yml").read_text()
+    live_job_header=workflow.split("    steps:",1)[0]
+    assert "DATABASE_URL: ${{ secrets.DATABASE_URL }}" in live_job_header
+    assert "PGSSLMODE: require" in live_job_header
+
+
 def test_smoke_calibration_fixture_represents_entered_wins_and_losses():
     from scanner.performance import build_empirical_calibration, build_performance_reports
     rows=[]
