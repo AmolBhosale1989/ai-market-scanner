@@ -10,6 +10,7 @@ import numpy as np
 from .bitemporal_warehouse import _connect, finish_run, ingest_observations, latest_event_timestamps, start_run, verify_health
 from .config import INGESTION_CRITICAL_SYMBOLS, OUTPUT_DIR, RETRY_CHUNK_SIZE
 from .data import download_batch
+from .warehouse import _freshness_failures
 
 
 def _symbols() -> list[str]:
@@ -43,6 +44,23 @@ def _normalize(ticker: str, frame: pd.DataFrame, ingested_at: datetime) -> pd.Da
     out.insert(0, "ticker", str(ticker).upper())
     out["ingested_at"] = ingested_at
     return out
+
+
+def _stale_watermarks(watermarks: dict[str, datetime], interval: str) -> set[str]:
+    """Select only symbols whose newest stored event is behind the session freshness contract."""
+    if not watermarks:
+        return set()
+    now=datetime.now(timezone.utc)
+    frame=pd.DataFrame([
+        {"ticker":ticker,"event_timestamp":event_at,"ingested_at":now}
+        for ticker,event_at in watermarks.items()
+    ])
+    try:
+        stale,_,_=_freshness_failures(frame,interval,10,"warehouse_refresh")
+        return set(stale)
+    except RuntimeError:
+        # Calendar/timestamp uncertainty must fetch, never silently treat data as fresh.
+        return set(watermarks)
 
 
 def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootstrap: bool = False, benchmark_backfill: bool = True) -> dict:
@@ -81,6 +99,7 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
     )
     try:
         watermarks = {} if bootstrap else latest_event_timestamps(tickers, timeframe=interval)
+        stale_existing=set(watermarks) if bootstrap else _stale_watermarks(watermarks,interval)
         incremental_period = "5d" if interval == "1d" else "2d"
         # Match the provider retry chunk so each network response and database
         # transaction carries a useful batch without returning to unsafe
@@ -94,7 +113,7 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
             chunk=tickers[i:i+provider_chunk]
             # A newly listed/missed symbol must receive the requested history;
             # existing symbols use the bounded incremental window.
-            existing=[t for t in chunk if t in watermarks]
+            existing=[t for t in chunk if t in watermarks and t in stale_existing]
             missing=[t for t in chunk if t not in watermarks]
             batch={}
             if existing:
