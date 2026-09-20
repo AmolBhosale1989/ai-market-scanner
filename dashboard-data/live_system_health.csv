@@ -1,12 +1,12 @@
 module,file,last_update_utc,age_minutes,max_age_minutes,status,market_open,role,checked_at_et
-Warehouse Snapshot,warehouse_snapshot.json,,,20,MISSING,False,PRODUCTION,2026-09-19T22:55:51-04:00
-V3 Live Production,monitor_health.csv,2026-09-19T15:21:05+00:00,694.8,20,OK,False,PRODUCTION,2026-09-19T22:55:51-04:00
-Themes,theme_health.csv,2026-09-18T02:57:15+00:00,2878.6,20,OK,False,PRODUCTION,2026-09-19T22:55:51-04:00
-Sector Rotation,sector_rotation_health.csv,2026-09-18T23:53:03+00:00,1622.8,20,OK,False,PRODUCTION,2026-09-19T22:55:51-04:00
-Momentum,momentum_health.csv,2026-09-18T23:53:35+00:00,1622.3,20,OK,False,PRODUCTION,2026-09-19T22:55:51-04:00
-Order Flow,order_flow_strategy_health.csv,2026-09-18T23:53:35+00:00,1622.3,20,OK,False,PRODUCTION,2026-09-19T22:55:51-04:00
-V4 Live Intelligence,v4_worker_health.json,,,25,MISSING,False,SHADOW,2026-09-19T22:55:51-04:00
-Broad Breakout,broad_breakout_health.csv,2026-09-19T15:20:09+00:00,695.7,20,OK,False,SHADOW,2026-09-19T22:55:51-04:00
-High Conviction Alerts,high_conviction_alert_health.csv,2026-09-18T23:53:37+00:00,1622.2,20,OK,False,SHADOW,2026-09-19T22:55:51-04:00
-Premarket Discovery,premarket_health.csv,2026-09-17T22:58:25+00:00,3117.4,45,OK,False,SHADOW,2026-09-19T22:55:51-04:00
-Daily Pick Validation,daily_top_pick_summary.csv,2026-09-17T22:59:31.526797+00:00,3116.3,90,OK,False,SHADOW,2026-09-19T22:55:51-04:00
+Warehouse Snapshot,warehouse_snapshot.json,,,20,MISSING,False,PRODUCTION,2026-09-19T23:06:52-04:00
+V3 Live Production,monitor_health.csv,2026-09-19T15:21:05+00:00,705.8,20,OK,False,PRODUCTION,2026-09-19T23:06:52-04:00
+Themes,theme_health.csv,2026-09-18T02:57:15+00:00,2889.6,20,OK,False,PRODUCTION,2026-09-19T23:06:52-04:00
+Sector Rotation,sector_rotation_health.csv,2026-09-18T23:53:03+00:00,1633.8,20,OK,False,PRODUCTION,2026-09-19T23:06:52-04:00
+Momentum,momentum_health.csv,2026-09-18T23:53:35+00:00,1633.3,20,OK,False,PRODUCTION,2026-09-19T23:06:52-04:00
+Order Flow,order_flow_strategy_health.csv,2026-09-18T23:53:35+00:00,1633.3,20,OK,False,PRODUCTION,2026-09-19T23:06:52-04:00
+V4 Live Intelligence,v4_worker_health.json,,,25,MISSING,False,SHADOW,2026-09-19T23:06:52-04:00
+Broad Breakout,broad_breakout_health.csv,2026-09-19T15:20:09+00:00,706.7,20,OK,False,SHADOW,2026-09-19T23:06:52-04:00
+High Conviction Alerts,high_conviction_alert_health.csv,2026-09-18T23:53:37+00:00,1633.3,20,OK,False,SHADOW,2026-09-19T23:06:52-04:00
+Premarket Discovery,premarket_health.csv,2026-09-17T22:58:25+00:00,3128.5,45,OK,False,SHADOW,2026-09-19T23:06:52-04:00
+Daily Pick Validation,daily_top_pick_summary.csv,2026-09-17T22:59:31.526797+00:00,3127.4,90,OK,False,SHADOW,2026-09-19T23:06:52-04:00
