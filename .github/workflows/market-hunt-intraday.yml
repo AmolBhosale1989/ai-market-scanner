@@ -12,6 +12,7 @@ on:
       - 'scanner/live.py'
       - 'scanner/theme_live.py'
       - 'scanner/sector_rotation.py'
+      - 'scanner/session_contract.py'
       - 'scanner/premarket.py'
       - 'scanner/themes.py'
   workflow_dispatch:

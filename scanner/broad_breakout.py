@@ -8,6 +8,7 @@ import pandas as pd
 from .warehouse import frames as warehouse_frames, history as warehouse_history
 
 from .config import OUTPUT_DIR
+from .session_contract import latest_frame_session
 
 NY = ZoneInfo("America/New_York")
 
@@ -35,8 +36,8 @@ def _extract(raw: pd.DataFrame, ticker: str) -> pd.DataFrame:
 
 
 def _latest_session_date(frame: pd.DataFrame, fallback):
-    """Return the latest market-data session represented in the warehouse frame."""
-    return max(frame.index.date) if frame is not None and not frame.empty else fallback
+    """Backward-compatible wrapper for the shared production session contract."""
+    return latest_frame_session(frame, fallback)
 
 
 def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float:

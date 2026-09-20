@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from .config import OUTPUT_DIR
+from .session_contract import expected_market_data_session
 
 NY = ZoneInfo("America/New_York")
 
@@ -50,6 +51,51 @@ def _read_timestamp(path: Path, field: str):
         return None, "INVALID"
 
 
+def _last_csv(name: str) -> dict:
+    path=OUTPUT_DIR/name
+    if not path.exists() or not path.stat().st_size:
+        return {}
+    try:
+        frame=pd.read_csv(path)
+        return frame.iloc[-1].to_dict() if not frame.empty else {}
+    except Exception:
+        return {}
+
+
+def _int(value) -> int:
+    parsed=pd.to_numeric(value,errors="coerce")
+    return int(parsed) if pd.notna(parsed) else -1
+
+
+def _production_semantics(expected_session: str) -> dict[str, tuple[str,str]]:
+    theme=_last_csv("theme_health.csv")
+    sector=_last_csv("sector_rotation_health.csv")
+    momentum=_last_csv("momentum_health.csv")
+    order_flow=_last_csv("order_flow_strategy_health.csv")
+    results={}
+
+    def session_ok(row):
+        return str(row.get("session_date","")).strip()==expected_session
+
+    results["theme_health.csv"]=(
+        ("OK","") if session_ok(theme) and _int(theme.get("themes_ranked"))>0
+        else ("INVALID",f"expected_session={expected_session} themes_ranked={_int(theme.get('themes_ranked'))}"))
+    results["sector_rotation_health.csv"]=(
+        ("OK","") if session_ok(sector) and _int(sector.get("themes_scanned"))>0 and _int(sector.get("stocks_scanned"))>0
+        else ("INVALID",f"expected_session={expected_session} themes={_int(sector.get('themes_scanned'))} stocks={_int(sector.get('stocks_scanned'))}"))
+    momentum_inputs=_int(momentum.get("candidate_inputs"))
+    momentum_evaluated=_int(momentum.get("leaders_evaluated"))
+    results["momentum_health.csv"]=(
+        ("OK","") if session_ok(momentum) and momentum_inputs>=0 and momentum_evaluated==momentum_inputs
+        else ("INVALID",f"expected_session={expected_session} inputs={momentum_inputs} evaluated={momentum_evaluated}"))
+    flow_expected=_int(order_flow.get("expected_inputs"))
+    flow_evaluated=_int(order_flow.get("evaluated"))
+    results["order_flow_strategy_health.csv"]=(
+        ("OK","") if session_ok(order_flow) and flow_expected==momentum_inputs and flow_evaluated==flow_expected
+        else ("INVALID",f"expected_session={expected_session} expected={flow_expected} evaluated={flow_evaluated}"))
+    return results
+
+
 def run() -> pd.DataFrame:
     now_et=datetime.now(NY)
     now_utc=pd.Timestamp.now(tz="UTC")
@@ -59,10 +105,15 @@ def run() -> pd.DataFrame:
     market_open=bool(open_et <= now_et_ts <= close_et and now_et.weekday()<5)
     premarket_start=pd.Timestamp(now_et.date(), tz=NY)+pd.Timedelta(hours=4)
     premarket_open=bool(premarket_start <= now_et_ts < open_et and now_et.weekday()<5)
+    expected_session=str(expected_market_data_session(now_utc))
+    semantics=_production_semantics(expected_session)
 
     rows=[]
     for module, filename, field, max_age, window in PRODUCTION_CHECKS + SHADOW_CHECKS:
         ts,status=_read_timestamp(OUTPUT_DIR/filename, field)
+        semantic_status,semantic_detail=semantics.get(filename,("OK",""))
+        if status=="OK" and semantic_status!="OK":
+            status=semantic_status
         age_min=None
         if ts is not None:
             age_min=max(0.0,(now_utc-ts).total_seconds()/60)
@@ -85,6 +136,8 @@ def run() -> pd.DataFrame:
             "market_open":market_open,
             "role":"PRODUCTION" if (module, filename, field, max_age, window) in PRODUCTION_CHECKS else "SHADOW",
             "checked_at_et":now_et.isoformat(timespec="seconds"),
+            "expected_session":expected_session,
+            "semantic_detail":semantic_detail,
         })
 
     out=pd.DataFrame(rows)

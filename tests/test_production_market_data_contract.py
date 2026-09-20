@@ -104,3 +104,52 @@ def test_momentum_emits_valid_empty_artifacts_when_session_has_no_leaders(monkey
     assert "ticker" in pd.read_csv(tmp_path/"momentum_signals.csv").columns
     health=pd.read_csv(tmp_path/"momentum_health.csv")
     assert int(health.loc[0,"leaders_evaluated"])==0
+    assert int(health.loc[0,"candidate_inputs"])==0
+
+
+def test_theme_and_rotation_stats_use_explicit_latest_session():
+    from scanner import sector_rotation, theme_live
+    index=pd.DatetimeIndex([
+        "2026-09-17T15:55:00-04:00",
+        "2026-09-18T15:55:00-04:00",
+    ])
+    frame=pd.DataFrame({
+        "Open":[10.0,10.5],"High":[10.5,11.2],"Low":[9.9,10.4],
+        "Close":[10.0,11.0],"Volume":[100.0,200.0],
+    },index=index)
+    move,bar=theme_live._stats(frame,pd.Timestamp("2026-09-18").date())
+    rotation=sector_rotation._stats(frame,"TEST",pd.Timestamp("2026-09-18").date())
+    assert round(move,2)==10.0
+    assert bar.startswith("2026-09-18T15:55:00")
+    assert rotation["day_change_pct"]==10.0
+
+
+def test_momentum_evaluates_latest_warehouse_session_on_weekend(monkeypatch,tmp_path):
+    from types import SimpleNamespace
+    import scanner.momentum_signals as module
+
+    monkeypatch.setattr(module,"OUTPUT_DIR",tmp_path)
+    pd.DataFrame([{
+        "ticker":"TEST","source":"BROAD_BREAKOUT","theme":"BROAD",
+        "broad_breakout_score":80,"theme_rotation_score":0,"rotation_leader_score":80,
+        "rel_vs_spy_pct":2.0,"day_change_pct":3.0,"move_30m_pct":0.5,
+        "intraday_volume":3_000_000,
+    }]).to_csv(tmp_path/"broad_breakout_discovery.csv",index=False)
+    pd.DataFrame(columns=["ticker","rotation_leader"]).to_csv(tmp_path/"rotation_leaders.csv",index=False)
+    rows=[]
+    for session,base in (("2026-09-16",9.5),("2026-09-17",9.8),("2026-09-18",10.0)):
+        for n,stamp in enumerate(pd.date_range(f"{session} 13:30:00Z",periods=6,freq="5min")):
+            rows.append({
+                "ticker":"TEST","bar_timestamp":stamp,"Open":base+n*.02,
+                "High":base+n*.02+.1,"Low":base+n*.02-.1,"Close":base+n*.02+.05,
+                "Volume":200_000+n*10_000,
+            })
+    monkeypatch.setattr(module,"provide",lambda req: SimpleNamespace(frame=pd.DataFrame(rows)))
+
+    out=module.run(limit=1)
+    health=pd.read_csv(tmp_path/"momentum_health.csv")
+    assert len(out)==1
+    assert out.iloc[0]["last_bar_et"].startswith("2026-09-18")
+    assert health.loc[0,"session_date"]=="2026-09-18"
+    assert int(health.loc[0,"candidate_inputs"])==1
+    assert int(health.loc[0,"leaders_evaluated"])==1

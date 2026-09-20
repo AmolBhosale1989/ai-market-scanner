@@ -15,6 +15,7 @@ on:
       - 'scanner/v31_challenger.py'
       - 'scanner/sector_rotation.py'
       - 'scanner/theme_live.py'
+      - 'scanner/session_contract.py'
       - 'scanner/warehouse.py'
       - 'scanner/bitemporal_warehouse.py'
       - 'scanner/warehouse_migrate.py'

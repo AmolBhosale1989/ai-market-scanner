@@ -8,6 +8,7 @@ import pandas as pd
 from .warehouse import DataRequirement, provide
 
 from .config import OUTPUT_DIR
+from .session_contract import latest_frame_session
 from .themes import THEMES, rank_themes
 
 NY = ZoneInfo("America/New_York")
@@ -34,12 +35,11 @@ def _extract(raw: pd.DataFrame, ticker: str) -> pd.DataFrame:
     return out.dropna(subset=["Close"]).sort_index()
 
 
-def _stats(d: pd.DataFrame):
+def _stats(d: pd.DataFrame, session_date):
     if d.empty:
         return math.nan,""
-    now=datetime.now(NY)
-    today=d[d.index.date==now.date()]
-    prior_dates=sorted({x for x in d.index.date if x<now.date()},reverse=True)
+    today=d[d.index.date==session_date]
+    prior_dates=sorted({x for x in d.index.date if x<session_date},reverse=True)
     if today.empty or not prior_dates:
         return math.nan,""
     prior=d[d.index.date==prior_dates[0]].between_time("09:30","16:00")
@@ -63,11 +63,13 @@ def run():
         x=g.copy(); x["bar_timestamp"]=pd.to_datetime(x["bar_timestamp"],utc=True,errors="coerce")
         raw[str(ticker)]=x.dropna(subset=["bar_timestamp"]).set_index("bar_timestamp")
 
-    spy_move,spy_bar=_stats(_extract(raw.get("SPY",pd.DataFrame()),"SPY"))
+    spy_frame=_extract(raw.get("SPY",pd.DataFrame()),"SPY")
+    session_date=latest_frame_session(spy_frame)
+    spy_move,spy_bar=_stats(spy_frame,session_date)
     out=base.copy()
     moves=[]; rels=[]; bars=[]
     for _,row in out.iterrows():
-        move,bar=_stats(_extract(raw.get(str(row["etf"]),pd.DataFrame()),str(row["etf"])))
+        move,bar=_stats(_extract(raw.get(str(row["etf"]),pd.DataFrame()),str(row["etf"])),session_date)
         moves.append(round(move,2) if math.isfinite(move) else math.nan)
         rel=move-spy_move if math.isfinite(move) and math.isfinite(spy_move) else math.nan
         rels.append(round(rel,2) if math.isfinite(rel) else math.nan)
@@ -89,6 +91,7 @@ def run():
     out.to_csv(OUTPUT_DIR/"trending_themes.csv",index=False)
     pd.DataFrame([{
         "updated_at_et":datetime.now(NY).isoformat(timespec="seconds"),
+        "session_date":str(session_date),
         "spy_live_change_pct":round(spy_move,2) if math.isfinite(spy_move) else math.nan,
         "spy_live_bar_at_et":spy_bar,
         "themes_ranked":len(out),

@@ -9,6 +9,7 @@ from .warehouse import DataRequirement, provide
 
 from .config import OUTPUT_DIR
 from .order_flow import bar_order_flow_proxy
+from .session_contract import latest_frame_session
 
 NY = ZoneInfo("America/New_York")
 
@@ -31,18 +32,30 @@ def _read_optional(path) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def _write_outputs(out: pd.DataFrame, now: datetime) -> pd.DataFrame:
+def _write_outputs(out: pd.DataFrame, now: datetime, session_date: str, candidate_inputs: int) -> pd.DataFrame:
     if out.empty:
         out=pd.DataFrame(columns=MOMENTUM_COLUMNS)
     out.to_csv(OUTPUT_DIR/"momentum_signals.csv",index=False)
     pd.DataFrame([{
         "updated_at_et":now.isoformat(timespec="seconds"),
+        "session_date":session_date,
+        "candidate_inputs":candidate_inputs,
         "leaders_evaluated":len(out),
         "momentum_buys":int(out["signal"].eq("MOMENTUM BUY").sum()),
         "extended_waits":int(out["signal"].eq("EXTENDED / WAIT RETEST").sum()),
         "mode":"FAST_ROTATION_MOMENTUM",
     }]).to_csv(OUTPUT_DIR/"momentum_health.csv",index=False)
     return out
+
+
+def _upstream_session_date() -> str:
+    for name in ("broad_breakout_health.csv","sector_rotation_health.csv"):
+        health=_read_optional(OUTPUT_DIR/name)
+        if not health.empty and "session_date" in health.columns:
+            value=str(health.iloc[-1].get("session_date","")).strip()
+            if value and value.lower()!="nan":
+                return value
+    return ""
 
 
 def _extract(raw: pd.DataFrame, ticker: str) -> pd.DataFrame:
@@ -114,7 +127,7 @@ def run(limit: int = 40):
 
     leaders=pd.concat([themed,broad],ignore_index=True,sort=False) if (not themed.empty or not broad.empty) else pd.DataFrame()
     if leaders.empty:
-        return _write_outputs(pd.DataFrame(),now)
+        return _write_outputs(pd.DataFrame(),now,_upstream_session_date(),0)
 
     if "theme_rotation_score" not in leaders.columns:
         leaders["theme_rotation_score"]=0.0
@@ -127,6 +140,7 @@ def run(limit: int = 40):
     leaders["broad_breakout_score"]=pd.to_numeric(leaders["broad_breakout_score"],errors="coerce").fillna(0)
     leaders["candidate_priority"]=leaders[["theme_rotation_score","rotation_leader_score","broad_breakout_score"]].max(axis=1)
     leaders=leaders.sort_values(["candidate_priority","rel_vs_spy_pct"],ascending=[False,False]).drop_duplicates("ticker").head(limit)
+    candidate_inputs=len(leaders)
     tickers=leaders["ticker"].astype(str).tolist()
     view=provide(DataRequirement(consumer="momentum_signals",tickers=tuple(tickers),interval="5m",period="5d",max_age_minutes=10,view_name="momentum_signals_5m"))
     raw={}
@@ -134,13 +148,19 @@ def run(limit: int = 40):
         x=g.copy(); x["bar_timestamp"]=pd.to_datetime(x["bar_timestamp"],utc=True,errors="coerce")
         raw[str(ticker)]=x.dropna(subset=["bar_timestamp"]).set_index("bar_timestamp")
 
+    available=[_extract(frame,ticker) for ticker,frame in raw.items()]
+    available=[frame for frame in available if not frame.empty]
+    if not available:
+        raise RuntimeError("MOMENTUM_SESSION_UNAVAILABLE: warehouse returned no usable frames")
+    session_date=max(latest_frame_session(frame) for frame in available)
+
     rows=[]
     for _,meta in leaders.iterrows():
         ticker=str(meta["ticker"])
         d=_extract(raw.get(ticker,pd.DataFrame()),ticker)
         if d.empty:
             continue
-        today=d[d.index.date==now.date()].between_time("09:30","16:00")
+        today=d[d.index.date==session_date].between_time("09:30","16:00")
         if today.empty:
             continue
 
@@ -149,7 +169,7 @@ def run(limit: int = 40):
         orb=today.between_time("09:30","09:59")
         or_high=float(orb["High"].max()) if not orb.empty else math.nan
         recent_low=float(today["Low"].tail(3).min()) if len(today)>=3 else float(today["Low"].min())
-        rvol=_same_time_rvol(d,today,now.date())
+        rvol=_same_time_rvol(d,today,session_date)
         order_flow=bar_order_flow_proxy(today)
         day=float(meta.get("day_change_pct",math.nan))
         rel=float(meta.get("rel_vs_spy_pct",math.nan))
@@ -221,7 +241,7 @@ def run(limit: int = 40):
         rank={"MOMENTUM BUY":0,"WATCH / NEAR ENTRY":1,"EXTENDED / WAIT RETEST":2,"NO SIGNAL":3}
         out["_rank"]=out["signal"].map(rank).fillna(9)
         out=out.sort_values(["_rank","theme_rotation_score","rel_vs_spy_pct"],ascending=[True,False,False]).drop(columns=["_rank"])
-    return _write_outputs(out,now)
+    return _write_outputs(out,now,str(session_date),candidate_inputs)
 
 
 if __name__=="__main__":

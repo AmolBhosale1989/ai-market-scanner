@@ -23,12 +23,21 @@ def _read(name: str) -> pd.DataFrame:
 
 def run() -> pd.DataFrame:
     src = _read("momentum_signals.csv")
+    momentum_health = _read("momentum_health.csv")
+    session_date = ""
+    expected_inputs = 0
+    if not momentum_health.empty:
+        session_date = str(momentum_health.iloc[-1].get("session_date", "")).strip()
+        parsed_inputs = pd.to_numeric(momentum_health.iloc[-1].get("leaders_evaluated", 0), errors="coerce")
+        expected_inputs = int(parsed_inputs) if pd.notna(parsed_inputs) else 0
     now = datetime.now(NY)
     if src.empty:
         pd.DataFrame().to_csv(OUTPUT_DIR / "order_flow_strategy.csv", index=False)
         pd.DataFrame([{
             "updated_at_et": now.isoformat(timespec="seconds"),
             "updated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "session_date": session_date,
+            "expected_inputs": expected_inputs,
             "evaluated": 0,
             "buy_signals": 0,
             "watch_signals": 0,
@@ -168,7 +177,9 @@ def run() -> pd.DataFrame:
     out.to_csv(OUTPUT_DIR / "order_flow_strategy.csv", index=False)
     pd.DataFrame([{
         "updated_at_et": now.isoformat(timespec="seconds"),
-            "updated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "updated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "session_date": session_date,
+        "expected_inputs": expected_inputs,
         "evaluated": len(out),
         "buy_signals": int(out["order_flow_strategy_signal"].eq("ORDER FLOW BUY").sum()),
         "watch_signals": int(out["order_flow_strategy_signal"].eq("WATCH / ACCUMULATION").sum()),
