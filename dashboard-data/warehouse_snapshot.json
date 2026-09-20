@@ -1,9 +1,9 @@
 {
-  "as_of_utc": "2026-09-20T07:46:15.620218+00:00",
+  "as_of_utc": "2026-09-20T08:07:54.769236+00:00",
   "live_symbols": 420,
   "master_catalogue_hash": "b3fe97ab73f34b2d0d021be23fd71f4de8db4d67f99f1ebbebc86e2707de9ceb",
   "master_symbols": 5341,
-  "production_run_id": "a5792674-1e95-4ec8-88d0-de64eea8a681",
+  "production_run_id": "74ae9822-aaae-40ee-b3ec-d1dfe4c78a2a",
   "schema_version": 1,
   "status": "PASS",
   "tiers": [

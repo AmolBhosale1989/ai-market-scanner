@@ -3,7 +3,7 @@
     {
       "bytes": 2061,
       "name": "warehouse_snapshot.json",
-      "sha256": "8bb59971bcfcfbea9b13c09722f926ba2b18ec3715ee1c5d4f0ef4ede8bad9c8"
+      "sha256": "6d88a9103993f3996ea003c7dc13d249bb29c54f6695bb463dd243574ff72ba4"
     },
     {
       "bytes": 439,
@@ -18,37 +18,37 @@
     {
       "bytes": 5677,
       "name": "v3_live_discovery.csv",
-      "sha256": "99e74f3f7dc81aa6a3afa3ab9e2fc1547b0f2e54682c9636a7de8dbf2cba9ebb"
+      "sha256": "ad963a9d1e1493a64ce1b7578c6b1027f4518f6577c4cd3ee0380751739b14b7"
     },
     {
       "bytes": 19960,
       "name": "v3_live_snapshot.csv",
-      "sha256": "a68c683096fa818e14acdb42cfd9393f0fe8b5e09d4ab1dc3f07e127c5ab3438"
+      "sha256": "c8ee2919159bff2cf1d768da97441303f0cff959574ba986f7bc53af8f97f793"
     },
     {
       "bytes": 21652,
       "name": "intraday_live.csv",
-      "sha256": "97f2176a984791f314d64bb5aa06d2b2c1efc5a3cf8f724feffa46eff1c5068f"
+      "sha256": "4ffe21dad9340805cfb03e2110aff0809658db5d55db6ee589d47f52278eeedf"
     },
     {
       "bytes": 171,
       "name": "monitor_health.csv",
-      "sha256": "593b5c13fdc65681c50c5ad8b04bde8918907b3534453180b680a3d9aeaf8253"
+      "sha256": "aba5445faee19310028ff610b3c3ac9f313d4c2ca8ededa4293ae20516943fec"
     },
     {
       "bytes": 148,
       "name": "theme_health.csv",
-      "sha256": "cba23ff58f0bf034a3382593b601423f3e437e6842c2427f2655b62df3e5c473"
+      "sha256": "c3ccc8764666c73538ef679049e2706cab161462b4ea8805d600dceb7a8bae5c"
     },
     {
       "bytes": 143,
       "name": "sector_rotation_health.csv",
-      "sha256": "63e0573b3dd8307c3383f5cc4122544e9fffcadb787429e63380b529d100a736"
+      "sha256": "04f42689bc5795bb135458918756ed022f97c87fe56b27b79219c18a49ec95b4"
     },
     {
       "bytes": 121,
       "name": "momentum_health.csv",
-      "sha256": "f21d77dadf422e12a8cec8e83adb551912c52011b406b7918afbf1485f56f5d5"
+      "sha256": "8822ec25c3f669e74826fea5d16849fc4f0793229111be88b012c9ac89f38795"
     },
     {
       "bytes": 1,
@@ -58,25 +58,25 @@
     {
       "bytes": 170,
       "name": "order_flow_strategy_health.csv",
-      "sha256": "5f85d30b24c4a205cc505027427fbd6e30f143f3af3098d07643a4716c09edc1"
+      "sha256": "7a6a63915c397b7ed7298eb24d0c8bbd0d5db9758bfd3fa0649825db2f0bb6e3"
     },
     {
       "bytes": 209,
       "name": "live_system_health_summary.csv",
-      "sha256": "223612f598d0a1684a55291efb6256b92154e0236a3225bb9205cfcc53b11bf3"
+      "sha256": "4c13cf5c3fa8908e5b48f0e199478ca6e19cbd0d9412d3401abaec6cf324e3a1"
     },
     {
       "bytes": 87542,
       "name": "product_feed.json",
-      "sha256": "2ab493d034a8778bf7ceeec7c02ec455f7fa94a697f8a6cc158a0ab20b04459d"
+      "sha256": "7d55920de456152c92b337737ee646af73bd4b50d91e07ff8d3e33324c5dcd18"
     }
   ],
-  "finalized_at_utc": "2026-09-20T07:50:38.439840+00:00",
+  "finalized_at_utc": "2026-09-20T08:13:06.539637+00:00",
   "mode": "live",
-  "production_run_id": "a5792674-1e95-4ec8-88d0-de64eea8a681",
+  "production_run_id": "74ae9822-aaae-40ee-b3ec-d1dfe4c78a2a",
   "schema_version": 1,
-  "source_commit": "caf0faf49d1f4f05f3338580c9b0a34600b37c01",
+  "source_commit": "ad6663a63663a5cf24b52fe1107089382d9dda21",
   "status": "PASS",
-  "warehouse_as_of_utc": "2026-09-20T07:46:15.620218+00:00",
-  "workflow_run_id": "35497454907"
+  "warehouse_as_of_utc": "2026-09-20T08:07:54.769236+00:00",
+  "workflow_run_id": "35498618533"
 }
