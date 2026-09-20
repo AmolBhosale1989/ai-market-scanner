@@ -46,6 +46,12 @@ def test_same_session_cohort_is_immutable():
     assert rerun == original
 
 
+def test_empty_restored_ledger_starts_clean(tmp_path):
+    ledger_path = tmp_path / "quant_shadow_ledger.json"
+    ledger_path.write_text("")
+    assert quant_shadow._read_ledger(ledger_path) == {}
+
+
 def test_forward_resolution_enters_next_session_and_stop_wins_collision():
     signals = quant_shadow.build_signals(pd.DataFrame([candidate("AAA")]), "2026-09-18", top_k=1)
     # Keep one model record so the outcome is unambiguous.
