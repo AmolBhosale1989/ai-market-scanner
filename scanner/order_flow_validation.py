@@ -7,9 +7,8 @@ import math
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
-
 from .config import OUTPUT_DIR
+from .warehouse import history as warehouse_history
 
 ET = ZoneInfo("America/New_York")
 LEDGER = OUTPUT_DIR / "order_flow_strategy_journal.csv"
@@ -56,18 +55,12 @@ def _update_open(row: pd.Series, now_et: datetime) -> pd.Series:
         return row
 
     try:
-        hist = yf.download(
-            ticker, period="10d", interval="5m", auto_adjust=False,
-            progress=False, prepost=True, threads=False
-        )
+        hist = warehouse_history(ticker, period="10d", interval="5m", max_age_minutes=10)
     except Exception:
         hist = pd.DataFrame()
 
     if hist is None or hist.empty:
         return row
-
-    if isinstance(hist.columns, pd.MultiIndex):
-        hist.columns = hist.columns.get_level_values(0)
 
     idx = pd.DatetimeIndex(hist.index)
     if idx.tz is None:
