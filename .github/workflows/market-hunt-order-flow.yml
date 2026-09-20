@@ -1,10 +1,10 @@
 name: Market Hunt Order Flow Live
 
 on:
-  schedule:
-    - cron: '3,13,23,33,43,53 13-21 * * 1-5'
   workflow_dispatch:
   push:
+    branches-ignore:
+      - '**'
     paths:
       - '.github/workflows/market-hunt-order-flow.yml'
       - 'scanner/order_flow.py'
@@ -33,8 +33,8 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       PGSSLMODE: require
     concurrency:
-      group: market-hunt-order-flow-live
-      cancel-in-progress: true
+      group: market-hunt-production-live
+      cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,10 +53,11 @@ jobs:
           set -euo pipefail
           mkdir -p outputs
           git fetch origin scan-data:refs/remotes/origin/scan-data
-          for f in tradable_universe.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv high_conviction_alert_log.csv high_conviction_alert_health.csv intraday_live.csv v31_challenger_log.csv v31_challenger_summary.csv v31_challenger_decisions.csv; do
+          for f in master_universe.csv tradable_universe.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv high_conviction_alert_log.csv high_conviction_alert_health.csv intraday_live.csv v31_challenger_log.csv v31_challenger_summary.csv v31_challenger_decisions.csv; do
             git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
           done
           test -s outputs/tradable_universe.csv
+          test -s outputs/master_universe.csv
           # Authoritative live inputs are PostgreSQL only. Persisted candidate
           # snapshots are deliberately not restored into this workflow.
           test ! -e outputs/latest_scan.csv
@@ -74,18 +75,19 @@ jobs:
           set -euo pipefail
           # Order flow owns its ingestion prerequisite instead of racing the
           # separately scheduled Live Core workflow.
-          timeout 300s python -m scanner.warehouse_refresh --period 5d --interval 1d --limit 420
-          timeout 180s python -m scanner.warehouse_refresh --period 2d --interval 5m --limit 420
+          python -m scanner.universe_plan --limit 420
+          timeout 300s python -m scanner.warehouse_refresh --symbols-file outputs/live_universe.csv --period 1y --interval 1d
+          timeout 180s python -m scanner.warehouse_refresh --symbols-file outputs/live_universe.csv --period 5d --interval 5m
 
       - name: Revalidate warehouse after ingestion
-        run: python -m scanner.bitemporal_warehouse --verify-health --as-of now
+        run: |
+          python -m scanner.bitemporal_warehouse --verify-health --as-of now
+          python -m scanner.warehouse_gate --tier CRITICAL_DAILY --tier CRITICAL_INTRADAY --tier LIVE_INTRADAY
 
       - name: Refresh live themes
-        continue-on-error: true
         run: timeout 150s python -m scanner.theme_live
 
       - name: Refresh sector rotation
-        continue-on-error: true
         run: timeout 150s python -m scanner.sector_rotation
 
       - name: Scan broad liquid breakouts
@@ -124,7 +126,6 @@ jobs:
           PY
 
       - name: Update order flow validation
-        continue-on-error: true
         run: timeout 150s python -m scanner.order_flow_validation
 
       - name: Run V3.1 shadow challenger
@@ -140,7 +141,6 @@ jobs:
 
       - name: Refresh unified live-system health
         if: success()
-        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -150,6 +150,9 @@ jobs:
             fi
           done
           python -m scanner.system_health
+
+      - name: Finalize order-flow telemetry
+        run: python -m scanner.production_telemetry --finalize order-flow
 
       - name: Publish order flow data
         if: success()
@@ -164,7 +167,7 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-order-flow scan-data
           mkdir -p /tmp/market-hunt-order-flow/dashboard-data
-          for f in trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv broad_breakout_discovery.csv broad_breakout_health.csv momentum_signals.csv momentum_health.csv order_flow_strategy.csv order_flow_strategy_health.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv v31_challenger_log.csv v31_challenger_summary.csv v31_challenger_decisions.csv high_conviction_alert_log.csv high_conviction_alert_health.csv live_system_health.csv live_system_health_summary.csv; do
+          for f in production_publication_manifest.json warehouse_snapshot.json warehouse_coverage.csv live_universe.csv trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv broad_breakout_discovery.csv broad_breakout_health.csv momentum_signals.csv momentum_health.csv order_flow_strategy.csv order_flow_strategy_health.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv v31_challenger_log.csv v31_challenger_summary.csv v31_challenger_decisions.csv high_conviction_alert_log.csv high_conviction_alert_health.csv live_system_health.csv live_system_health_summary.csv; do
             if [ -s "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-order-flow/dashboard-data/$f"
             fi
@@ -177,6 +180,13 @@ jobs:
             git pull --rebase origin scan-data
             git push origin scan-data
           fi
+
+      - name: Record and alert order-flow failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m scanner.production_telemetry --failure-stage order-flow
 
       - name: Upload order flow outputs
         if: always()

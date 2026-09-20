@@ -60,9 +60,9 @@ def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float
 
 
 def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.DataFrame:
-    src=OUTPUT_DIR/"tradable_universe.csv"
+    src=OUTPUT_DIR/"live_universe.csv"
     if not src.exists():
-        return pd.DataFrame()
+        raise RuntimeError("BROAD_BREAKOUT_INPUT_MISSING: shared live universe is unavailable")
     u=pd.read_csv(src)
     if u.empty or "ticker" not in u.columns:
         return pd.DataFrame()
@@ -79,8 +79,7 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
         + u["max_up_day_30d_pct"].rank(pct=True)*0.25
         + u["ret20_pct"].rank(pct=True)*0.10
     )
-    tickers=(u.sort_values(["_priority","avg_dollar_volume20"],ascending=[False,False])
-               .head(scan_limit)["ticker"].dropna().astype(str).unique().tolist())
+    tickers=u.head(scan_limit)["ticker"].dropna().astype(str).unique().tolist()
     now=datetime.now(NY)
 
     spy_raw=warehouse_history("SPY",period="3d",interval="5m",max_age_minutes=10)

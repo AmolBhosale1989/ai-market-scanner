@@ -5,9 +5,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 
 from .bitemporal_warehouse import _connect, finish_run, ingest_observations, latest_event_timestamps, start_run, verify_health
-from .config import CRITICAL_MARKET_SYMBOLS, OUTPUT_DIR, RETRY_CHUNK_SIZE
+from .config import INGESTION_CRITICAL_SYMBOLS, OUTPUT_DIR, RETRY_CHUNK_SIZE
 from .data import download_batch
 
 
@@ -50,7 +51,7 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
     tickers = list(dict.fromkeys(str(t).upper() for t in tickers if t))
     # V3 market-regime discovery always requires SPY even when the tradable
     # universe catalogue excludes ETFs. Keep the benchmark in PostgreSQL.
-    tickers = list(dict.fromkeys(tickers + list(CRITICAL_MARKET_SYMBOLS)))
+    tickers = list(dict.fromkeys(tickers + list(INGESTION_CRITICAL_SYMBOLS)))
     # V3 needs >=70 daily benchmark observations for regime/RET20. A benchmark
     # introduced after the universe bootstrap must be backfilled once, not left
     # with only the incremental 5-day window.
@@ -138,8 +139,20 @@ def main():
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--offset", type=int, default=0)
     p.add_argument("--bootstrap", action="store_true")
+    p.add_argument("--symbols-file",type=Path)
+    p.add_argument("--sample",type=int,default=0,help="Deterministic representative sample before adding critical symbols")
     args = p.parse_args()
-    tickers = _symbols()
+    if args.symbols_file:
+        frame=pd.read_csv(args.symbols_file)
+        col=next((c for c in ("ticker","symbol","Ticker","Symbol") if c in frame.columns),None)
+        if not col:
+            raise RuntimeError(f"WAREHOUSE_REFRESH_FAILED: no symbol column in {args.symbols_file}")
+        tickers=list(dict.fromkeys(frame[col].dropna().astype(str).str.upper().str.strip()))
+    else:
+        tickers = _symbols()
+    if args.sample > 0 and args.sample < len(tickers):
+        idx=np.linspace(0,len(tickers)-1,num=args.sample,dtype=int)
+        tickers=[tickers[i] for i in idx]
     if args.offset > 0:
         tickers = tickers[args.offset:]
     if args.limit > 0:

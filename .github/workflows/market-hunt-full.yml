@@ -21,7 +21,10 @@ permissions:
 jobs:
   full-scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSLMODE: require
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,14 +36,28 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Enforce PostgreSQL-only production boundary
+        run: python -m scanner.production_audit
+      - name: Migrate and validate authoritative warehouse
+        run: |
+          python -m scanner.warehouse_migrate
+          python -m scanner.bitemporal_warehouse --verify-health --as-of now
+      - name: Build audited master universe
+        run: python -m scanner.universe --refresh
+      - name: Refresh complete daily warehouse tier
+        run: timeout 4200s python -m scanner.warehouse_refresh --symbols-file outputs/master_universe.csv --period 1y --interval 1d
+      - name: Gate master and critical daily coverage
+        run: python -m scanner.warehouse_gate --live-file outputs/master_universe.csv --tier MASTER_DAILY --tier CRITICAL_DAILY
       - name: Run full-market prefilter plus ranked deep scan
         env:
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          PGSSLMODE: require
         run: python -m scanner.main --top 50 --deep-limit 1500
+      - name: Freeze shared live universe for downstream workflows
+        run: python -m scanner.universe_plan --limit 420
       - name: Generate approval-first social drafts
         run: python -m scanner.social_engine --input-dir outputs --output-dir outputs
+      - name: Finalize daily production telemetry
+        run: python -m scanner.production_telemetry --finalize daily
       - name: Save latest base scan for intraday monitor
         if: success()
         uses: actions/cache/save@v4
@@ -63,7 +80,7 @@ jobs:
           rm -rf /tmp/market-hunt-scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
           mkdir -p /tmp/market-hunt-scan-data/dashboard-data
-          for f in recommended_trades.csv liquid_leaders.csv watchlist.csv latest_scan.csv all_candidates.csv scan_health.csv trending_themes.csv tradable_universe.csv upcoming_events.csv event_status.csv product_feed.json legendary_setups.csv legendary_consensus.csv trader_minervini.csv trader_oneil.csv trader_weinstein.csv trader_darvas.csv trader_livermore.csv trader_qullamaggie.csv trader_druckenmiller.csv trader_lawwaisum.csv trader_martinluk.csv trader_top500swing.csv trader_highmomentumbeta.csv trader_superstock.csv trader_brownmoose.csv trader_venu.csv social_content_queue.csv social_content_calendar.csv social_engine_health.json; do
+          for f in production_publication_manifest.json master_universe.csv master_universe_health.csv warehouse_snapshot.json warehouse_coverage.csv live_universe.csv recommended_trades.csv liquid_leaders.csv watchlist.csv latest_scan.csv all_candidates.csv scan_health.csv trending_themes.csv tradable_universe.csv upcoming_events.csv event_status.csv product_feed.json legendary_setups.csv legendary_consensus.csv trader_minervini.csv trader_oneil.csv trader_weinstein.csv trader_darvas.csv trader_livermore.csv trader_qullamaggie.csv trader_druckenmiller.csv trader_lawwaisum.csv trader_martinluk.csv trader_top500swing.csv trader_highmomentumbeta.csv trader_superstock.csv trader_brownmoose.csv trader_venu.csv social_content_queue.csv social_content_calendar.csv social_engine_health.json; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
@@ -77,6 +94,13 @@ jobs:
             git commit -m "Update dashboard scan data [skip ci]"
             git push origin scan-data
           fi
+
+      - name: Record and alert production failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m scanner.production_telemetry --failure-stage daily-broad
 
       - name: Upload full scan outputs and health report
         if: always()

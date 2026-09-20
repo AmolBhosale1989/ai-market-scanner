@@ -376,6 +376,7 @@ files = {
     "v4_options_microstructure":"v4_options_microstructure.csv",
 }
 json_files = [
+    "production_publication_manifest.json",
     "v4_6_cutover_evaluation.json", "v4_5_model.json", "v5_model.json",
     "v6_model.json", "v7_allocation_health.json", "v7_1_evidence_health.json",
     "v7_2_criteria_proposal.json", "v7_3_challenger_health.json",
@@ -393,6 +394,7 @@ remote_payloads, dashboard_fetch_health = remote_dashboard_bundle(
 data, sources = {}, {}
 for key, filename in files.items():
     data[key], sources[key] = load_csv(filename)
+production_manifest, production_manifest_source = load_json("production_publication_manifest.json")
 v46_cutover, v46_source = load_json("v4_6_cutover_evaluation.json")
 v45_model, v45_model_source = load_json("v4_5_model.json")
 v5_model, v5_model_source = load_json("v5_model.json")
@@ -436,7 +438,8 @@ st.markdown("""<div class="hero"><div class="hero-grid"><div>
 scan_meta, live_meta, health, monitor = data["scan_meta"], data["live_meta"], data["health"], data["monitor"]
 scan_stamp = str(scan_meta.iloc[0].get("generated_at_utc", "Waiting for first scan")) if not scan_meta.empty else "Waiting for first scan"
 live_stamp = str(live_meta.iloc[0].get("updated_at_utc", "Waiting for monitor")) if not live_meta.empty else "Waiting for monitor"
-source_state = "CONNECTED" if sources["picks"] != "unavailable" else "WAITING"
+production_validated = production_manifest.get("status") == "PASS"
+source_state = "VALIDATED" if production_validated else "BLOCKED"
 st.markdown(
     f'<div class="status-row">'
     f'<span class="status"><span class="dot"></span><strong>{source_state}</strong></span>'
@@ -445,6 +448,14 @@ st.markdown(
     f'</div>', unsafe_allow_html=True
 )
 st.caption(f"Base scan · {scan_stamp} UTC   |   Live monitor · {live_stamp} UTC")
+if not production_validated:
+    st.error("Production publication is blocked: the complete PostgreSQL → V3 → confirmation → order-flow → risk → publication validation manifest is missing or failed.")
+else:
+    st.caption(
+        f"Validated production run {production_manifest.get('production_run_id','')} · "
+        f"warehouse as-of {to_ist(production_manifest.get('warehouse_as_of_utc',''))} · "
+        f"commit {str(production_manifest.get('source_commit',''))[:12]}"
+    )
 
 h = health.iloc[0] if not health.empty else {}
 mh = monitor.iloc[0] if not monitor.empty else {}
