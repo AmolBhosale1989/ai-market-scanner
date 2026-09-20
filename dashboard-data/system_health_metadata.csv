@@ -1,2 +1,2 @@
 updated_at_utc,workflow_run_id,source_commit,data_status,live_monitor_result
-2026-09-19T15:21:31Z,35451399357,1f64ca4f96d4737b6a372413651ef6f569fab279,FRESH,success
+2026-09-20T02:48:14Z,35484896760,fcdc689a411e85f0141d2d295c5ba63d451d83fa,DEGRADED,failure
