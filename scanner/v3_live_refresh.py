@@ -65,7 +65,7 @@ def refresh_v3_candidates(base: pd.DataFrame) -> pd.DataFrame:
     coverage = len(histories) / len(tickers)
     if coverage < MIN_DATA_COVERAGE:
         raise RuntimeError(
-            "V3 LIVE REFRESH ABORTED: provider coverage below freshness contract: "
+            "V3 LIVE REFRESH ABORTED: warehouse coverage below freshness contract: "
             f"{len(histories)}/{len(tickers)} ({coverage:.1%})."
         )
 
@@ -83,7 +83,7 @@ def refresh_v3_candidates(base: pd.DataFrame) -> pd.DataFrame:
             refreshed.append(row)
 
     if not refreshed:
-        raise RuntimeError("V3 LIVE REFRESH ABORTED: provider returned no analyzable candidates.")
+        raise RuntimeError("V3 LIVE REFRESH ABORTED: warehouse returned no analyzable candidates.")
 
     fresh = pd.DataFrame(refreshed)
     analyzable_coverage = fresh["ticker"].nunique() / len(tickers)
@@ -102,8 +102,8 @@ def refresh_v3_candidates(base: pd.DataFrame) -> pd.DataFrame:
     out = fresh.reset_index()
     _validate_schema(out)
     out["market_hunt_score"] = _build_v3_rank(out)
-    out["v3_rank_source"] = "V3_NATIVE_DIRECT_PROVIDER"
-    out["v3_market_data_source"] = "DIRECT_PROVIDER"
+    out["v3_rank_source"] = "V3_NATIVE_POSTGRES_WAREHOUSE"
+    out["v3_market_data_source"] = "POSTGRES_WAREHOUSE"
     out["v3_market_data_refreshed_at_utc"] = datetime.now(timezone.utc).isoformat()
     out["v3_provider_coverage"] = round(coverage, 4)
     out["v3_analyzable_coverage"] = round(analyzable_coverage, 4)

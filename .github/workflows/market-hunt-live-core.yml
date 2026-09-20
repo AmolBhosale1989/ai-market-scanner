@@ -12,9 +12,21 @@ on:
       - 'scanner/v3_live.py'
       - 'scanner/v3_live_refresh.py'
       - 'scanner/broad_breakout.py'
+      - 'scanner/themes.py'
+      - 'scanner/theme_live.py'
+      - 'scanner/sector_rotation.py'
+      - 'scanner/momentum_signals.py'
+      - 'scanner/order_flow.py'
+      - 'scanner/order_flow_strategy.py'
+      - 'scanner/order_flow_validation.py'
       - 'scanner/system_health.py'
+      - 'scanner/production_telemetry.py'
       - 'scanner/warehouse.py'
+      - 'scanner/bitemporal_warehouse.py'
+      - 'scanner/warehouse_migrate.py'
+      - 'sql/001_bitemporal_warehouse.sql'
       - 'scanner/warehouse_refresh.py'
+      - 'scanner/data.py'
 
 permissions:
   contents: write
@@ -22,10 +34,13 @@ permissions:
 jobs:
   live-monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSLMODE: require
     concurrency:
-      group: market-hunt-live-core-monitor
-      cancel-in-progress: true
+      group: market-hunt-production-live
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -39,24 +54,56 @@ jobs:
           set -euo pipefail
           mkdir -p outputs .state
           git fetch origin scan-data:refs/remotes/origin/scan-data
+          if ! git show "origin/scan-data:dashboard-data/master_universe.csv" > outputs/master_universe.csv; then
+            echo "Published master catalogue is not available yet; rebuilding it from exchange directories."
+            python -m scanner.universe --refresh
+          fi
           git show "origin/scan-data:dashboard-data/tradable_universe.csv" > outputs/tradable_universe.csv
+          for f in order_flow_strategy_journal.csv order_flow_strategy_performance.csv high_conviction_alert_log.csv high_conviction_alert_health.csv; do
+            git show "origin/scan-data:dashboard-data/$f" > "outputs/$f" || true
+          done
+          test -s outputs/master_universe.csv
           test -s outputs/tradable_universe.csv
           # Refactor 2 contract: latest_scan.csv is intentionally NOT restored.
+      - name: Migrate bitemporal PostgreSQL warehouse
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
+        run: python -m scanner.warehouse_migrate
+      - name: Validate bitemporal database availability
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
+        run: python -m scanner.bitemporal_warehouse --verify-health --as-of now
       - name: Refresh central daily warehouse
-        run: timeout 360s python -m scanner.warehouse_refresh --period 1y --interval 1d
-      - name: Validate warehouse availability
-        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
         run: |
-          set -euo pipefail
-          test -s outputs/warehouse/manifest.json
-          test -s outputs/warehouse/market_1d.csv
-          grep -q '"status": "AVAILABLE"' outputs/warehouse/manifest.json
-          grep -q '"updated_at_utc"' outputs/warehouse/manifest.json
+          python -m scanner.universe_plan --limit 420
+          timeout 900s python -m scanner.warehouse_refresh --symbols-file outputs/live_universe.csv --period 1y --interval 1d
+          timeout 480s python -m scanner.warehouse_refresh --symbols-file outputs/live_universe.csv --period 5d --interval 5m
+          python -m scanner.warehouse_gate --live-file outputs/live_universe.csv --tier CRITICAL_DAILY --tier CRITICAL_INTRADAY --tier LIVE_INTRADAY
       - name: Fresh provider discovery and V3 production
         env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: timeout 420s python -m scanner.v3_live --limit 30
+      - name: Refresh production theme and sector context
+        run: |
+          timeout 150s python -m scanner.theme_live
+          timeout 150s python -m scanner.sector_rotation
+      - name: Complete production order-flow chain
+        run: |
+          timeout 150s python -m scanner.momentum_signals
+          timeout 90s python -m scanner.order_flow_strategy
+          timeout 150s python -m scanner.order_flow_validation
+      - name: Build fail-closed production health
+        run: python -m scanner.system_health --require-production
+      - name: Finalize live production telemetry
+        run: python -m scanner.production_telemetry --finalize live
       - name: Validate Refactor 2 freshness contract
         shell: bash
         run: |
@@ -64,13 +111,17 @@ jobs:
           test ! -e outputs/latest_scan.csv
           test -s outputs/v3_live_discovery.csv
           test "$(wc -l < outputs/v3_live_discovery.csv)" -gt 1
-          grep -q 'DIRECT_PROVIDER_DISCOVERY' outputs/v3_live_discovery.csv
+          grep -q 'POSTGRES_WAREHOUSE_DISCOVERY' outputs/v3_live_discovery.csv
           test -s outputs/v3_live_snapshot.csv
           test "$(wc -l < outputs/v3_live_snapshot.csv)" -gt 1
-          grep -q 'DIRECT_PROVIDER' outputs/v3_live_snapshot.csv
+          grep -q 'POSTGRES_WAREHOUSE' outputs/v3_live_snapshot.csv
           test -s outputs/intraday_live.csv
           test "$(wc -l < outputs/intraday_live.csv)" -gt 1
           test -s outputs/monitor_health.csv
+          test -s outputs/theme_health.csv
+          test -s outputs/sector_rotation_health.csv
+          test -s outputs/order_flow_strategy_health.csv
+          test -s outputs/live_system_health_summary.csv
       - name: Publish V3 live production atomically
         shell: bash
         run: |
@@ -81,15 +132,12 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-live-core-monitor scan-data
           mkdir -p /tmp/market-hunt-live-core-monitor/dashboard-data
-          mkdir -p /tmp/market-hunt-live-core-monitor/dashboard-data/warehouse
-          cp outputs/warehouse/manifest.json /tmp/market-hunt-live-core-monitor/dashboard-data/warehouse/
-          cp outputs/warehouse/market_1d.csv /tmp/market-hunt-live-core-monitor/dashboard-data/warehouse/
-          for f in v3_live_discovery.csv broad_breakout_discovery.csv broad_breakout_health.csv v3_live_snapshot.csv recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json; do
+          for f in production_publication_manifest.json warehouse_snapshot.json warehouse_coverage.csv live_universe.csv v3_live_discovery.csv broad_breakout_discovery.csv broad_breakout_health.csv v3_live_snapshot.csv recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv momentum_signals.csv momentum_health.csv order_flow_strategy.csv order_flow_strategy_health.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv live_system_health.csv live_system_health_summary.csv; do
             if [ -s "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-live-core-monitor/dashboard-data/$f"
             fi
           done
-          printf "updated_at_utc,workflow_run_id,source_commit,data_status,data_source\n%s,%s,%s,FRESH,DIRECT_PROVIDER_DISCOVERY_TO_V3\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-monitor/dashboard-data/live_metadata.csv
+          printf "updated_at_utc,workflow_run_id,source_commit,data_status,data_source\n%s,%s,%s,FRESH,POSTGRES_WAREHOUSE_TO_V3\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > /tmp/market-hunt-live-core-monitor/dashboard-data/live_metadata.csv
           cd /tmp/market-hunt-live-core-monitor
           git add dashboard-data
           if ! git diff --cached --quiet; then
@@ -97,6 +145,13 @@ jobs:
             git pull --rebase origin scan-data
             git push origin scan-data
           fi
+
+      - name: Record and alert production failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m scanner.production_telemetry --failure-stage live-critical-path
 
   system-health:
     if: always()

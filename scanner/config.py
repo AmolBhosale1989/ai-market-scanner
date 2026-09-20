@@ -35,6 +35,42 @@ CORE_LEADER_TICKERS = (
 BATCH_SIZE = 75
 BENCHMARK = "SPY"
 
+# Production warehouse contract. 5,341 is the audited master-universe baseline
+# from the last complete V3 run. Exchange listings can change, so production
+# records drift instead of silently substituting a smaller catalogue.
+MASTER_UNIVERSE_BASELINE = 5_341
+MASTER_UNIVERSE_MINIMUM = 5_000
+MASTER_UNIVERSE_MAX_DRIFT = 250
+SECTOR_ETFS = (
+    "XLB", "XLC", "XLE", "XLF", "XLI", "XLK",
+    "XLP", "XLRE", "XLU", "XLV", "XLY",
+)
+THEME_ETFS = (
+    "ARKG", "BOTZ", "COPX", "FINX", "GDX", "HACK", "ICLN",
+    "ITA", "KRE", "MSOS", "OIH", "PAVE", "SKYY", "SMH",
+    "URA", "WGMI", "XBI", "XHB", "XLE",
+)
+CRITICAL_MARKET_SYMBOLS = tuple(dict.fromkeys((BENCHMARK,) + SECTOR_ETFS + THEME_ETFS))
+ROTATION_CONSTITUENTS = (
+    "AEM","AI","ALNY","AMAT","AMD","AMZN","APLD","ARBK","ARM","ASML","AU","AVAV","AVGO",
+    "BE","BEAM","BITF","BMRN","BTDR","CAN","CCJ","CGNX","CHKP","CIFR","CLSK","COP","CORZ",
+    "CRM","CRSP","CRWD","CVX","CYBR","DDOG","DNN","DVN","ENPH","EOG","ESTC","FANG","FNV",
+    "FSLR","FTNT","GD","GEN","GOLD","GTLB","HII","HUT","INTC","IOVA","IREN","ISRG","IONS",
+    "KGC","KLAC","KTOS","LEU","LHX","LMT","LRCX","MARA","MDB","MPWR","MRNA","MRVL","MSFT",
+    "MU","NBIX","NEM","NET","NOC","NOW","NTLA","NVDA","NXE","OKLO","OKTA","ON","ORCL","OXY",
+    "PANW","PATH","PLTR","PLUG","QCOM","QLYS","REGN","RIOT","RKLB","RBRK","ROK","RTX","RUN",
+    "S","SEDG","SMR","SNOW","SYM","TENB","TER","TSM","UEC","UUUU","VLO","VRNS","VRTX","WPM",
+    "WULF","XOM","ZS",
+)
+INGESTION_CRITICAL_SYMBOLS = tuple(dict.fromkeys(CRITICAL_MARKET_SYMBOLS + ROTATION_CONSTITUENTS))
+
+# Tiered coverage gates: broad discovery tolerates delisted/provider-unavailable
+# names, while benchmarks/ETFs and selected live names are strict.
+MASTER_DAILY_MIN_COVERAGE = 0.75
+CRITICAL_DAILY_MIN_COVERAGE = 1.00
+CRITICAL_INTRADAY_MIN_COVERAGE = 1.00
+LIVE_INTRADAY_MIN_COVERAGE = 0.95
+
 # Data-integrity controls.
 MIN_DATA_COVERAGE = 0.75
 MIN_ANALYZABLE_COVERAGE = 0.80

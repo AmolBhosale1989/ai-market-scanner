@@ -34,6 +34,11 @@ def _extract(raw: pd.DataFrame, ticker: str) -> pd.DataFrame:
     return d.dropna(subset=["Close"]).sort_index()
 
 
+def _latest_session_date(frame: pd.DataFrame, fallback):
+    """Return the latest market-data session represented in the warehouse frame."""
+    return max(frame.index.date) if frame is not None and not frame.empty else fallback
+
+
 def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float:
     if today.empty:
         return math.nan
@@ -55,9 +60,9 @@ def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float
 
 
 def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.DataFrame:
-    src=OUTPUT_DIR/"tradable_universe.csv"
+    src=OUTPUT_DIR/"live_universe.csv"
     if not src.exists():
-        return pd.DataFrame()
+        raise RuntimeError("BROAD_BREAKOUT_INPUT_MISSING: shared live universe is unavailable")
     u=pd.read_csv(src)
     if u.empty or "ticker" not in u.columns:
         return pd.DataFrame()
@@ -74,14 +79,17 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
         + u["max_up_day_30d_pct"].rank(pct=True)*0.25
         + u["ret20_pct"].rank(pct=True)*0.10
     )
-    tickers=(u.sort_values(["_priority","avg_dollar_volume20"],ascending=[False,False])
-               .head(scan_limit)["ticker"].dropna().astype(str).unique().tolist())
+    tickers=u.head(scan_limit)["ticker"].dropna().astype(str).unique().tolist()
     now=datetime.now(NY)
 
     spy_raw=warehouse_history("SPY",period="3d",interval="5m",max_age_minutes=10)
     spy=_extract(spy_raw,"SPY")
-    spy_today=spy[spy.index.date==now.date()].between_time("09:30","16:00") if not spy.empty else pd.DataFrame()
-    spy_prior_dates=sorted({x for x in spy.index.date if x<now.date()},reverse=True) if not spy.empty else []
+    # Use the latest warehouse market session, not the wall-clock date. This
+    # keeps discovery valid on weekends/holidays while preserving live-session
+    # behavior when today's bars exist.
+    session_date=_latest_session_date(spy, now.date())
+    spy_today=spy[spy.index.date==session_date].between_time("09:30","16:00") if not spy.empty else pd.DataFrame()
+    spy_prior_dates=sorted({x for x in spy.index.date if x<session_date},reverse=True) if not spy.empty else []
     spy_change=0.0
     if not spy_today.empty and spy_prior_dates:
         prior=spy[spy.index.date==spy_prior_dates[0]].between_time("09:30","16:00")
@@ -89,17 +97,23 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
             spy_change=(float(spy_today["Close"].iloc[-1])/float(prior["Close"].iloc[-1])-1)*100
 
     rows=[]
+    gates={"warehouse_data":0,"session_data":0,"prior_session":0,"day_2pct":0,"rel_1_25pct":0,"rvol_1_25":0,"dollar_20m":0,"near_high":0,"qualified":0}
     for start in range(0,len(tickers),batch_size):
         batch=tickers[start:start+batch_size]
-        raw=warehouse_frames(batch,period="3d",interval="5m",max_age_minutes=10)
+        raw=warehouse_frames(batch,period="3d",interval="5m",max_age_minutes=10,require_complete=False)
         for ticker in batch:
             d=_extract(raw.get(ticker,pd.DataFrame()),ticker)
             if d.empty:
                 continue
-            today=d[d.index.date==now.date()].between_time("09:30","16:00")
-            prior_dates=sorted({x for x in d.index.date if x<now.date()},reverse=True)
-            if today.empty or not prior_dates:
+            gates["warehouse_data"]+=1
+            today=d[d.index.date==session_date].between_time("09:30","16:00")
+            prior_dates=sorted({x for x in d.index.date if x<session_date},reverse=True)
+            if today.empty:
                 continue
+            gates["session_data"]+=1
+            if not prior_dates:
+                continue
+            gates["prior_session"]+=1
             prior=d[d.index.date==prior_dates[0]].between_time("09:30","16:00")
             if prior.empty:
                 continue
@@ -110,7 +124,7 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
             price=float(today["Close"].iloc[-1])
             day=(price/prior_close-1)*100
             rel=day-spy_change
-            rvol=_same_time_rvol(d,today,now.date())
+            rvol=_same_time_rvol(d,today,session_date)
             vol=float(pd.to_numeric(today["Volume"],errors="coerce").fillna(0).sum())
             dollar=vol*price
             recent=today.tail(6)
@@ -119,7 +133,20 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
             session_high=float(today["High"].max())
             near_high=price>=session_high*0.985 if session_high>0 else False
 
-            # Theme-independent discovery: intentionally stricter than themed lane.
+            # Record cumulative gate survival so a zero-candidate run is diagnosable.
+            if day < 2.0: continue
+            gates["day_2pct"]+=1
+            if rel < 1.25: continue
+            gates["rel_1_25pct"]+=1
+            if not math.isfinite(rvol) or rvol < 1.25: continue
+            gates["rvol_1_25"]+=1
+            if dollar < 20_000_000: continue
+            gates["dollar_20m"]+=1
+            if not near_high: continue
+            gates["near_high"]+=1
+            gates["qualified"]+=1
+
+            # Theme-independent discovery: all gates above passed.
             qualifies=(
                 day>=2.0
                 and rel>=1.25
@@ -163,6 +190,8 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
         "universe_scanned":len(tickers),
         "scan_limit":scan_limit,
         "qualified_breakouts":len(out),
+        "session_date":str(session_date),
+        **gates,
         "mode":"THEME_INDEPENDENT_BROAD_BREAKOUT",
     }]).to_csv(OUTPUT_DIR/"broad_breakout_health.csv",index=False)
     return out

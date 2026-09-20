@@ -12,6 +12,38 @@ from .order_flow import bar_order_flow_proxy
 
 NY = ZoneInfo("America/New_York")
 
+MOMENTUM_COLUMNS = [
+    "ticker","candidate_source","theme","signal","reason","price","day_change_pct",
+    "move_30m_pct","rel_vs_spy_pct","theme_rotation_score","broad_breakout_score",
+    "intraday_rvol","vwap","opening_range_high","above_vwap","above_or_high",
+    "entry","stop","risk_pct","target_5pct","target_8pct","order_flow_score",
+    "buy_pressure_pct","sell_pressure_pct","volume_imbalance_proxy","volume_impulse",
+    "vwap_pressure","order_flow_state","order_flow_mode","last_bar_et",
+]
+
+
+def _read_optional(path) -> pd.DataFrame:
+    if not path.exists() or not path.stat().st_size:
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(path)
+    except (OSError,pd.errors.EmptyDataError,pd.errors.ParserError):
+        return pd.DataFrame()
+
+
+def _write_outputs(out: pd.DataFrame, now: datetime) -> pd.DataFrame:
+    if out.empty:
+        out=pd.DataFrame(columns=MOMENTUM_COLUMNS)
+    out.to_csv(OUTPUT_DIR/"momentum_signals.csv",index=False)
+    pd.DataFrame([{
+        "updated_at_et":now.isoformat(timespec="seconds"),
+        "leaders_evaluated":len(out),
+        "momentum_buys":int(out["signal"].eq("MOMENTUM BUY").sum()),
+        "extended_waits":int(out["signal"].eq("EXTENDED / WAIT RETEST").sum()),
+        "mode":"FAST_ROTATION_MOMENTUM",
+    }]).to_csv(OUTPUT_DIR/"momentum_health.csv",index=False)
+    return out
+
 
 def _extract(raw: pd.DataFrame, ticker: str) -> pd.DataFrame:
     if raw is None or raw.empty:
@@ -67,8 +99,9 @@ def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float
 def run(limit: int = 40):
     src=OUTPUT_DIR/"rotation_leaders.csv"
     broad_src=OUTPUT_DIR/"broad_breakout_discovery.csv"
-    themed=pd.read_csv(src) if src.exists() and src.stat().st_size>0 else pd.DataFrame()
-    broad=pd.read_csv(broad_src) if broad_src.exists() and broad_src.stat().st_size>0 else pd.DataFrame()
+    themed=_read_optional(src)
+    broad=_read_optional(broad_src)
+    now=datetime.now(NY)
 
     if not themed.empty:
         mask=themed.get("rotation_leader",pd.Series(False,index=themed.index)).astype(str).str.lower().isin(["true","1","yes"])
@@ -81,7 +114,7 @@ def run(limit: int = 40):
 
     leaders=pd.concat([themed,broad],ignore_index=True,sort=False) if (not themed.empty or not broad.empty) else pd.DataFrame()
     if leaders.empty:
-        return pd.DataFrame()
+        return _write_outputs(pd.DataFrame(),now)
 
     if "theme_rotation_score" not in leaders.columns:
         leaders["theme_rotation_score"]=0.0
@@ -101,7 +134,6 @@ def run(limit: int = 40):
         x=g.copy(); x["bar_timestamp"]=pd.to_datetime(x["bar_timestamp"],utc=True,errors="coerce")
         raw[str(ticker)]=x.dropna(subset=["bar_timestamp"]).set_index("bar_timestamp")
 
-    now=datetime.now(NY)
     rows=[]
     for _,meta in leaders.iterrows():
         ticker=str(meta["ticker"])
@@ -184,20 +216,12 @@ def run(limit: int = 40):
             "last_bar_et":today.index[-1].isoformat(),
         })
 
-    out=pd.DataFrame(rows)
+    out=pd.DataFrame(rows,columns=MOMENTUM_COLUMNS)
     if not out.empty:
         rank={"MOMENTUM BUY":0,"WATCH / NEAR ENTRY":1,"EXTENDED / WAIT RETEST":2,"NO SIGNAL":3}
         out["_rank"]=out["signal"].map(rank).fillna(9)
         out=out.sort_values(["_rank","theme_rotation_score","rel_vs_spy_pct"],ascending=[True,False,False]).drop(columns=["_rank"])
-    out.to_csv(OUTPUT_DIR/"momentum_signals.csv",index=False)
-    pd.DataFrame([{
-        "updated_at_et":now.isoformat(timespec="seconds"),
-        "leaders_evaluated":len(out),
-        "momentum_buys":int(out["signal"].eq("MOMENTUM BUY").sum()) if not out.empty else 0,
-        "extended_waits":int(out["signal"].eq("EXTENDED / WAIT RETEST").sum()) if not out.empty else 0,
-        "mode":"FAST_ROTATION_MOMENTUM",
-    }]).to_csv(OUTPUT_DIR/"momentum_health.csv",index=False)
-    return out
+    return _write_outputs(out,now)
 
 
 if __name__=="__main__":

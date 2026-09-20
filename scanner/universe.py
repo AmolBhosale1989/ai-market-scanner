@@ -4,6 +4,7 @@ import re
 import requests
 import pandas as pd
 from .config import NASDAQ_LISTED_URL, OTHER_LISTED_URL, UNIVERSE_FILE
+from .config import MASTER_UNIVERSE_BASELINE, MASTER_UNIVERSE_MAX_DRIFT, MASTER_UNIVERSE_MINIMUM, OUTPUT_DIR
 
 HEADERS={"User-Agent":"Mozilla/5.0 ai-market-scanner/3.0"}
 
@@ -68,7 +69,27 @@ def build_universe(output_file:Path=UNIVERSE_FILE)->pd.DataFrame:
     ]
 
     u=u.drop_duplicates("ticker").sort_values("ticker").reset_index(drop=True)
+    if len(u) < MASTER_UNIVERSE_MINIMUM:
+        raise RuntimeError(
+            f"MASTER_UNIVERSE_INCOMPLETE: got={len(u)} minimum={MASTER_UNIVERSE_MINIMUM}"
+        )
     u.to_csv(output_file,index=False)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    u.to_csv(OUTPUT_DIR/"master_universe.csv", index=False)
+    drift=len(u)-MASTER_UNIVERSE_BASELINE
+    pd.DataFrame([{
+        "master_symbols":len(u),
+        "audited_baseline":MASTER_UNIVERSE_BASELINE,
+        "drift":drift,
+        "drift_within_limit":abs(drift)<=MASTER_UNIVERSE_MAX_DRIFT,
+        "status":"PASS" if abs(drift)<=MASTER_UNIVERSE_MAX_DRIFT else "FAIL",
+        "generated_at_utc":pd.Timestamp.now(tz="UTC").isoformat(),
+    }]).to_csv(OUTPUT_DIR/"master_universe_health.csv", index=False)
+    if abs(drift)>MASTER_UNIVERSE_MAX_DRIFT:
+        raise RuntimeError(
+            f"MASTER_UNIVERSE_DRIFT: got={len(u)} baseline={MASTER_UNIVERSE_BASELINE} "
+            f"max_drift={MASTER_UNIVERSE_MAX_DRIFT}"
+        )
     return u
 
 def load_or_build_universe(force_refresh:bool=False)->pd.DataFrame:
@@ -78,3 +99,18 @@ def load_or_build_universe(force_refresh:bool=False)->pd.DataFrame:
     if len(u)<500:
         return build_universe()
     return u
+
+
+def main():
+    import argparse
+    p=argparse.ArgumentParser(description="Build the authoritative U.S. equity master universe")
+    p.add_argument("--refresh", action="store_true")
+    args=p.parse_args()
+    u=load_or_build_universe(force_refresh=args.refresh)
+    if len(u)<MASTER_UNIVERSE_MINIMUM:
+        raise RuntimeError(f"MASTER_UNIVERSE_INCOMPLETE: {len(u)}")
+    print(f"MASTER_UNIVERSE_AVAILABLE symbols={len(u)} baseline={MASTER_UNIVERSE_BASELINE}")
+
+
+if __name__ == "__main__":
+    main()

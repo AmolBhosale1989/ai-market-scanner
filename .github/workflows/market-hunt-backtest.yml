@@ -19,6 +19,9 @@ jobs:
   calibration:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSLMODE: require
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,6 +41,28 @@ jobs:
           key: market-hunt-base-calibration
           restore-keys: |
             market-hunt-base-
+
+      - name: Prepare authoritative calibration warehouse
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs
+          if [ ! -s outputs/tradable_universe.csv ]; then
+            git fetch origin scan-data:refs/remotes/origin/scan-data
+            git show "origin/scan-data:dashboard-data/tradable_universe.csv" > outputs/tradable_universe.csv
+          fi
+          python - <<'PY'
+          import pandas as pd
+          source=pd.read_csv('outputs/tradable_universe.csv')
+          if 'tradable' in source:
+              source=source[source['tradable'].astype(bool)]
+          if 'avg_dollar_volume20' in source:
+              source=source.sort_values('avg_dollar_volume20',ascending=False)
+          source.head(100).to_csv('outputs/backtest_universe.csv',index=False)
+          PY
+          python -m scanner.warehouse_migrate
+          timeout 3600s python -m scanner.warehouse_refresh --symbols-file outputs/backtest_universe.csv --period 3y --interval 1d
+          python -m scanner.bitemporal_warehouse --verify-health --as-of now
 
       - name: Run 100-stock 3-year R/R calibration
         run: python -m scanner.backtest --max-tickers 100 --period 3y --horizon 7 --stride 10

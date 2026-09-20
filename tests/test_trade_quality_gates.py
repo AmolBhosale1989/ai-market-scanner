@@ -42,29 +42,8 @@ def test_quality_prefilter_uses_median_to_reject_one_day_volume_spike():
     assert "MEDIAN_DOLLAR_VOLUME" in row["rejection_reason"]
 
 
-def test_quote_spread_calculation(monkeypatch):
-    class FakeTicker:
-        def __init__(self,ticker):
-            self.ticker=ticker
-
-        def get_info(self):
-            return {"bid":99.9,"ask":100.1}
-
-    monkeypatch.setattr("scanner.live.yf.Ticker",FakeTicker)
-    bid,ask,spread=_quote_spread("TEST")
-    assert bid == 99.9
-    assert ask == 100.1
-    assert round(spread,3) == 0.2
-
-
-def test_quote_spread_rejects_missing_quote(monkeypatch):
-    class FakeTicker:
-        def __init__(self,ticker):
-            self.ticker=ticker
-
-        def get_info(self):
-            return {"bid":0,"ask":0}
-
-    monkeypatch.setattr("scanner.live.yf.Ticker",FakeTicker)
-    _,_,spread=_quote_spread("TEST")
+def test_quote_spread_fails_closed_until_quote_warehouse_exists():
+    bid, ask, spread = _quote_spread("TEST")
+    assert pd.isna(bid)
+    assert pd.isna(ask)
     assert pd.isna(spread)

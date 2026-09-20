@@ -245,7 +245,15 @@ def _send_telegram(messages):
         return False
 
 def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
-    source=Path(input_file) if input_file else OUTPUT_DIR/"latest_scan.csv"
+    if not input_file:
+        raise RuntimeError(
+            "INTRADAY_INPUT_REQUIRED: production monitoring requires the current run's V3 snapshot"
+        )
+    source=Path(input_file)
+    if source.name in {"latest_scan.csv","all_candidates.csv","watchlist.csv"}:
+        raise RuntimeError(
+            f"INTRADAY_PERSISTED_INPUT_REJECTED: {source.name} is not authoritative market data"
+        )
     if not source.exists():
         print(f"No base shortlist found at {source}. Nothing to monitor.")
         now=datetime.now(NY).isoformat(timespec="seconds")

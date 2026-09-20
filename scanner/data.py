@@ -58,7 +58,29 @@ def _download_once(tickers, period, interval):
 
     out={}
     if len(tickers)==1:
-        df=_normalize_single(raw)
+        df=raw.copy()
+        if isinstance(df.columns,pd.MultiIndex):
+            # yfinance group_by="ticker" may return either (Ticker, Price)
+            # or (Price, Ticker), depending on version/request shape.
+            lvl0=set(map(str,df.columns.get_level_values(0)))
+            lvl1=set(map(str,df.columns.get_level_values(1)))
+            t=str(tickers[0])
+            price_names={"Open","High","Low","Close","Adj Close","Volume"}
+            if t in lvl0:
+                df=df[t].copy()
+            elif t in lvl1:
+                df=df.xs(t,axis=1,level=1).copy()
+            elif price_names.intersection(lvl0):
+                df=df.copy()
+                df.columns=[str(col[0]) for col in df.columns]
+            elif price_names.intersection(lvl1):
+                df=df.copy()
+                df.columns=[str(col[1]) for col in df.columns]
+            else:
+                df=_normalize_single(df)
+        else:
+            df=_normalize_single(df)
+        df=df.dropna(how="all")
         if not df.empty:
             out[tickers[0]]=df
         return out
@@ -97,13 +119,14 @@ def download_batch(
         if not remaining:
             break
 
-        if attempt==0:
-            chunks=[remaining]
-        else:
-            chunks=[
-                remaining[i:i+RETRY_CHUNK_SIZE]
-                for i in range(0,len(remaining),RETRY_CHUNK_SIZE)
-            ]
+        # Never send the full universe in one Yahoo request.  Large first
+        # requests are the main source of throttling in CI, and retries cannot
+        # recover before the live-core timeout once Yahoo has rate-limited the
+        # runner.  Use the same bounded chunks on every attempt.
+        chunks=[
+            remaining[i:i+RETRY_CHUNK_SIZE]
+            for i in range(0,len(remaining),RETRY_CHUNK_SIZE)
+        ]
 
         for chunk in chunks:
             try:

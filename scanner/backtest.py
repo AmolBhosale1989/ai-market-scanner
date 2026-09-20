@@ -101,7 +101,11 @@ def run(tickers=None,max_tickers=BACKTEST_MAX_TICKERS,horizon=BACKTEST_HORIZON_D
 
     for n,ticker in enumerate(symbols,1):
         print(f"Backtest {n}/{len(symbols)}: {ticker}")
-        d=download_history(ticker,period,"1d")
+        try:
+            d=download_history(ticker,period,"1d")
+        except RuntimeError as exc:
+            print(f"Backtest quarantine {ticker}: {exc}")
+            continue
         if d is None or len(d)<MIN_HISTORY_DAYS+horizon+5:
             continue
 

@@ -17,7 +17,10 @@ concurrency:
 jobs:
   smoke-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSLMODE: require
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,6 +37,13 @@ jobs:
 
       - name: Run deterministic unit tests
         run: python -m pytest -q
+      - name: Enforce PostgreSQL-only production boundary
+        run: python -m scanner.production_audit
+      - name: Prepare representative authoritative warehouse
+        run: |
+          python -m scanner.warehouse_migrate
+          python -m scanner.universe --refresh
+          timeout 1500s python -m scanner.warehouse_refresh --symbols-file outputs/master_universe.csv --sample 300 --period 1y --interval 1d
       - name: Check bounded SEC catalyst access with official search fallback
         shell: bash
         run: |
@@ -57,13 +67,10 @@ jobs:
       - name: Run 300-stock representative smoke test with health gate
         env:
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
-        run: python -m scanner.main --refresh-universe --limit 300 --top 20 --deep-limit 150
+        run: python -m scanner.main --limit 300 --top 20 --deep-limit 150
 
       - name: Run focused backtest smoke
         run: python -m scanner.backtest --tickers AAPL,MSFT,NVDA,AMD,META --period 2y --horizon 7 --stride 10
-
-      - name: Run intraday monitor smoke
-        run: python -m scanner.intraday --limit 5
 
       - name: Run event-calendar self-check
         shell: bash
@@ -122,7 +129,7 @@ jobs:
           for i in range(24):
               rows.append({
                   "ticker":f"T{i}",
-                  "outcome":"TARGET_HIT" if i%2==0 else "INVALIDATED",
+                  "outcome":"TARGET_HIT" if i%2==0 else "FAILED_BREAKOUT",
                   "return_pct":5.0 if i%2==0 else -2.0,
                   "r_multiple":2.0 if i%2==0 else -1.0,
                   "entry_model":"RESISTANCE_BREAKOUT",

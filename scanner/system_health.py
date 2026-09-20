@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import argparse
 from zoneinfo import ZoneInfo
 import json
 from pathlib import Path
@@ -12,16 +13,17 @@ from .config import OUTPUT_DIR
 NY = ZoneInfo("America/New_York")
 
 PRODUCTION_CHECKS = [
+    ("Warehouse Snapshot", "warehouse_snapshot.json", "as_of_utc", 20, "REGULAR"),
     ("V3 Live Production", "monitor_health.csv", "checked_at_et", 20, "REGULAR"),
+    ("Themes", "theme_health.csv", "updated_at_et", 20, "REGULAR"),
+    ("Sector Rotation", "sector_rotation_health.csv", "updated_at_et", 20, "REGULAR"),
+    ("Momentum", "momentum_health.csv", "updated_at_et", 20, "REGULAR"),
+    ("Order Flow", "order_flow_strategy_health.csv", "updated_at_et", 20, "REGULAR"),
 ]
 
 SHADOW_CHECKS = [
     ("V4 Live Intelligence", "v4_worker_health.json", "generated_at_utc", 25, "REGULAR"),
-    ("Themes", "theme_health.csv", "updated_at_et", 20, "REGULAR"),
-    ("Sector Rotation", "sector_rotation_health.csv", "updated_at_et", 20, "REGULAR"),
-    ("Momentum", "momentum_health.csv", "updated_at_et", 20, "REGULAR"),
     ("Broad Breakout", "broad_breakout_health.csv", "updated_at_et", 20, "REGULAR"),
-    ("Order Flow", "order_flow_strategy_health.csv", "updated_at_et", 20, "REGULAR"),
     ("High Conviction Alerts", "high_conviction_alert_health.csv", "checked_at_et", 20, "REGULAR"),
     ("Premarket Discovery", "premarket_health.csv", "checked_at_et", 45, "PREMARKET"),
     ("Daily Pick Validation", "daily_top_pick_summary.csv", "updated_at_et", 90, "SESSION"),
@@ -105,5 +107,12 @@ def run() -> pd.DataFrame:
 
 
 if __name__=="__main__":
+    p=argparse.ArgumentParser()
+    p.add_argument("--require-production",action="store_true")
+    args=p.parse_args()
     df=run()
     print(df.to_string(index=False))
+    if args.require_production:
+        bad=df[(df["role"]=="PRODUCTION") & df["status"].isin(["STALE","MISSING","INVALID"])]
+        if not bad.empty:
+            raise RuntimeError("PRODUCTION_HEALTH_FAILED: "+",".join(bad["module"].astype(str)))
