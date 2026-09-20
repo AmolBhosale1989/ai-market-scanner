@@ -52,6 +52,14 @@ jobs:
         env:
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
         run: python -m scanner.main --top 50 --deep-limit 1500
+      - name: Restore immutable quant shadow ledger
+        shell: bash
+        run: |
+          mkdir -p outputs
+          git fetch origin scan-data
+          git show origin/scan-data:dashboard-data/quant_shadow_ledger.json > outputs/quant_shadow_ledger.json 2>/dev/null || true
+      - name: Run PostgreSQL-derived quant shadow suite
+        run: python -m scanner.quant_shadow
       - name: Freeze shared live universe for downstream workflows
         run: python -m scanner.universe_plan --limit 420
       - name: Generate approval-first social drafts
@@ -80,7 +88,7 @@ jobs:
           rm -rf /tmp/market-hunt-scan-data
           git worktree add /tmp/market-hunt-scan-data scan-data
           mkdir -p /tmp/market-hunt-scan-data/dashboard-data
-          for f in production_publication_manifest.json master_universe.csv master_universe_health.csv warehouse_snapshot.json warehouse_coverage.csv live_universe.csv recommended_trades.csv liquid_leaders.csv watchlist.csv latest_scan.csv all_candidates.csv scan_health.csv trending_themes.csv tradable_universe.csv upcoming_events.csv event_status.csv product_feed.json legendary_setups.csv legendary_consensus.csv trader_minervini.csv trader_oneil.csv trader_weinstein.csv trader_darvas.csv trader_livermore.csv trader_qullamaggie.csv trader_druckenmiller.csv trader_lawwaisum.csv trader_martinluk.csv trader_top500swing.csv trader_highmomentumbeta.csv trader_superstock.csv trader_brownmoose.csv trader_venu.csv social_content_queue.csv social_content_calendar.csv social_engine_health.json; do
+          for f in production_publication_manifest.json master_universe.csv master_universe_health.csv warehouse_snapshot.json warehouse_coverage.csv live_universe.csv recommended_trades.csv liquid_leaders.csv watchlist.csv latest_scan.csv all_candidates.csv scan_health.csv trending_themes.csv tradable_universe.csv upcoming_events.csv event_status.csv product_feed.json legendary_setups.csv legendary_consensus.csv trader_minervini.csv trader_oneil.csv trader_weinstein.csv trader_darvas.csv trader_livermore.csv trader_qullamaggie.csv trader_druckenmiller.csv trader_lawwaisum.csv trader_martinluk.csv trader_top500swing.csv trader_highmomentumbeta.csv trader_superstock.csv trader_brownmoose.csv trader_venu.csv social_content_queue.csv social_content_calendar.csv social_engine_health.json quant_shadow_signals.csv quant_shadow_ledger.csv quant_shadow_ledger.json quant_shadow_performance.csv quant_shadow_health.json; do
             if [ -f "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-scan-data/dashboard-data/$f"
             fi
