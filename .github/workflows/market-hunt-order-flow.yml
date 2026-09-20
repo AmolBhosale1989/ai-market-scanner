@@ -28,7 +28,7 @@ permissions:
 jobs:
   order-flow-live:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       PGSSLMODE: require
@@ -80,8 +80,8 @@ jobs:
           # Order flow owns its ingestion prerequisite instead of racing the
           # separately scheduled Live Core workflow.
           python -m scanner.universe_plan --limit 420
-          timeout 300s python -m scanner.warehouse_refresh --symbols-file outputs/live_universe.csv --period 1y --interval 1d
-          timeout 180s python -m scanner.warehouse_refresh --symbols-file outputs/live_universe.csv --period 5d --interval 5m
+          timeout 900s python -m scanner.warehouse_refresh --symbols-file outputs/live_universe.csv --period 1y --interval 1d
+          timeout 480s python -m scanner.warehouse_refresh --symbols-file outputs/live_universe.csv --period 5d --interval 5m
 
       - name: Revalidate warehouse after ingestion
         run: |

@@ -82,7 +82,10 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
     try:
         watermarks = {} if bootstrap else latest_event_timestamps(tickers, timeframe=interval)
         incremental_period = "5d" if interval == "1d" else "2d"
-        provider_chunk = min(10, RETRY_CHUNK_SIZE)
+        # Match the provider retry chunk so each network response and database
+        # transaction carries a useful batch without returning to unsafe
+        # full-universe requests.
+        provider_chunk = RETRY_CHUNK_SIZE
         ingested_symbols=set()
         observations=0
         # Download and commit each small provider batch immediately. A later
