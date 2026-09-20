@@ -71,3 +71,23 @@ def test_smoke_calibration_fixture_represents_entered_wins_and_losses():
     assert int(summary.iloc[0]["closed_signals"])==24
     assert float(summary.iloc[0]["win_rate_pct"])==50.0
     assert "USABLE" in set(calibration["calibration_status"])
+
+
+def test_sector_rotation_keeps_core_etfs_strict_and_constituents_tolerant(monkeypatch):
+    from types import SimpleNamespace
+    import scanner.sector_rotation as module
+    captured={}
+    def strict(req):
+        captured["strict"]=set(req.tickers)
+        return SimpleNamespace(frame=pd.DataFrame(columns=["ticker","bar_timestamp"]))
+    def tolerant(tickers,**kwargs):
+        captured["tolerant"]=set(tickers)
+        captured["require_complete"]=kwargs["require_complete"]
+        return {}
+    monkeypatch.setattr(module,"provide",strict)
+    monkeypatch.setattr(module,"warehouse_frames",tolerant)
+    _,raw=module._load_rotation_history()
+    assert captured["strict"]=={"SPY",*module.THEME_ETFS.values()}
+    assert not captured["strict"] & captured["tolerant"]
+    assert captured["require_complete"] is False
+    assert raw=={}

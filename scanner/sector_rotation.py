@@ -5,7 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-from .warehouse import DataRequirement, provide
+from .warehouse import DataRequirement, frames as warehouse_frames, provide
 
 from .config import OUTPUT_DIR
 
@@ -76,17 +76,26 @@ def _stats(d: pd.DataFrame, ticker: str):
             "intraday_volume":round(vol,0),"last_bar_et":today.index[-1].isoformat()}
 
 
-def run():
-    OUTPUT_DIR.mkdir(parents=True,exist_ok=True)
-    symbols={"SPY",*THEME_ETFS.values()}
-    for members in THEME_CONSTITUENTS.values():
-        symbols.update(members)
-    tickers=sorted(symbols)
-    view=provide(DataRequirement(consumer="sector_rotation",tickers=tuple(tickers),interval="5m",period="5d",max_age_minutes=10,view_name="sector_rotation_5m"))
+def _load_rotation_history() -> tuple[list[str], dict[str, pd.DataFrame]]:
+    core=sorted({"SPY",*THEME_ETFS.values()})
+    members=sorted({ticker for values in THEME_CONSTITUENTS.values() for ticker in values}-set(core))
+    view=provide(DataRequirement(
+        consumer="sector_rotation.core",tickers=tuple(core),interval="5m",period="5d",
+        max_age_minutes=10,view_name="sector_rotation_core_5m",
+    ))
     raw={}
     for ticker,g in view.frame.groupby("ticker"):
         x=g.copy(); x["bar_timestamp"]=pd.to_datetime(x["bar_timestamp"],utc=True,errors="coerce")
         raw[str(ticker)]=x.dropna(subset=["bar_timestamp"]).set_index("bar_timestamp")
+    raw.update(warehouse_frames(
+        members,period="5d",interval="5m",max_age_minutes=10,require_complete=False
+    ))
+    return sorted(set(core)|set(members)),raw
+
+
+def run():
+    OUTPUT_DIR.mkdir(parents=True,exist_ok=True)
+    tickers,raw=_load_rotation_history()
 
     cache={t:_stats(_extract(raw.get(t,pd.DataFrame()),t),t) for t in tickers}
     spy=cache.get("SPY")
