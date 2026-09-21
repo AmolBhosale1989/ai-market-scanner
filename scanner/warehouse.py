@@ -22,6 +22,8 @@ class DataRequirement:
     latest_only: bool = False
     as_of: datetime | None = None
     min_bars_per_symbol: int = 1
+    minimum_fresh_coverage: float = 1.0
+    required_fresh_tickers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -259,6 +261,21 @@ def provide(req: DataRequirement) -> WarehouseView:
     raw=_pit(req.tickers, req.interval, req.consumer, as_of=req.as_of)
     _assert_coverage(raw, req.tickers, req.consumer)
     _assert_quality(raw, req.consumer, min_bars_per_symbol=req.min_bars_per_symbol)
+    stale,_,expectation=_freshness_failures(raw,req.interval,req.max_age_minutes,req.consumer)
+    if stale:
+        stale_set=set(stale)
+        required=set(_tickers(req.required_fresh_tickers))
+        stale_required=sorted(stale_set.intersection(required))
+        optional=set(_tickers(req.tickers))-required
+        optional_coverage=(len(optional-stale_set)/len(optional)) if optional else 1.0
+        if stale_required or optional_coverage < req.minimum_fresh_coverage:
+            raise RuntimeError(
+                f"WAREHOUSE_STALE: {req.consumer} {req.interval} stale_symbols={len(stale)} "
+                f"sample={','.join(stale[:10])} optional_coverage={optional_coverage:.6f} "
+                f"minimum={req.minimum_fresh_coverage:.6f} required_stale={','.join(stale_required) or '-'} "
+                f"{expectation}"
+            )
+        raw=raw[~raw["ticker"].astype(str).str.upper().isin(stale_set)].copy()
     _assert_fresh(raw, req.interval, req.max_age_minutes, req.consumer)
     frame=_compat_frame(raw)
     if req.latest_only and not frame.empty:

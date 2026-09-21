@@ -114,6 +114,8 @@ def test_theme_live_uses_sparse_theme_freshness_contract(monkeypatch):
     requirement=captured["requirement"]
     assert requirement.tickers==("SPY","FINX")
     assert requirement.max_age_minutes==module.THEME_INTRADAY_MAX_AGE_MINUTES==20
+    assert requirement.minimum_fresh_coverage==module.THEME_INTRADAY_MIN_COVERAGE==0.90
+    assert requirement.required_fresh_tickers==("SPY",)
 
 
 def test_momentum_emits_valid_empty_artifacts_when_session_has_no_leaders(monkeypatch,tmp_path):

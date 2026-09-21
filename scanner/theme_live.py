@@ -7,7 +7,12 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from .warehouse import DataRequirement, provide
 
-from .config import OUTPUT_DIR, THEME_INTRADAY_MAX_AGE_MINUTES
+from .config import (
+    CORE_INTRADAY_MARKET_SYMBOLS,
+    OUTPUT_DIR,
+    THEME_INTRADAY_MAX_AGE_MINUTES,
+    THEME_INTRADAY_MIN_COVERAGE,
+)
 from .session_contract import latest_frame_session
 from .themes import THEMES, rank_themes
 
@@ -55,6 +60,8 @@ def _load_theme_history(tickers: list[str]):
     return provide(DataRequirement(
         consumer="theme_live",tickers=tuple(tickers),interval="5m",period="5d",
         max_age_minutes=THEME_INTRADAY_MAX_AGE_MINUTES,view_name="theme_live_5m",
+        minimum_fresh_coverage=THEME_INTRADAY_MIN_COVERAGE,
+        required_fresh_tickers=tuple(x for x in tickers if x in CORE_INTRADAY_MARKET_SYMBOLS),
     ))
 
 
@@ -69,6 +76,9 @@ def run():
     for ticker,g in view.frame.groupby("ticker"):
         x=g.copy(); x["bar_timestamp"]=pd.to_datetime(x["bar_timestamp"],utc=True,errors="coerce")
         raw[str(ticker)]=x.dropna(subset=["bar_timestamp"]).set_index("bar_timestamp")
+    fresh_etfs=set(raw).intersection(tickers)-{"SPY"}
+    expected_etfs=set(tickers)-{"SPY"}
+    quarantined_etfs=sorted(expected_etfs-fresh_etfs)
 
     spy_frame=_extract(raw.get("SPY",pd.DataFrame()),"SPY")
     session_date=latest_frame_session(spy_frame)
@@ -102,6 +112,10 @@ def run():
         "spy_live_change_pct":round(spy_move,2) if math.isfinite(spy_move) else math.nan,
         "spy_live_bar_at_et":spy_bar,
         "themes_ranked":len(out),
+        "live_etfs_expected":len(expected_etfs),
+        "live_etfs_fresh":len(fresh_etfs),
+        "live_etfs_quarantined":len(quarantined_etfs),
+        "quarantined_etf_sample":",".join(quarantined_etfs[:10]),
         "mode":"BATCHED_LIVE_EXTENDED_HOURS_PLUS_DAILY_TREND",
     }]).to_csv(OUTPUT_DIR/"theme_health.csv",index=False)
     return out

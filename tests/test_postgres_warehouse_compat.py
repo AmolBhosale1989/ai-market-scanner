@@ -50,6 +50,34 @@ def test_tolerant_frames_quarantines_stale_symbol(monkeypatch):
     assert set(result)=={"AAPL"}
 
 
+def test_provide_quarantines_optional_stale_symbol_within_coverage(monkeypatch):
+    rows=_rows(("SPY","FINX","ARKK"))
+    monkeypatch.setattr(warehouse,"point_in_time",lambda req: rows)
+    def freshness(frame,*_args):
+        stale=[x for x in ("FINX",) if x in set(frame["ticker"])]
+        return stale,pd.Timestamp.now(tz="UTC"),"market_open bar_end_max=20m"
+    monkeypatch.setattr(warehouse,"_freshness_failures",freshness)
+    view=warehouse.provide(warehouse.DataRequirement(
+        consumer="theme_live",tickers=("SPY","FINX","ARKK"),interval="5m",
+        minimum_fresh_coverage=0.5,required_fresh_tickers=("SPY",),
+    ))
+    assert set(view.frame["ticker"])=={"SPY","ARKK"}
+
+
+def test_provide_never_quarantines_required_stale_symbol(monkeypatch):
+    rows=_rows(("SPY","FINX"))
+    monkeypatch.setattr(warehouse,"point_in_time",lambda req: rows)
+    monkeypatch.setattr(
+        warehouse,"_freshness_failures",
+        lambda *_args: (["SPY"],pd.Timestamp.now(tz="UTC"),"market_open bar_end_max=20m"),
+    )
+    with pytest.raises(RuntimeError,match="required_stale=SPY"):
+        warehouse.provide(warehouse.DataRequirement(
+            consumer="theme_live",tickers=("SPY","FINX"),interval="5m",
+            minimum_fresh_coverage=0.9,required_fresh_tickers=("SPY",),
+        ))
+
+
 def test_update_cannot_recreate_csv_warehouse():
     with pytest.raises(RuntimeError, match="WAREHOUSE_UPDATE_REMOVED"):
         warehouse.update(["AAPL"])
