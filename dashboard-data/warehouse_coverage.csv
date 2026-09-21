@@ -1,5 +1,3 @@
 tier,timeframe,expected_symbols,covered_symbols,coverage,usable_symbols,usable_coverage,minimum_coverage,minimum_bars,missing_count,short_history_count,invalid_symbol_count,stale_symbol_count,stale_error,status
+MASTER_DAILY,1d,5340,5340,1.0,5254,0.983895,0.75,40,0,72,16,1,stale_symbols=1 sample=SVA expected=2026-09-18,PASS
 CRITICAL_DAILY,1d,30,30,1.0,30,1.0,1.0,220,0,0,0,0,,PASS
-CRITICAL_INTRADAY,5m,12,12,1.0,12,1.0,1.0,120,0,0,0,0,,PASS
-THEME_INTRADAY,5m,18,18,1.0,18,1.0,0.9,120,0,0,0,0,,PASS
-LIVE_INTRADAY,5m,420,420,1.0,413,0.983333,0.95,20,0,0,0,7,"stale_symbols=7 sample=CLGN,CRE,DSS,FLYE,NCRA,PSNYW,RFAI market_open bar_end_max=15m",PASS
