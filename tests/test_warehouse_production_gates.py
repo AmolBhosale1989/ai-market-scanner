@@ -146,7 +146,7 @@ def test_live_tier_allows_one_provider_interval_of_delivery_lag(monkeypatch):
     live=[f"L{i}" for i in range(420)]
     tier=next(tier for tier in build_tiers(master,live) if tier.name=="LIVE_INTRADAY")
     assert tier.minimum_coverage==0.95
-    assert tier.max_age_minutes==15
+    assert tier.max_age_minutes==10
     monkeypatch.setattr(
         pd.Timestamp,"now",classmethod(lambda cls,tz=None: pd.Timestamp("2026-09-21T16:48:30Z"))
     )
@@ -158,6 +158,22 @@ def test_live_tier_allows_one_provider_interval_of_delivery_lag(monkeypatch):
     result=evaluate_tier(tier,frame)
     assert result["status"]=="PASS"
     assert result["usable_coverage"]==1.0
+
+
+def test_intraday_freshness_is_measured_from_bar_end(monkeypatch):
+    tier=CoverageTier("CORE",("SPY",),"5m",1.0,1,10)
+    monkeypatch.setattr(
+        pd.Timestamp,"now",classmethod(lambda cls,tz=None: pd.Timestamp("2026-09-21T16:59:00Z"))
+    )
+    frame=pd.DataFrame([{
+        "ticker":"SPY","event_timestamp":"2026-09-21T16:45:00Z",
+        "ingested_at":"2026-09-21T16:57:00Z","bars":430,"invalid_bars":0,
+    }])
+    assert evaluate_tier(tier,frame)["status"]=="PASS"
+    frame.loc[0,"event_timestamp"]="2026-09-21T16:40:00Z"
+    result=evaluate_tier(tier,frame)
+    assert result["status"]=="FAIL"
+    assert result["stale_sample"]==["SPY"]
 
 
 def test_coverage_query_bounds_version_selection_per_instrument(monkeypatch):

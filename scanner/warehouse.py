@@ -87,13 +87,21 @@ def _freshness_failures(
             break
 
     if interval != "1d" and open_now:
-        # During the live session, require a recent market event bar, not merely a recent ingestion timestamp.
+        # Intraday event timestamps label the start of the bar.  Freshness must
+        # therefore be measured from the bar end; otherwise every five-minute
+        # bar loses five minutes of its permitted age before it can be closed
+        # and delivered by the provider.
         newest_by_symbol=(df.assign(_event=event_times).groupby("ticker")["_event"].max())
-        ages=(now-newest_by_symbol).dt.total_seconds()/60
-        stale=ages[(ages < 0) | (ages > max_age_minutes)]
+        try:
+            bar_duration=pd.Timedelta(interval)
+        except (TypeError,ValueError):
+            bar_duration=pd.Timedelta(0)
+        future_event=newest_by_symbol > now
+        ages=((now-(newest_by_symbol+bar_duration)).dt.total_seconds()/60).clip(lower=0)
+        stale=ages[future_event | (ages > max_age_minutes)]
         if not stale.empty:
-            return stale.index.astype(str).tolist(), ingested, f"market_open max={max_age_minutes}m"
-        return [], ingested, f"market_open max={max_age_minutes}m"
+            return stale.index.astype(str).tolist(), ingested, f"market_open bar_end_max={max_age_minutes}m"
+        return [], ingested, f"market_open bar_end_max={max_age_minutes}m"
 
     # Closed market/weekend and daily bars: newest event must belong to the latest completed NYSE session.
     completed = schedule[pd.to_datetime(schedule["market_close"], utc=True) < now]
