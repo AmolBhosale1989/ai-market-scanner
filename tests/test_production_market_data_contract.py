@@ -95,6 +95,20 @@ def test_sector_rotation_keeps_core_etfs_strict_and_constituents_tolerant(monkey
     assert raw=={}
 
 
+def test_theme_live_uses_sparse_theme_freshness_contract(monkeypatch):
+    from types import SimpleNamespace
+    import scanner.theme_live as module
+    captured={}
+    def load(req):
+        captured["requirement"]=req
+        return SimpleNamespace(frame=pd.DataFrame())
+    monkeypatch.setattr(module,"provide",load)
+    module._load_theme_history(["SPY","FINX"])
+    requirement=captured["requirement"]
+    assert requirement.tickers==("SPY","FINX")
+    assert requirement.max_age_minutes==module.THEME_INTRADAY_MAX_AGE_MINUTES==20
+
+
 def test_momentum_emits_valid_empty_artifacts_when_session_has_no_leaders(monkeypatch,tmp_path):
     import scanner.momentum_signals as module
     monkeypatch.setattr(module,"OUTPUT_DIR",tmp_path)

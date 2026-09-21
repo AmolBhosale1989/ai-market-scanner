@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from .warehouse import DataRequirement, provide
 
-from .config import OUTPUT_DIR
+from .config import OUTPUT_DIR, THEME_INTRADAY_MAX_AGE_MINUTES
 from .session_contract import latest_frame_session
 from .themes import THEMES, rank_themes
 
@@ -51,13 +51,20 @@ def _stats(d: pd.DataFrame, session_date):
     return move,today.index[-1].isoformat()
 
 
+def _load_theme_history(tickers: list[str]):
+    return provide(DataRequirement(
+        consumer="theme_live",tickers=tuple(tickers),interval="5m",period="5d",
+        max_age_minutes=THEME_INTRADAY_MAX_AGE_MINUTES,view_name="theme_live_5m",
+    ))
+
+
 def run():
     base=rank_themes()
     if base is None or base.empty:
         return pd.DataFrame()
 
     tickers=["SPY"]+sorted({str(v["etf"]) for v in THEMES.values()})
-    view=provide(DataRequirement(consumer="theme_live",tickers=tuple(tickers),interval="5m",period="5d",max_age_minutes=10,view_name="theme_live_5m"))
+    view=_load_theme_history(tickers)
     raw={}
     for ticker,g in view.frame.groupby("ticker"):
         x=g.copy(); x["bar_timestamp"]=pd.to_datetime(x["bar_timestamp"],utc=True,errors="coerce")
