@@ -57,6 +57,13 @@ def test_live_core_exposes_postgres_to_every_production_stage():
         assert f"scanner/{module}" in workflow
 
 
+def test_live_core_triggers_when_warehouse_contract_changes():
+    workflow=Path(".github/workflows/market-hunt-live-core.yml").read_text()
+    trigger=workflow.split("permissions:",1)[0]
+    assert "'scanner/config.py'" in trigger
+    assert "'scanner/warehouse_gate.py'" in trigger
+
+
 def test_smoke_calibration_fixture_represents_entered_wins_and_losses():
     from scanner.performance import build_empirical_calibration, build_performance_reports
     rows=[]
