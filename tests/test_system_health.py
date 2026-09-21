@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import json
 from pathlib import Path
 
@@ -8,8 +9,23 @@ import pandas as pd
 from scanner import system_health
 
 
+class _FrozenSunday(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        value=datetime(2026,9,20,4,10)
+        return value.replace(tzinfo=tz) if tz is not None else value
+
+
+def _freeze_health_clock(monkeypatch):
+    monkeypatch.setattr(system_health,"datetime",_FrozenSunday)
+    monkeypatch.setattr(
+        pd.Timestamp,"now",classmethod(lambda cls,tz=None: pd.Timestamp("2026-09-20T08:10:00Z"))
+    )
+
+
 def test_warehouse_snapshot_is_recognized_as_production_health(tmp_path, monkeypatch):
     monkeypatch.setattr(system_health, "OUTPUT_DIR", tmp_path)
+    _freeze_health_clock(monkeypatch)
     (tmp_path / "warehouse_snapshot.json").write_text(
         json.dumps({"status": "PASS", "as_of_utc": "2026-09-20T08:07:14Z"})
     )
@@ -33,6 +49,7 @@ def test_live_health_job_restores_published_warehouse_snapshot():
 
 def test_semantic_health_rejects_wrong_session_and_dropped_rows(tmp_path, monkeypatch):
     monkeypatch.setattr(system_health,"OUTPUT_DIR",tmp_path)
+    _freeze_health_clock(monkeypatch)
     monkeypatch.setattr(system_health,"expected_market_data_session",lambda now: pd.Timestamp("2026-09-18").date())
     timestamp="2026-09-20T08:00:00Z"
     (tmp_path/"warehouse_snapshot.json").write_text(json.dumps({"as_of_utc":timestamp}))
@@ -50,6 +67,7 @@ def test_semantic_health_rejects_wrong_session_and_dropped_rows(tmp_path, monkey
 
 def test_semantic_health_accepts_no_trade_when_all_inputs_were_evaluated(tmp_path, monkeypatch):
     monkeypatch.setattr(system_health,"OUTPUT_DIR",tmp_path)
+    _freeze_health_clock(monkeypatch)
     monkeypatch.setattr(system_health,"expected_market_data_session",lambda now: pd.Timestamp("2026-09-18").date())
     timestamp="2026-09-20T08:00:00Z"
     (tmp_path/"warehouse_snapshot.json").write_text(json.dumps({"as_of_utc":timestamp}))

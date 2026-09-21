@@ -84,7 +84,7 @@ jobs:
           python -m scanner.universe_plan --limit 420
           timeout 900s python -m scanner.warehouse_refresh --symbols-file outputs/live_universe.csv --period 1y --interval 1d
           timeout 480s python -m scanner.warehouse_refresh --symbols-file outputs/live_universe.csv --period 5d --interval 5m
-          python -m scanner.warehouse_gate --live-file outputs/live_universe.csv --tier CRITICAL_DAILY --tier CRITICAL_INTRADAY --tier LIVE_INTRADAY
+          python -m scanner.warehouse_gate --live-file outputs/live_universe.csv --tier CRITICAL_DAILY --tier CRITICAL_INTRADAY --tier THEME_INTRADAY --tier LIVE_INTRADAY
       - name: Fresh provider discovery and V3 production
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

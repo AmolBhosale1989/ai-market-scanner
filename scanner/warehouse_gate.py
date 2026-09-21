@@ -14,6 +14,7 @@ import pandas as pd
 
 from .bitemporal_warehouse import _connect, verify_health
 from .config import (
+    CORE_INTRADAY_MARKET_SYMBOLS,
     CRITICAL_DAILY_MIN_COVERAGE,
     CRITICAL_INTRADAY_MIN_COVERAGE,
     CRITICAL_MARKET_SYMBOLS,
@@ -21,6 +22,9 @@ from .config import (
     MASTER_DAILY_MIN_COVERAGE,
     MASTER_UNIVERSE_MINIMUM,
     OUTPUT_DIR,
+    THEME_INTRADAY_MARKET_SYMBOLS,
+    THEME_INTRADAY_MAX_AGE_MINUTES,
+    THEME_INTRADAY_MIN_COVERAGE,
 )
 from .warehouse import _freshness_failures
 
@@ -129,7 +133,11 @@ def build_tiers(master: Iterable[str], live: Iterable[str]) -> tuple[CoverageTie
     return (
         CoverageTier("MASTER_DAILY",master_symbols,"1d",MASTER_DAILY_MIN_COVERAGE,40,20),
         CoverageTier("CRITICAL_DAILY",tuple(CRITICAL_MARKET_SYMBOLS),"1d",CRITICAL_DAILY_MIN_COVERAGE,220,20),
-        CoverageTier("CRITICAL_INTRADAY",tuple(CRITICAL_MARKET_SYMBOLS),"5m",CRITICAL_INTRADAY_MIN_COVERAGE,120,10),
+        CoverageTier("CRITICAL_INTRADAY",tuple(CORE_INTRADAY_MARKET_SYMBOLS),"5m",CRITICAL_INTRADAY_MIN_COVERAGE,120,10),
+        CoverageTier(
+            "THEME_INTRADAY",tuple(THEME_INTRADAY_MARKET_SYMBOLS),"5m",
+            THEME_INTRADAY_MIN_COVERAGE,120,THEME_INTRADAY_MAX_AGE_MINUTES,
+        ),
         CoverageTier("LIVE_INTRADAY",live_symbols,"5m",LIVE_INTRADAY_MIN_COVERAGE,20,10),
     )
 
@@ -166,7 +174,10 @@ def main():
     p=argparse.ArgumentParser(description="Fail-closed production warehouse coverage gate")
     p.add_argument("--master-file",type=Path,default=OUTPUT_DIR/"master_universe.csv")
     p.add_argument("--live-file",type=Path,default=OUTPUT_DIR/"live_universe.csv")
-    p.add_argument("--tier",action="append",choices=["MASTER_DAILY","CRITICAL_DAILY","CRITICAL_INTRADAY","LIVE_INTRADAY"])
+    p.add_argument(
+        "--tier",action="append",
+        choices=["MASTER_DAILY","CRITICAL_DAILY","CRITICAL_INTRADAY","THEME_INTRADAY","LIVE_INTRADAY"],
+    )
     p.add_argument("--as-of",default="now")
     args=p.parse_args()
     as_of=None if args.as_of=="now" else pd.Timestamp(args.as_of).to_pydatetime()

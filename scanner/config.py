@@ -50,7 +50,18 @@ THEME_ETFS = (
     "ITA", "KRE", "MSOS", "OIH", "PAVE", "SKYY", "SMH",
     "URA", "WGMI", "XBI", "XHB", "XLE",
 )
-CRITICAL_MARKET_SYMBOLS = tuple(dict.fromkeys((BENCHMARK,) + SECTOR_ETFS + THEME_ETFS))
+# Intraday freshness is intentionally tiered.  SPY and the liquid sector ETFs
+# must remain current on every production run.  Theme ETFs can trade in sparse
+# five-minute intervals, so they are enforced separately instead of weakening
+# the core-market contract or blocking V3 because one theme ETF did not print.
+CORE_INTRADAY_MARKET_SYMBOLS = tuple(dict.fromkeys((BENCHMARK,) + SECTOR_ETFS))
+THEME_INTRADAY_MARKET_SYMBOLS = tuple(
+    symbol for symbol in dict.fromkeys(THEME_ETFS)
+    if symbol not in CORE_INTRADAY_MARKET_SYMBOLS
+)
+CRITICAL_MARKET_SYMBOLS = tuple(
+    dict.fromkeys(CORE_INTRADAY_MARKET_SYMBOLS + THEME_INTRADAY_MARKET_SYMBOLS)
+)
 ROTATION_CONSTITUENTS = (
     "AEM","AI","ALNY","AMAT","AMD","AMZN","APLD","ARBK","ARM","ASML","AU","AVAV","AVGO",
     "BE","BEAM","BITF","BMRN","BTDR","CAN","CCJ","CGNX","CHKP","CIFR","CLSK","COP","CORZ",
@@ -69,6 +80,8 @@ INGESTION_CRITICAL_SYMBOLS = tuple(dict.fromkeys(CRITICAL_MARKET_SYMBOLS + ROTAT
 MASTER_DAILY_MIN_COVERAGE = 0.75
 CRITICAL_DAILY_MIN_COVERAGE = 1.00
 CRITICAL_INTRADAY_MIN_COVERAGE = 1.00
+THEME_INTRADAY_MIN_COVERAGE = 0.90
+THEME_INTRADAY_MAX_AGE_MINUTES = 20
 LIVE_INTRADAY_MIN_COVERAGE = 0.95
 
 # Data-integrity controls.

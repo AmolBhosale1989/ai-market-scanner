@@ -79,6 +79,66 @@ def test_critical_intraday_history_floor_accepts_thin_valid_etfs():
     master=[f"M{i}" for i in range(5_341)]
     critical=next(tier for tier in build_tiers(master,["AAPL"]) if tier.name=="CRITICAL_INTRADAY")
     assert critical.minimum_bars==120
+    assert critical.minimum_coverage==1.0
+    assert critical.max_age_minutes==10
+    assert "SPY" in critical.symbols
+    assert "FINX" not in critical.symbols
+
+
+def test_theme_intraday_uses_sparse_etf_freshness_contract():
+    master=[f"M{i}" for i in range(5_341)]
+    theme=next(tier for tier in build_tiers(master,["AAPL"]) if tier.name=="THEME_INTRADAY")
+    assert theme.minimum_bars==120
+    assert theme.minimum_coverage==0.90
+    assert theme.max_age_minutes==20
+    assert "FINX" in theme.symbols
+    assert "SPY" not in theme.symbols
+    assert "XLE" not in theme.symbols
+
+
+def test_sparse_theme_bar_does_not_weaken_strict_core_gate(monkeypatch):
+    master=[f"M{i}" for i in range(5_341)]
+    tiers={tier.name:tier for tier in build_tiers(master,["AAPL"])}
+    now=pd.Timestamp("2026-09-21T15:09:00Z")
+    monkeypatch.setattr(pd.Timestamp,"now",classmethod(lambda cls,tz=None: now))
+
+    core=tiers["CRITICAL_INTRADAY"]
+    core_frame=pd.DataFrame([
+        {"ticker":symbol,"event_timestamp":"2026-09-21T15:05:00Z","ingested_at":"2026-09-21T15:08:00Z",
+         "bars":410,"invalid_bars":0}
+        for symbol in core.symbols
+    ])
+    assert evaluate_tier(core,core_frame)["status"]=="PASS"
+
+    theme=tiers["THEME_INTRADAY"]
+    theme_frame=pd.DataFrame([
+        {"ticker":symbol,"event_timestamp":"2026-09-21T14:50:00Z" if symbol=="FINX" else "2026-09-21T15:05:00Z",
+         "ingested_at":"2026-09-21T15:08:00Z","bars":151 if symbol=="FINX" else 410,"invalid_bars":0}
+        for symbol in theme.symbols
+    ])
+    assert evaluate_tier(theme,theme_frame)["status"]=="PASS"
+
+    core_frame.loc[core_frame["ticker"]=="SPY","event_timestamp"]="2026-09-21T14:50:00Z"
+    core_result=evaluate_tier(core,core_frame)
+    assert core_result["status"]=="FAIL"
+    assert core_result["stale_sample"]==["SPY"]
+
+
+def test_theme_tier_fails_when_sparse_symbols_exceed_tolerance(monkeypatch):
+    master=[f"M{i}" for i in range(5_341)]
+    theme=next(tier for tier in build_tiers(master,["AAPL"]) if tier.name=="THEME_INTRADAY")
+    monkeypatch.setattr(
+        pd.Timestamp,"now",classmethod(lambda cls,tz=None: pd.Timestamp("2026-09-21T15:30:00Z"))
+    )
+    stale=set(theme.symbols[:2])
+    frame=pd.DataFrame([
+        {"ticker":symbol,"event_timestamp":"2026-09-21T14:50:00Z" if symbol in stale else "2026-09-21T15:25:00Z",
+         "ingested_at":"2026-09-21T15:29:00Z","bars":410,"invalid_bars":0}
+        for symbol in theme.symbols
+    ])
+    result=evaluate_tier(theme,frame)
+    assert result["status"]=="FAIL"
+    assert result["stale_symbol_count"]==2
 
 
 def test_coverage_query_bounds_version_selection_per_instrument(monkeypatch):
