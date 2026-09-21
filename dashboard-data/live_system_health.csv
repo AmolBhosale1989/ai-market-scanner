@@ -1,13 +1,13 @@
 module,file,last_update_utc,age_minutes,max_age_minutes,status,market_open,role,checked_at_et,expected_session,semantic_detail
-Warehouse Snapshot,warehouse_snapshot.json,2026-09-20T17:04:28.330949+00:00,1456.3,20,STALE,True,PRODUCTION,2026-09-21T13:20:45-04:00,2026-09-21,
-V3 Live Production,monitor_health.csv,2026-09-20T16:40:15+00:00,1480.5,20,STALE,True,PRODUCTION,2026-09-21T13:20:45-04:00,2026-09-21,
-Themes,theme_health.csv,2026-09-20T16:41:24+00:00,1479.4,20,STALE,True,PRODUCTION,2026-09-21T13:20:45-04:00,2026-09-21,expected_session=2026-09-21 themes_ranked=19
-Sector Rotation,sector_rotation_health.csv,2026-09-20T16:41:48+00:00,1479.0,20,STALE,True,PRODUCTION,2026-09-21T13:20:45-04:00,2026-09-21,expected_session=2026-09-21 themes=11 stocks=109
-Momentum,momentum_health.csv,2026-09-20T16:41:48+00:00,1479.0,20,STALE,True,PRODUCTION,2026-09-21T13:20:45-04:00,2026-09-21,expected_session=2026-09-21 inputs=40 evaluated=40
-Order Flow,order_flow_strategy_health.csv,2026-09-20T16:41:56+00:00,1478.8,20,STALE,True,PRODUCTION,2026-09-21T13:20:45-04:00,2026-09-21,expected_session=2026-09-21 expected=40 evaluated=40
-V4 Live Intelligence,v4_worker_health.json,,,25,MISSING,True,SHADOW,2026-09-21T13:20:45-04:00,2026-09-21,
-Broad Breakout,broad_breakout_health.csv,2026-09-20T16:37:57+00:00,1482.8,20,STALE,True,SHADOW,2026-09-21T13:20:45-04:00,2026-09-21,
-High Conviction Alerts,high_conviction_alert_health.csv,2026-09-18T23:53:37+00:00,3927.1,20,STALE,True,SHADOW,2026-09-21T13:20:45-04:00,2026-09-21,
-Premarket Discovery,premarket_health.csv,2026-09-17T22:58:25+00:00,5422.3,45,OK,True,SHADOW,2026-09-21T13:20:45-04:00,2026-09-21,
-Daily Pick Validation,daily_top_pick_summary.csv,2026-09-17T22:59:31.526797+00:00,5421.2,90,STALE,True,SHADOW,2026-09-21T13:20:45-04:00,2026-09-21,
-Quant Strategy Suite,quant_shadow_health.json,,,1800,MISSING,True,SHADOW,2026-09-21T13:20:45-04:00,2026-09-21,
+Warehouse Snapshot,warehouse_snapshot.json,2026-09-20T17:04:28.330949+00:00,1466.3,20,STALE,True,PRODUCTION,2026-09-21T13:30:47-04:00,2026-09-21,
+V3 Live Production,monitor_health.csv,2026-09-20T16:40:15+00:00,1490.5,20,STALE,True,PRODUCTION,2026-09-21T13:30:47-04:00,2026-09-21,
+Themes,theme_health.csv,2026-09-20T16:41:24+00:00,1489.4,20,STALE,True,PRODUCTION,2026-09-21T13:30:47-04:00,2026-09-21,expected_session=2026-09-21 themes_ranked=19
+Sector Rotation,sector_rotation_health.csv,2026-09-20T16:41:48+00:00,1489.0,20,STALE,True,PRODUCTION,2026-09-21T13:30:47-04:00,2026-09-21,expected_session=2026-09-21 themes=11 stocks=109
+Momentum,momentum_health.csv,2026-09-20T16:41:48+00:00,1489.0,20,STALE,True,PRODUCTION,2026-09-21T13:30:47-04:00,2026-09-21,expected_session=2026-09-21 inputs=40 evaluated=40
+Order Flow,order_flow_strategy_health.csv,2026-09-20T16:41:56+00:00,1488.9,20,STALE,True,PRODUCTION,2026-09-21T13:30:47-04:00,2026-09-21,expected_session=2026-09-21 expected=40 evaluated=40
+V4 Live Intelligence,v4_worker_health.json,,,25,MISSING,True,SHADOW,2026-09-21T13:30:47-04:00,2026-09-21,
+Broad Breakout,broad_breakout_health.csv,2026-09-20T16:37:57+00:00,1492.8,20,STALE,True,SHADOW,2026-09-21T13:30:47-04:00,2026-09-21,
+High Conviction Alerts,high_conviction_alert_health.csv,2026-09-18T23:53:37+00:00,3937.2,20,STALE,True,SHADOW,2026-09-21T13:30:47-04:00,2026-09-21,
+Premarket Discovery,premarket_health.csv,2026-09-17T22:58:25+00:00,5432.4,45,OK,True,SHADOW,2026-09-21T13:30:47-04:00,2026-09-21,
+Daily Pick Validation,daily_top_pick_summary.csv,2026-09-17T22:59:31.526797+00:00,5431.3,90,STALE,True,SHADOW,2026-09-21T13:30:47-04:00,2026-09-21,
+Quant Strategy Suite,quant_shadow_health.json,,,1800,MISSING,True,SHADOW,2026-09-21T13:30:47-04:00,2026-09-21,
