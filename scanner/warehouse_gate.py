@@ -168,6 +168,19 @@ def run(master_file: Path, live_file: Path, as_of: datetime | None = None, selec
     pd.DataFrame(results).drop(columns=["missing_sample","short_history_sample","invalid_sample","stale_sample"]).to_csv(
         OUTPUT_DIR/"warehouse_coverage.csv",index=False
     )
+    for result in results:
+        print(
+            "WAREHOUSE_TIER "
+            f"tier={result['tier']} status={result['status']} "
+            f"usable={result['usable_symbols']}/{result['expected_symbols']} "
+            f"usable_coverage={result['usable_coverage']:.6f} "
+            f"minimum_coverage={result['minimum_coverage']:.6f} "
+            f"missing={result['missing_count']} short={result['short_history_count']} "
+            f"invalid={result['invalid_symbol_count']} stale={result['stale_symbol_count']} "
+            f"missing_sample={','.join(result['missing_sample'][:10]) or '-'} "
+            f"stale_sample={','.join(result['stale_sample'][:10]) or '-'}",
+            flush=True,
+        )
     if snapshot["status"]!="PASS":
         failed=",".join(x["tier"] for x in results if x["status"]!="PASS")
         raise RuntimeError(f"WAREHOUSE_GATE_FAILED: {failed}")

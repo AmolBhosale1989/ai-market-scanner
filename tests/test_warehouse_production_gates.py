@@ -141,17 +141,17 @@ def test_theme_tier_fails_when_sparse_symbols_exceed_tolerance(monkeypatch):
     assert result["stale_symbol_count"]==2
 
 
-def test_live_tier_allows_one_provider_interval_of_delivery_lag(monkeypatch):
+def test_live_tier_allows_batch_boundary_delivery_lag(monkeypatch):
     master=[f"M{i}" for i in range(5_341)]
     live=[f"L{i}" for i in range(420)]
     tier=next(tier for tier in build_tiers(master,live) if tier.name=="LIVE_INTRADAY")
     assert tier.minimum_coverage==0.95
-    assert tier.max_age_minutes==10
+    assert tier.max_age_minutes==15
     monkeypatch.setattr(
         pd.Timestamp,"now",classmethod(lambda cls,tz=None: pd.Timestamp("2026-09-21T16:48:30Z"))
     )
     frame=pd.DataFrame([
-        {"ticker":symbol,"event_timestamp":"2026-09-21T16:35:00Z",
+        {"ticker":symbol,"event_timestamp":"2026-09-21T16:30:00Z",
          "ingested_at":"2026-09-21T16:47:00Z","bars":264,"invalid_bars":0}
         for symbol in live
     ])

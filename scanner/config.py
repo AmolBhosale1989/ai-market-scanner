@@ -83,7 +83,11 @@ CRITICAL_INTRADAY_MIN_COVERAGE = 1.00
 THEME_INTRADAY_MIN_COVERAGE = 0.90
 THEME_INTRADAY_MAX_AGE_MINUTES = 20
 LIVE_INTRADAY_MIN_COVERAGE = 0.95
-LIVE_INTRADAY_MAX_AGE_MINUTES = 10
+# The breadth universe is fetched in bounded provider batches. Permit one
+# additional five-minute interval so early batches do not become stale solely
+# because later batches cross a bar boundary. Core benchmarks remain strict at
+# ten minutes and theme ETFs use their own SLA.
+LIVE_INTRADAY_MAX_AGE_MINUTES = 15
 
 # Data-integrity controls.
 MIN_DATA_COVERAGE = 0.75
