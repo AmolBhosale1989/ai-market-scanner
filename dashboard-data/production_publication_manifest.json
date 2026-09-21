@@ -1,67 +1,82 @@
 {
   "artifacts": [
     {
-      "bytes": 2077,
+      "bytes": 2541,
       "name": "warehouse_snapshot.json",
-      "sha256": "fce91829000d8c73132986fde30d855fc61e5a0cf9db26580d87af19b03a737c"
+      "sha256": "ddf33f0d6689470eb36c968dd563986d476ae4ca9b2c43ddb4162fa02fd454fc"
     },
     {
-      "bytes": 382,
+      "bytes": 444,
       "name": "warehouse_coverage.csv",
-      "sha256": "5bae98a89a56af275ddc55746b06cbc69a7d3641d11ee027add310b61bca571e"
+      "sha256": "7356931cdf50446dd9f5b05c000502cbf382aa81c61ae547d8e1ffce94342625"
     },
     {
-      "bytes": 281673,
-      "name": "master_universe.csv",
-      "sha256": "8ded57fa6d883718c6bdb2e955d3b2013e0abae48bc593f07eba47f923ea3c7c"
+      "bytes": 59560,
+      "name": "live_universe.csv",
+      "sha256": "a568ba4958027cdb5e6e1b986f8c032ef94d50a751e6dc44b603635139932e9c"
     },
     {
-      "bytes": 776277,
-      "name": "tradable_universe.csv",
-      "sha256": "e3888705ce85d26ff6e544eea23e25bd9aada815be03d095c4c943d82e89b2dd"
+      "bytes": 3709,
+      "name": "v3_live_discovery.csv",
+      "sha256": "f726e323dba21d0efea684635a6af70575e9178262235f5522cc2a6d02fc3297"
     },
     {
-      "bytes": 433,
-      "name": "scan_health.csv",
-      "sha256": "438633d5dc8784f7af8e1c5364853d3d2c736ab58abccfbeb0e181a25f736e84"
+      "bytes": 14374,
+      "name": "v3_live_snapshot.csv",
+      "sha256": "65b800a6b24b61b6a6e19390e271826a8dabcc719859dd5e6c304f18d066dc3c"
     },
     {
-      "bytes": 723784,
-      "name": "all_candidates.csv",
-      "sha256": "d3ce85b0ed84f05c90bfe52c98aa4d51687b8fb266eedd51c0050ee25af65022"
+      "bytes": 11478,
+      "name": "intraday_live.csv",
+      "sha256": "203965ac7825dc77ae2c186f4e27c75b47465e7648dc92f63573f4e58b4098c7"
     },
     {
-      "bytes": 598035,
+      "bytes": 170,
+      "name": "monitor_health.csv",
+      "sha256": "a73e41f11c87c400238521f48fe89cbaa971354e4b859e943a25886ca34f0517"
+    },
+    {
+      "bytes": 290,
+      "name": "theme_health.csv",
+      "sha256": "72b6fc29f9f49efb198f1cbe1d29248ac1d29489e6f44e641bf45606a2eace7b"
+    },
+    {
+      "bytes": 172,
+      "name": "sector_rotation_health.csv",
+      "sha256": "0d4b59b90a763a73ccb95d2d72bf77ea4d899a52fdebea2e68016fcdd24c66ac"
+    },
+    {
+      "bytes": 166,
+      "name": "momentum_health.csv",
+      "sha256": "9c66efe87f0ebe5e1357a11327686f2e60b4919a297e39847ecd19a6dbc1eaa9"
+    },
+    {
+      "bytes": 15062,
+      "name": "order_flow_strategy.csv",
+      "sha256": "a8e84d3c00f7998862d9f5866c1843f1239f22c8b9ecc259a44dcbef2a2e5cba"
+    },
+    {
+      "bytes": 231,
+      "name": "order_flow_strategy_health.csv",
+      "sha256": "e94ae2c609015318687fdbe25aaab158072a649898dce0d6a25f0bdd496c8f8d"
+    },
+    {
+      "bytes": 209,
+      "name": "live_system_health_summary.csv",
+      "sha256": "cb4b6dae3fe338fd9a3be7ed94dd27cf192a2ad0830f09f9329c5e72d812bd50"
+    },
+    {
+      "bytes": 44095,
       "name": "product_feed.json",
-      "sha256": "d527938b65f109471d492da9b548a04d6a4832be294180003c8cf8701679710f"
-    },
-    {
-      "bytes": 11945,
-      "name": "quant_shadow_signals.csv",
-      "sha256": "90c0ddeb790adcb8542dfb0f70335e6eb51d4e0e75894d3d621b369538e91af5"
-    },
-    {
-      "bytes": 144586,
-      "name": "quant_shadow_ledger.json",
-      "sha256": "af1ab1b1fdc1d7a624a54319d9dd946057f19a2383f246f234ef309bde21383d"
-    },
-    {
-      "bytes": 504,
-      "name": "quant_shadow_performance.csv",
-      "sha256": "99f5204df865a66b17a8da23a3423680d50a54f9afb074505a60499d8abe20b1"
-    },
-    {
-      "bytes": 727,
-      "name": "quant_shadow_health.json",
-      "sha256": "3d07f7d67b1d7478a4c5f2b61656082cd2bff7c2f65fa7b6ba60f9f5b501da80"
+      "sha256": "2e6a8edac27a6db38c304fbf933914b0d260ba8deff19a68f20d5ee1bb2a4ec1"
     }
   ],
-  "finalized_at_utc": "2026-09-21T18:40:25.049926+00:00",
-  "mode": "daily",
-  "production_run_id": "fcd8a412-9451-4597-b6a6-99938ef7309c",
+  "finalized_at_utc": "2026-09-21T22:24:26.731068+00:00",
+  "mode": "live",
+  "production_run_id": "7a77c936-f3f7-4b09-b7bd-89e7284795a0",
   "schema_version": 1,
   "source_commit": "2e5c1f0fbd4ebc810ba5130e1cea4804ed22d2f9",
   "status": "PASS",
-  "warehouse_as_of_utc": "2026-09-21T18:18:14.016084+00:00",
-  "workflow_run_id": "35637337798"
+  "warehouse_as_of_utc": "2026-09-21T22:21:02.228180+00:00",
+  "workflow_run_id": "35661839871"
 }
