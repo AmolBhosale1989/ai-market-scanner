@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 
 from .bitemporal_warehouse import _connect, finish_run, ingest_observations, latest_event_timestamps, start_run, verify_health
-from .config import INGESTION_CRITICAL_SYMBOLS, OUTPUT_DIR, RETRY_CHUNK_SIZE
+from .config import CRITICAL_MARKET_SYMBOLS, INGESTION_CRITICAL_SYMBOLS, OUTPUT_DIR, RETRY_CHUNK_SIZE
 from .data import download_batch
 from .warehouse import _freshness_failures
 
@@ -63,6 +63,19 @@ def _stale_watermarks(watermarks: dict[str, datetime], interval: str) -> set[str
         return set(watermarks)
 
 
+def _refresh_candidates(watermarks: dict[str, datetime], interval: str, tickers: list[str]) -> set[str]:
+    """Return existing symbols that must be fetched during this run.
+
+    Intraday benchmark, sector, and theme ETFs are always fetched. A full live
+    refresh spans multiple provider batches, so a critical symbol that is fresh
+    at job start can otherwise exceed its consumer SLA before the gate runs.
+    """
+    candidates=_stale_watermarks(watermarks,interval)
+    if interval != "1d":
+        candidates.update(set(tickers).intersection(watermarks).intersection(CRITICAL_MARKET_SYMBOLS))
+    return candidates
+
+
 def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootstrap: bool = False, benchmark_backfill: bool = True) -> dict:
     """Provider access is confined to ingestion; PostgreSQL is the only warehouse sink."""
     verify_health()
@@ -99,7 +112,7 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
     )
     try:
         watermarks = {} if bootstrap else latest_event_timestamps(tickers, timeframe=interval)
-        stale_existing=set(watermarks) if bootstrap else _stale_watermarks(watermarks,interval)
+        stale_existing=set(watermarks) if bootstrap else _refresh_candidates(watermarks,interval,tickers)
         incremental_period = "5d" if interval == "1d" else "2d"
         # Match the provider retry chunk so each network response and database
         # transaction carries a useful batch without returning to unsafe
