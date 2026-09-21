@@ -18,6 +18,7 @@ from .config import (
     CRITICAL_DAILY_MIN_COVERAGE,
     CRITICAL_INTRADAY_MIN_COVERAGE,
     CRITICAL_MARKET_SYMBOLS,
+    LIVE_INTRADAY_MAX_AGE_MINUTES,
     LIVE_INTRADAY_MIN_COVERAGE,
     MASTER_DAILY_MIN_COVERAGE,
     MASTER_UNIVERSE_MINIMUM,
@@ -138,7 +139,10 @@ def build_tiers(master: Iterable[str], live: Iterable[str]) -> tuple[CoverageTie
             "THEME_INTRADAY",tuple(THEME_INTRADAY_MARKET_SYMBOLS),"5m",
             THEME_INTRADAY_MIN_COVERAGE,120,THEME_INTRADAY_MAX_AGE_MINUTES,
         ),
-        CoverageTier("LIVE_INTRADAY",live_symbols,"5m",LIVE_INTRADAY_MIN_COVERAGE,20,10),
+        CoverageTier(
+            "LIVE_INTRADAY",live_symbols,"5m",LIVE_INTRADAY_MIN_COVERAGE,20,
+            LIVE_INTRADAY_MAX_AGE_MINUTES,
+        ),
     )
 
 
