@@ -1,2 +1,2 @@
 provider,configured,status,event_count,detail,checked_at_utc
-ALPHA_VANTAGE,True,NO_UPCOMING_EARNINGS,0,Provider connected; no matching liquid earnings events were returned inside the 7-day window.,2026-09-20T17:22:23.096515+00:00
+ALPHA_VANTAGE,True,NO_UPCOMING_EARNINGS,0,Provider connected; no matching liquid earnings events were returned inside the 7-day window.,2026-09-21T17:57:12.412698+00:00

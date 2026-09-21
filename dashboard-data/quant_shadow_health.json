@@ -1,10 +1,10 @@
 {
-  "as_of_session": "2026-09-18",
+  "as_of_session": "2026-09-21",
   "automatic_promotion_allowed": false,
   "broker_execution_enabled": false,
   "closed_records": 0,
-  "generated_at_utc": "2026-09-20T17:26:45.749816+00:00",
-  "ledger_records": 60,
+  "generated_at_utc": "2026-09-21T18:01:42.528219+00:00",
+  "ledger_records": 120,
   "market_data_source": "POSTGRESQL_DERIVED_SHADOW",
   "minimum_closed_per_strategy": 30,
   "production_applied": false,

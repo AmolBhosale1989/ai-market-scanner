@@ -1,7 +1,7 @@
 strategy,signals,pending_or_open,closed,win_rate_pct,expectancy_r,profit_factor,hit_5pct,hit_10pct,hit_15pct,manual_review_eligible,production_applied
-CROSS_SECTIONAL_MOMENTUM,10,10,0,0.0,0.0,0.0,0,0,0,False,False
-VOLATILITY_CONTRACTION_BREAKOUT,10,10,0,0.0,0.0,0.0,0,0,0,False,False
-TREND_PULLBACK,10,10,0,0.0,0.0,0.0,0,0,0,False,False
-RESIDUAL_SECTOR_STRENGTH,10,10,0,0.0,0.0,0.0,0,0,0,False,False
-REGIME_ENSEMBLE,10,10,0,0.0,0.0,0.0,0,0,0,False,False
-V3_BASELINE,10,10,0,0.0,0.0,0.0,0,0,0,False,False
+CROSS_SECTIONAL_MOMENTUM,20,20,0,0.0,0.0,0.0,0,0,0,False,False
+VOLATILITY_CONTRACTION_BREAKOUT,20,20,0,0.0,0.0,0.0,0,0,0,False,False
+TREND_PULLBACK,20,20,0,0.0,0.0,0.0,0,0,0,False,False
+RESIDUAL_SECTOR_STRENGTH,20,20,0,0.0,0.0,0.0,0,0,0,False,False
+REGIME_ENSEMBLE,20,20,0,0.0,0.0,0.0,0,0,0,False,False
+V3_BASELINE,20,20,0,0.0,0.0,0.0,0,0,0,False,False
