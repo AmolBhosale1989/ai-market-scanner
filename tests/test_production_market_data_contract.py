@@ -64,6 +64,18 @@ def test_live_core_triggers_when_warehouse_contract_changes():
     assert "'scanner/warehouse_gate.py'" in trigger
 
 
+def test_live_core_publishes_current_order_flow_metadata():
+    workflow=Path(".github/workflows/market-hunt-live-core.yml").read_text()
+    order_flow=workflow.split("- name: Complete production order-flow chain",1)[1]
+    order_flow=order_flow.split("- name: Build fail-closed production health",1)[0]
+    assert "outputs/order_flow_live_metadata.csv" in order_flow
+    validation=workflow.split("- name: Validate Refactor 2 freshness contract",1)[1]
+    validation=validation.split("- name: Publish V3 live production atomically",1)[0]
+    assert 'grep -q ",$GITHUB_RUN_ID,$GITHUB_SHA,FRESH"' in validation
+    publication=workflow.split("- name: Publish V3 live production atomically",1)[1]
+    assert "order_flow_live_metadata.csv" in publication
+
+
 def test_smoke_calibration_fixture_represents_entered_wins_and_losses():
     from scanner.performance import build_empirical_calibration, build_performance_reports
     rows=[]

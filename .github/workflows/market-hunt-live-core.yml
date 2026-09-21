@@ -103,6 +103,7 @@ jobs:
           timeout 150s python -m scanner.momentum_signals
           timeout 90s python -m scanner.order_flow_strategy
           timeout 150s python -m scanner.order_flow_validation
+          printf "updated_at_utc,workflow_run_id,source_commit,data_status\n%s,%s,%s,FRESH\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_RUN_ID" "$GITHUB_SHA" > outputs/order_flow_live_metadata.csv
       - name: Build fail-closed production health
         run: python -m scanner.system_health --require-production
       - name: Finalize live production telemetry
@@ -124,6 +125,8 @@ jobs:
           test -s outputs/theme_health.csv
           test -s outputs/sector_rotation_health.csv
           test -s outputs/order_flow_strategy_health.csv
+          test -s outputs/order_flow_live_metadata.csv
+          grep -q ",$GITHUB_RUN_ID,$GITHUB_SHA,FRESH" outputs/order_flow_live_metadata.csv
           test -s outputs/live_system_health_summary.csv
       - name: Publish V3 live production atomically
         shell: bash
@@ -135,7 +138,7 @@ jobs:
           git fetch origin scan-data:scan-data
           git worktree add /tmp/market-hunt-live-core-monitor scan-data
           mkdir -p /tmp/market-hunt-live-core-monitor/dashboard-data
-          for f in production_publication_manifest.json warehouse_snapshot.json warehouse_coverage.csv live_universe.csv v3_live_discovery.csv broad_breakout_discovery.csv broad_breakout_health.csv v3_live_snapshot.csv recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv momentum_signals.csv momentum_health.csv order_flow_strategy.csv order_flow_strategy_health.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv live_system_health.csv live_system_health_summary.csv; do
+          for f in production_publication_manifest.json warehouse_snapshot.json warehouse_coverage.csv live_universe.csv v3_live_discovery.csv broad_breakout_discovery.csv broad_breakout_health.csv v3_live_snapshot.csv recommended_trades.csv intraday_live.csv state_transitions.csv live_alerts.txt paper_journal.csv performance_summary.csv performance_by_setup.csv probability_calibration.csv monitor_health.csv product_feed.json trending_themes.csv theme_health.csv sector_rotation.csv rotation_leaders.csv sector_rotation_health.csv momentum_signals.csv momentum_health.csv order_flow_live_metadata.csv order_flow_strategy.csv order_flow_strategy_health.csv order_flow_strategy_journal.csv order_flow_strategy_performance.csv live_system_health.csv live_system_health_summary.csv; do
             if [ -s "outputs/$f" ]; then
               cp "outputs/$f" "/tmp/market-hunt-live-core-monitor/dashboard-data/$f"
             fi
