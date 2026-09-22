@@ -9,23 +9,23 @@
   },
   "detail": "forward outcomes are accumulating; no performance conclusion is permitted yet",
   "failed_checks": [],
-  "generated_at_utc": "2026-09-20T08:06:26.448808+00:00",
+  "generated_at_utc": "2026-09-22T01:10:27.844964+00:00",
   "latest_snapshot_candidates": 20,
-  "latest_snapshot_session": "2026-09-17",
-  "mature_samples": 20,
+  "latest_snapshot_session": "2026-09-21",
+  "mature_samples": 40,
   "next_milestone": {
-    "current": 20,
-    "name": "MONITORING",
-    "remaining": 10,
-    "required": 30
+    "current": 40,
+    "name": "V5_VALIDATION",
+    "remaining": 60,
+    "required": 100
   },
-  "observation_days": 5,
-  "observations": 100,
+  "observation_days": 6,
+  "observations": 120,
   "performance_claim_allowed": false,
   "progress_pct": {
-    "monitoring_30": 66.7,
-    "v5_100": 20.0,
-    "v9_220": 9.1
+    "monitoring_30": 100.0,
+    "v5_100": 40.0,
+    "v9_220": 18.2
   },
   "schema_version": "8.2.0",
   "settings": {
@@ -35,7 +35,7 @@
     "v5_samples": 100,
     "v9_samples": 220
   },
-  "snapshot_age_calendar_days": 3,
+  "snapshot_age_calendar_days": 1,
   "status": "HEALTHY_COLLECTING",
   "unresolved_observations": 80
 }

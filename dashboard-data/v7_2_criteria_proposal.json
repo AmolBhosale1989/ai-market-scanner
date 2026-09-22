@@ -59,7 +59,7 @@
   "model_version": "untrained",
   "production_applied": false,
   "reason": "need >= 220 mature point-in-time outcomes",
-  "samples": 20,
+  "samples": 40,
   "schema_version": "7.2.0-shadow",
   "settings": {
     "desired_p5_precision_pct": 55.0,

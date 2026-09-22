@@ -3,7 +3,7 @@
   "broker_execution_enabled": false,
   "checks": {
     "broker_lock": true,
-    "evidence_pipeline": false,
+    "evidence_pipeline": true,
     "mature_evidence": false,
     "paper_allocator": true,
     "paper_validation": false,
@@ -16,16 +16,15 @@
   "eligible_for_manual_review": false,
   "failed_gates": [
     "v8_evidence_scorecard",
-    "evidence_pipeline",
     "mature_evidence",
     "prospective_challenger",
     "v4_cutover_evidence",
     "paper_validation"
   ],
-  "generated_at_utc": "2026-09-20T08:06:26.777386+00:00",
+  "generated_at_utc": "2026-09-22T01:10:28.255971+00:00",
   "live_orders_enabled": false,
   "manual_approval_required": true,
-  "mature_evidence": 20,
+  "mature_evidence": 40,
   "minimum_mature_evidence": 220,
   "production_applied": false,
   "schema_version": "9.1.0-readiness-only",

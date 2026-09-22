@@ -1,5 +1,5 @@
 strategy,top_k,observation_days,selected_candidates,mature_candidates,forward_hit_5pct_rate,forward_hit_10pct_rate,forward_hit_15pct_rate,win_rate_5d_pct,avg_return_5d_pct,median_return_5d_pct,avg_forward_5d_mfe_pct,avg_forward_5d_mae_pct,avg_r_multiple_5d,false_breakout_rate_pct,p5_brier_score,p10_brier_score,p15_brier_score
-V3,20,5,100,20,35.0,0.0,0.0,50.0,-0.6849,-0.073,3.8828,-5.2368,-0.8534,80.0,,,
+V3,20,6,120,40,27.5,5.0,0.0,50.0,-0.6849,-0.073,3.3952,-5.7752,-0.8534,85.0,,,
 V4_5,20,0,0,0,,,,,,,,,,,,,
 V5,20,0,0,0,,,,,,,,,,,,,
 V6,20,0,0,0,,,,,,,,,,,,,

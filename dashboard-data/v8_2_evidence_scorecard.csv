@@ -1,2 +1,2 @@
 schema_version,generated_at_utc,status,observations,observation_days,mature_samples,next_milestone,milestone_remaining,v9_progress_pct,failed_checks,block_v9_review
-8.2.0,2026-09-20T08:06:26.448808+00:00,HEALTHY_COLLECTING,100,5,20,MONITORING,10,9.1,,True
+8.2.0,2026-09-22T01:10:27.844964+00:00,HEALTHY_COLLECTING,120,6,40,V5_VALIDATION,60,18.2,,True
