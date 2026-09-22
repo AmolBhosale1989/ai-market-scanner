@@ -17,6 +17,8 @@ from .bitemporal_warehouse import _connect
 
 
 def _json_default(value):
+    if isinstance(value, uuid.UUID):
+        return str(value)
     if isinstance(value, (datetime, date, pd.Timestamp)):
         return value.isoformat()
     if isinstance(value, np.generic):
@@ -31,6 +33,8 @@ def _clean(value):
         return {str(k): _clean(v) for k, v in value.items()}
     if isinstance(value, (list, tuple, set)):
         return [_clean(v) for v in value]
+    if isinstance(value, uuid.UUID):
+        return str(value)
     if isinstance(value, (datetime, date, pd.Timestamp)):
         return value.isoformat()
     if isinstance(value, np.generic):
