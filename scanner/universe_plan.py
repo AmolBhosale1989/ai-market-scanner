@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 import pandas as pd
 
-from .config import OUTPUT_DIR
+from .control_plane import read_dataset, write_dataset
 
 
 def select_live_universe(frame: pd.DataFrame, limit: int = 420) -> pd.DataFrame:
@@ -31,13 +30,11 @@ def select_live_universe(frame: pd.DataFrame, limit: int = 420) -> pd.DataFrame:
 
 def main():
     p=argparse.ArgumentParser(description="Build the shared live warehouse/discovery universe")
-    p.add_argument("--input",type=Path,default=OUTPUT_DIR/"tradable_universe.csv")
-    p.add_argument("--output",type=Path,default=OUTPUT_DIR/"live_universe.csv")
     p.add_argument("--limit",type=int,default=420)
     args=p.parse_args()
-    out=select_live_universe(pd.read_csv(args.input),limit=args.limit)
-    args.output.parent.mkdir(parents=True,exist_ok=True)
-    out.to_csv(args.output,index=False)
+    source=read_dataset("tradable_universe")
+    out=select_live_universe(source,limit=args.limit)
+    write_dataset("live_universe",out)
     print(f"LIVE_UNIVERSE_AVAILABLE symbols={len(out)}")
 
 

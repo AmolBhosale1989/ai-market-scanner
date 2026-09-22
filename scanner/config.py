@@ -1,12 +1,3 @@
-from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parents[1]
-DATA_DIR = BASE_DIR / "data"
-UNIVERSE_FILE = DATA_DIR / "universe.csv"
-OUTPUT_DIR = BASE_DIR / "outputs"
-OUTPUT_DIR.mkdir(exist_ok=True)
-DATA_DIR.mkdir(exist_ok=True)
-
 # Tradable-universe gate.
 MIN_PRICE = 5.0
 MIN_AVG_SHARE_VOLUME = 1_000_000

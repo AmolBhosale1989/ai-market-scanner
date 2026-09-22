@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-import json
 import math
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from ..control_plane import read_dataset
+
 
 EVIDENCE_SCHEMA = "7.1.0"
 LEDGERS = {
-    "v4_shadow_observations.json": ("observations", "observation_id"),
-    "v4_outcomes.json": ("signals", "signal_id"),
+    "v4_shadow_observations": ("DAILY_SNAPSHOT", "observation_id"),
+    "v4_outcomes": ("INTRADAY_TRIGGER", "signal_id"),
 }
 
 
@@ -25,25 +25,12 @@ def _present(value: Any) -> bool:
     return not (isinstance(value, str) and not value.strip())
 
 
-def _read_json(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text())
-        return value if isinstance(value, dict) else {}
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
 def _resolution(record: dict[str, Any]) -> int:
     try:
         value = float(record.get("daily_bars_resolved", 0) or 0)
         return int(value) if math.isfinite(value) else 0
     except (TypeError, ValueError):
         return 0
-
-
-def _records(path: Path, collection: str) -> dict[str, dict[str, Any]]:
-    value = _read_json(path).get(collection, {})
-    return value if isinstance(value, dict) else {}
 
 
 def _merge_record(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any]:
@@ -87,60 +74,13 @@ def _freeze_earliest_daily_cohorts(records: dict[str, dict[str, Any]]) -> dict[s
     return frozen
 
 
-def _csv_records(path: Path, id_column: str) -> dict[str, dict[str, Any]]:
-    try:
-        frame = pd.read_csv(path)
-    except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError):
-        return {}
-    if id_column not in frame:
-        return {}
-    records: dict[str, dict[str, Any]] = {}
-    for row in frame.to_dict(orient="records"):
-        key = str(row.get(id_column, "")).strip()
-        if key:
-            records[key] = {name: (None if pd.isna(value) else value) for name, value in row.items()}
-    return records
-
-
-def import_durable_evidence(state_dir: Path, import_dir: Path) -> dict[str, int]:
-    """Merge durable scan-data ledgers with any newer local cache state."""
-    state_dir, import_dir = Path(state_dir), Path(import_dir)
-    state_dir.mkdir(parents=True, exist_ok=True)
-    counts: dict[str, int] = {}
-    for filename, (collection, id_column) in LEDGERS.items():
-        local_path = state_dir / filename
-        local = _records(local_path, collection)
-        durable_path = import_dir / "evidence-state" / filename
-        durable = _records(durable_path, collection)
-        if not durable:
-            csv_name = "v4_shadow_observations.csv" if collection == "observations" else "v4_outcomes.csv"
-            durable = _csv_records(import_dir / "dashboard-data" / csv_name, id_column)
-        merged = dict(durable)
-        for key, record in local.items():
-            merged[key] = _merge_record(merged.get(key, {}), record)
-        if collection == "observations":
-            merged = _freeze_earliest_daily_cohorts(merged)
-        payload = {
-            "schema_version": EVIDENCE_SCHEMA,
-            "updated_at_utc": datetime.now(timezone.utc).isoformat(),
-            collection: merged,
-        }
-        local_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
-        counts[collection] = len(merged)
-    return counts
-
-
-def training_outcomes(state_dir: Path, output_dir: Path | None = None) -> pd.DataFrame:
+def training_outcomes() -> pd.DataFrame:
     """Return only forward-mature, point-in-time observations for model fitting."""
-    state_dir = Path(state_dir)
     rows: list[dict[str, Any]] = []
-    for filename, (collection, id_column) in LEDGERS.items():
-        records = _records(state_dir / filename, collection)
-        if not records and output_dir is not None:
-            csv_name = "v4_shadow_observations.csv" if collection == "observations" else "v4_outcomes.csv"
-            records = _csv_records(Path(output_dir) / csv_name, id_column)
-        source = "DAILY_SNAPSHOT" if collection == "observations" else "INTRADAY_TRIGGER"
-        for key, record in records.items():
+    for dataset_name, (source, id_column) in LEDGERS.items():
+        frame = read_dataset(dataset_name, required=False)
+        for record in frame.to_dict(orient="records"):
+            key = str(record.get(id_column, ""))
             resolution = _resolution(record)
             labels = [record.get(f"forward_hit_{threshold}pct") for threshold in (5, 10, 15)]
             if resolution < 5 or not all(_present(value) for value in labels):

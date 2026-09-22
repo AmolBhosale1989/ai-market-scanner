@@ -106,18 +106,16 @@ def test_v46_activate_then_rollback(tmp_path):
     assert rolled["rollback_reason"] == "drill"
 
 
-def test_active_ranking_falls_back_on_model_mismatch(tmp_path):
-    state = tmp_path / "cutover.json"
-    state.write_text(json.dumps({
+def test_active_ranking_falls_back_on_model_mismatch(memory_control_plane):
+    memory_control_plane["states"][("v4_cutover", "state")] = {
         "mode": PRIMARY_MODE,
         "active_model_version": "different",
-    }))
-    model = tmp_path / "model.json"
-    model.write_text(json.dumps({
+    }
+    model = {
         "model_version": "v4.5-test",
         "promotion_status": "VALIDATED_SHADOW",
         "targets": {},
-    }))
-    frame, mode = apply_active_ranking(candidates(), state, model)
+    }
+    frame, mode = apply_active_ranking(candidates(), model)
     assert mode == SHADOW_MODE
     assert "v4_active_rank_score" not in frame.columns

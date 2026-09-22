@@ -7,11 +7,14 @@ def apply_schema():
     if not os.getenv("DATABASE_URL","").strip():
         raise RuntimeError("DATABASE_URL is required for the bitemporal warehouse")
     import psycopg
-    sql=Path("sql/001_bitemporal_warehouse.sql").read_text()
     with psycopg.connect(os.environ["DATABASE_URL"], sslmode=os.getenv("PGSSLMODE","require")) as conn:
         with conn.cursor() as cur:
-            cur.execute(sql)
-    print("BITEMPORAL_WAREHOUSE_SCHEMA_READY")
+            migrations=sorted(Path("sql").glob("*.sql"))
+            if not migrations:
+                raise RuntimeError("WAREHOUSE_SCHEMA_MISSING: sql migrations not found")
+            for migration in migrations:
+                cur.execute(migration.read_text())
+    print("POSTGRESQL_MARKET_AND_CONTROL_SCHEMA_READY")
 
 if __name__=="__main__":
     apply_schema()

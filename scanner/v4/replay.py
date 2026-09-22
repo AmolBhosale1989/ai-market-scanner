@@ -2,39 +2,31 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
-import tempfile
+import uuid
 
+from ..control_plane import read_events
 from .contracts import EventType, MarketEvent
 from .engine import MomentumEngine, Transition
-from .store import FileEventStore
+from .store import PostgresEventStore
 
 
-def load_snapshot_events(path: Path) -> list[MarketEvent]:
-    events = []
-    if not Path(path).exists():
-        return events
-    for line in Path(path).read_text().splitlines():
-        if not line.strip():
-            continue
-        event = MarketEvent.from_dict(json.loads(line))
-        if event.event_type is EventType.CANDIDATE_SNAPSHOT:
-            events.append(event)
-    return sorted(events, key=lambda event: (event.observed_at_utc, event.event_id))
+def load_snapshot_events() -> list[MarketEvent]:
+    events = [MarketEvent.from_dict(row) for row in read_events("v4.events")]
+    return sorted((event for event in events if event.event_type is EventType.CANDIDATE_SNAPSHOT),
+                  key=lambda event: (event.observed_at_utc, event.event_id))
 
 
 def replay_events(events: list[MarketEvent]) -> tuple[list[Transition], str]:
-    with tempfile.TemporaryDirectory(prefix="market-hunt-v4-replay-") as root:
-        engine = MomentumEngine(FileEventStore(Path(root)))
-        transitions = engine.process_many(events)
+    namespace = "v4_replay_" + uuid.uuid4().hex
+    transitions = MomentumEngine(PostgresEventStore(namespace)).process_many(events)
     canonical = json.dumps([item.to_dict() for item in transitions], sort_keys=True, separators=(",", ":"))
     return transitions, hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def verify_deterministic_replay(path: Path) -> dict:
-    events = load_snapshot_events(path)
+def verify_deterministic_replay() -> dict:
+    events = load_snapshot_events()
     first, first_hash = replay_events(events)
-    second, second_hash = replay_events(events)
+    _, second_hash = replay_events(events)
     return {
         "events_replayed": len(events),
         "transitions_replayed": len(first),

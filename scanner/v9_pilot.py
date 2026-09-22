@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import argparse
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import json
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
+from .control_plane import read_dataset, read_record, write_dataset, write_record
 
 
 SCHEMA_VERSION = "9.1.0-paper-rehearsal"
@@ -21,34 +21,17 @@ class PilotSettings:
     manual_order_entry_required: bool = True
 
 
-def _json(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text())
-        return value if isinstance(value, dict) else {}
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
-def _csv(path: Path) -> pd.DataFrame:
-    try:
-        return pd.read_csv(path)
-    except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError):
-        return pd.DataFrame()
-
-
 def build_pilot_rehearsal(
-    output_dir: Path,
     now: datetime | None = None,
     settings: PilotSettings | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Prepare a non-executable manual review packet only after every V9 gate passes."""
-    output_dir = Path(output_dir)
     now = now or datetime.now(timezone.utc)
     settings = settings or PilotSettings()
-    readiness = _json(output_dir / "v9_readiness.json")
-    scorecard = _json(output_dir / "v8_2_evidence_scorecard.json")
-    allocation = _json(output_dir / "v7_allocation_health.json")
-    portfolio = _csv(output_dir / "v7_paper_portfolio.csv")
+    readiness = read_record("v9_readiness", required=False)
+    scorecard = read_record("v8_2_evidence_scorecard", required=False)
+    allocation = read_record("v7_allocation_health", required=False)
+    portfolio = read_dataset("v7_paper_portfolio", required=False)
 
     checks = {
         "v9_manual_review_eligible": readiness.get("eligible_for_manual_review") is True,
@@ -95,20 +78,13 @@ def build_pilot_rehearsal(
     return candidates, health
 
 
-def run(output_dir: Path) -> tuple[pd.DataFrame, dict[str, Any]]:
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    candidates, health = build_pilot_rehearsal(output_dir)
-    candidates.to_csv(output_dir / "v9_1_pilot_candidates.csv", index=False)
-    (output_dir / "v9_1_pilot_health.json").write_text(
-        json.dumps(health, indent=2, sort_keys=True, allow_nan=False)
-    )
+def run() -> tuple[pd.DataFrame, dict[str, Any]]:
+    candidates, health = build_pilot_rehearsal()
+    write_dataset("v9_1_pilot_candidates", candidates, entity_key="ticker")
+    write_record("v9_1_pilot_health", health)
     print(json.dumps(health, indent=2, sort_keys=True))
     return candidates, health
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Build a fail-closed V9.1 paper-pilot rehearsal")
-    parser.add_argument("--output-dir", default="outputs")
-    arguments = parser.parse_args()
-    run(Path(arguments.output_dir))
+    run()

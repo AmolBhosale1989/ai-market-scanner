@@ -1,13 +1,11 @@
 """Objective promotion gate from paper validation to limited live testing."""
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 import pandas as pd
 
-from .config import OUTPUT_DIR
+from .control_plane import read_dataset, write_record
 
 MIN_CLOSED_SIGNALS = 30
 MIN_WIN_RATE_PCT = 45.0
@@ -16,14 +14,9 @@ MIN_PROFIT_FACTOR_R = 1.20
 MIN_USABLE_CALIBRATION_BUCKETS = 1
 
 
-def _first(path: Path) -> dict:
-    if not path.exists():
-        return {}
-    try:
-        frame = pd.read_csv(path)
-        return frame.iloc[0].to_dict() if not frame.empty else {}
-    except Exception:
-        return {}
+def _first(name: str) -> dict:
+    frame = read_dataset(name, required=False)
+    return frame.iloc[0].to_dict() if not frame.empty else {}
 
 
 def _number(value, default=0.0) -> float:
@@ -35,13 +28,9 @@ def _number(value, default=0.0) -> float:
 
 
 def build_readiness_gate() -> dict:
-    performance = _first(OUTPUT_DIR / "performance_summary.csv")
-    monitor = _first(OUTPUT_DIR / "monitor_health.csv")
-    calibration_path = OUTPUT_DIR / "probability_calibration.csv"
-    try:
-        calibration = pd.read_csv(calibration_path)
-    except Exception:
-        calibration = pd.DataFrame()
+    performance = _first("performance_summary")
+    monitor = _first("monitor_health")
+    calibration = read_dataset("probability_calibration", required=False)
 
     closed = int(_number(performance.get("closed_signals")))
     win_rate = _number(performance.get("win_rate_pct"))
@@ -80,11 +69,10 @@ def build_readiness_gate() -> dict:
         "live_test_max_open_positions": 2,
         "live_test_broker_orders_enabled": False,
     }
-    pd.DataFrame([payload]).to_csv(OUTPUT_DIR / "validation_gate.csv", index=False)
-    (OUTPUT_DIR / "validation_gate.json").write_text(json.dumps(payload, indent=2))
+    write_record("validation_gate", payload)
     return payload
 
 
 if __name__ == "__main__":
     result = build_readiness_gate()
-    print(json.dumps(result, indent=2))
+    print(result)

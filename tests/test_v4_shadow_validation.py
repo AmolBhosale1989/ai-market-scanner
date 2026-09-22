@@ -45,15 +45,7 @@ def history(prices):
 
 
 def ledger(tmp_path: Path):
-    return ShadowValidationLedger(
-        tmp_path / "state.json",
-        tmp_path / "observations.csv",
-        tmp_path / "summary.csv",
-        tmp_path / "daily.csv",
-        tmp_path / "breakdowns.csv",
-        tmp_path / "health.json",
-        ShadowValidationSettings(top_k=2),
-    )
+    return ShadowValidationLedger(str(tmp_path), ShadowValidationSettings(top_k=2))
 
 
 def test_snapshot_is_point_in_time_ranked_and_idempotent(tmp_path):
@@ -115,11 +107,11 @@ def test_forward_resolution_and_strategy_comparison(tmp_path):
     assert resolved.loc["B", "false_breakout"]
     assert resolved.loc["C", "forward_hit_15pct"]
 
-    summary = pd.read_csv(tmp_path / "summary.csv").set_index("strategy")
+    summary = store._strategy_summary(resolved.reset_index()).set_index("strategy")
     assert summary.loc["V3", "forward_hit_5pct_rate"] == 50.0
     assert summary.loc["V4_5", "forward_hit_5pct_rate"] == 50.0
     assert pd.notna(summary.loc["V4_5", "p5_brier_score"])
-    daily = pd.read_csv(tmp_path / "daily.csv").iloc[0]
+    daily = store._daily(resolved.reset_index()).iloc[0]
     assert daily["top_k_agreement_pct"] == 50.0
 
 
@@ -131,7 +123,7 @@ def test_partial_history_does_not_create_mature_outcomes(tmp_path):
     resolved = store.resolve_histories({ticker: partial for ticker in ("A", "B", "C")})
     assert resolved["daily_bars_resolved"].eq(2).all()
     assert resolved["forward_hit_5pct"].isna().all()
-    summary = pd.read_csv(tmp_path / "summary.csv")
+    summary = store._strategy_summary(resolved)
     assert summary["mature_candidates"].eq(0).all()
 
 

@@ -1,13 +1,10 @@
 import os
 import json
-from io import StringIO
-from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-from scanner.dashboard_data import fetch_remote_bundle
-from scanner.legendary_agents import run_legendary_agents
+from scanner.control_plane import publication_info, read_dataset
 
 st.set_page_config(page_title="Market Hunt V3", page_icon="⚡", layout="wide", initial_sidebar_state="collapsed")
 
@@ -97,45 +94,28 @@ div[data-testid="stExpander"]{border:1px solid var(--line)!important;border-radi
 }
 </style>""", unsafe_allow_html=True)
 
-REMOTE_BASE = os.getenv("SCAN_DATA_BASE_URL", "https://raw.githubusercontent.com/AmolBhosale1989/ai-market-scanner/scan-data/dashboard-data").rstrip("/")
-LOCAL_DIR = Path("outputs")
-remote_payloads = {}
-dashboard_fetch_health = {}
+PUBLICATION_MODE=os.getenv("PUBLICATION_MODE","production").strip() or "production"
+try:
+    production_manifest=publication_info(PUBLICATION_MODE)
+    production_manifest_source="postgresql"
+except Exception:
+    production_manifest={}
+    production_manifest_source="blocked"
+PUBLICATION_RUN_ID=str(production_manifest.get("production_run_id","")).strip()
 
-def remote_csv(name):
-    payload = remote_payloads.get(name)
-    if payload is None:
-        raise FileNotFoundError(name)
-    return pd.read_csv(StringIO(payload))
-
-def load_csv(name):
+def load_dataset(name):
+    if not PUBLICATION_RUN_ID:
+        return pd.DataFrame(), "blocked"
     try:
-        return remote_csv(name), "published"
+        return read_dataset(name,run_id=PUBLICATION_RUN_ID), "postgresql"
     except Exception:
-        path = LOCAL_DIR / name
-        if path.exists():
-            try: return pd.read_csv(path), "local"
-            except Exception: pass
-    return pd.DataFrame(), "unavailable"
+        return pd.DataFrame(), "blocked"
 
-def remote_json(name):
-    payload = remote_payloads.get(name)
-    if payload is None:
-        raise FileNotFoundError(name)
-    value = json.loads(payload)
-    if not isinstance(value, dict):
-        raise ValueError(f"{name} is not a JSON object")
-    return value
-
-def load_json(name):
-    try:
-        return remote_json(name), "published"
-    except Exception:
-        path = LOCAL_DIR / name
-        if path.exists():
-            try: return json.loads(path.read_text()), "local"
-            except Exception: pass
-    return {}, "unavailable"
+def load_object(name):
+    frame,source=load_dataset(name)
+    if frame.empty:
+        return {},source
+    return frame.iloc[0].to_dict(),source
 
 def number(value, default=0):
     try: return float(value)
@@ -325,113 +305,48 @@ def add_opportunity_context(frame):
     return out
 
 files = {
-    "scan_meta":"scan_metadata.csv", "live_meta":"live_metadata.csv", "health":"scan_health.csv",
-    "live_system_health":"live_system_health.csv", "live_system_health_summary":"live_system_health_summary.csv",
-    "live":"intraday_live.csv", "premarket":"premarket_discovery.csv", "theme_health":"theme_health.csv", "sector_rotation":"sector_rotation.csv", "rotation_leaders":"rotation_leaders.csv", "momentum_signals":"momentum_signals.csv", "order_flow_strategy":"order_flow_strategy.csv", "order_flow_strategy_health":"order_flow_strategy_health.csv", "transitions":"state_transitions.csv", "themes":"trending_themes.csv",
-    "recommendations":"recommended_trades.csv", "leaders":"liquid_leaders.csv", "watchlist":"watchlist.csv",
-    "picks":"latest_scan.csv", "tradable":"tradable_universe.csv", "candidates":"all_candidates.csv",
-    "events":"upcoming_events.csv", "event_status":"event_status.csv", "journal":"paper_journal.csv",
-    "performance":"performance_summary.csv", "performance_setup":"performance_by_setup.csv",
-    "calibration":"probability_calibration.csv", "monitor":"monitor_health.csv", "gate":"validation_gate.csv",
-    "daily_pick_log":"daily_top_pick_log.csv", "daily_pick_summary":"daily_top_pick_summary.csv",
-    "v31_challenger_log":"v31_challenger_log.csv", "v31_challenger_summary":"v31_challenger_summary.csv",
-    "v31_challenger_decisions":"v31_challenger_decisions.csv",
-    "order_flow_journal":"order_flow_strategy_journal.csv", "order_flow_performance":"order_flow_strategy_performance.csv",
-    "legendary":"legendary_setups.csv", "legendary_consensus":"legendary_consensus.csv",
-    "trader_minervini":"trader_minervini.csv", "trader_oneil":"trader_oneil.csv",
-    "trader_weinstein":"trader_weinstein.csv", "trader_darvas":"trader_darvas.csv",
-    "trader_livermore":"trader_livermore.csv", "trader_qullamaggie":"trader_qullamaggie.csv",
-    "trader_druckenmiller":"trader_druckenmiller.csv", "trader_lawwaisum":"trader_lawwaisum.csv",
-    "trader_martinluk":"trader_martinluk.csv",
-    "trader_top500swing":"trader_top500swing.csv",
-    "trader_highmomentumbeta":"trader_highmomentumbeta.csv",
-    "trader_superstock":"trader_superstock.csv",
-    "trader_brownmoose":"trader_brownmoose.csv",
-    "trader_venu":"trader_venu.csv",
-    "v45_ranked":"v4_5_ranked_candidates.csv",
-    "v45_validation":"v4_5_validation.csv",
-    "v4_shadow_summary":"v4_shadow_strategy_summary.csv",
-    "v4_shadow_daily":"v4_shadow_daily_comparison.csv",
-    "v4_shadow_breakdowns":"v4_shadow_breakdowns.csv",
-    "v4_shadow_observations":"v4_shadow_observations.csv",
-    "v4_model_monitor":"v4_model_monitor.csv",
-    "v5_ranked":"v5_ranked_candidates.csv",
-    "v5_validation":"v5_validation.csv",
-    "v6_ranked":"v6_ranked_candidates.csv",
-    "v6_validation":"v6_validation.csv",
-    "v7_portfolio":"v7_paper_portfolio.csv",
-    "v72_validation":"v7_2_criteria_validation.csv",
-    "v72_grid":"v7_2_criteria_grid.csv",
-    "v73_comparison":"v7_3_challenger_comparison.csv",
-    "social_queue":"social_content_queue.csv",
-    "social_calendar":"social_content_calendar.csv",
-    "v81_operational":"v8_1_operational_health.csv",
-    "v82_scorecard":"v8_2_evidence_scorecard.csv",
-    "v9_readiness":"v9_readiness.csv",
-    "v91_pilot_candidates":"v9_1_pilot_candidates.csv",
-    "v4_live_meta":"v4_live_metadata.csv",
-    "v4_monitor_shortlist":"v4_monitor_shortlist.csv",
-    "v4_live_snapshot":"v4_live_snapshot.csv",
-    "v4_worker_cycles":"v4_worker_cycles.csv",
-    "v4_options_microstructure":"v4_options_microstructure.csv",
-    "quant_shadow_signals":"quant_shadow_signals.csv",
-    "quant_shadow_ledger":"quant_shadow_ledger.csv",
-    "quant_shadow_performance":"quant_shadow_performance.csv",
+    "health":"scan_health",
+    "live_system_health":"live_system_health", "live_system_health_summary":"live_system_health_summary",
+    "live":"intraday_live", "premarket":"premarket_discovery", "theme_health":"theme_health", "sector_rotation":"sector_rotation", "rotation_leaders":"rotation_leaders", "momentum_signals":"momentum_signals", "order_flow_strategy":"order_flow_strategy", "order_flow_strategy_health":"order_flow_strategy_health", "transitions":"state_transitions", "themes":"trending_themes",
+    "recommendations":"recommended_trades", "leaders":"liquid_leaders", "watchlist":"watchlist",
+    "picks":"latest_scan", "tradable":"tradable_universe", "candidates":"all_candidates",
+    "events":"upcoming_events", "event_status":"event_status", "journal":"paper_journal",
+    "performance":"performance_summary", "performance_setup":"performance_by_setup",
+    "calibration":"probability_calibration", "monitor":"monitor_health", "gate":"validation_gate",
+    "daily_pick_log":"daily_top_pick_log", "daily_pick_summary":"daily_top_pick_summary",
+    "v31_challenger_log":"v31_challenger_log", "v31_challenger_summary":"v31_challenger_summary",
+    "v31_challenger_decisions":"v31_challenger_decisions",
+    "order_flow_journal":"order_flow_strategy_journal", "order_flow_performance":"order_flow_strategy_performance",
+    "legendary":"legendary_setups", "legendary_consensus":"legendary_consensus",
+    "trader_minervini":"trader_minervini", "trader_oneil":"trader_oneil", "trader_weinstein":"trader_weinstein", "trader_darvas":"trader_darvas", "trader_livermore":"trader_livermore", "trader_qullamaggie":"trader_qullamaggie", "trader_druckenmiller":"trader_druckenmiller", "trader_lawwaisum":"trader_lawwaisum", "trader_martinluk":"trader_martinluk", "trader_top500swing":"trader_top500swing", "trader_highmomentumbeta":"trader_highmomentumbeta", "trader_superstock":"trader_superstock", "trader_brownmoose":"trader_brownmoose", "trader_venu":"trader_venu",
+    "v45_ranked":"v4_5_ranked_candidates", "v45_validation":"v4_5_validation",
+    "v4_shadow_summary":"v4_shadow_strategy_summary", "v4_shadow_daily":"v4_shadow_daily_comparison", "v4_shadow_breakdowns":"v4_shadow_breakdowns", "v4_shadow_observations":"v4_shadow_observations", "v4_model_monitor":"v4_model_monitor",
+    "v5_ranked":"v5_ranked_candidates", "v5_validation":"v5_validation", "v6_ranked":"v6_ranked_candidates", "v6_validation":"v6_validation", "v7_portfolio":"v7_paper_portfolio", "v72_validation":"v7_2_criteria_validation", "v72_grid":"v7_2_criteria_grid", "v73_comparison":"v7_3_challenger_comparison",
+    "social_queue":"social_content_queue", "social_calendar":"social_content_calendar", "v81_operational":"v8_1_operational_health", "v82_scorecard":"v8_2_evidence_scorecard", "v9_readiness":"v9_readiness", "v91_pilot_candidates":"v9_1_pilot_candidates",
+    "v4_monitor_shortlist":"v4_monitor_shortlist", "v4_live_snapshot":"v4_live_snapshot", "v4_worker_cycles":"v4_worker_cycles", "v4_options_microstructure":"v4_options_microstructure",
+    "quant_shadow_signals":"quant_shadow_signals", "quant_shadow_ledger":"quant_shadow_ledger", "quant_shadow_performance":"quant_shadow_performance",
 }
-json_files = [
-    "production_publication_manifest.json",
-    "v4_6_cutover_evaluation.json", "v4_5_model.json", "v5_model.json",
-    "v6_model.json", "v7_allocation_health.json", "v7_1_evidence_health.json",
-    "v7_2_criteria_proposal.json", "v7_3_challenger_health.json",
-    "social_engine_health.json", "v8_1_operational_health.json", "v8_2_evidence_scorecard.json",
-    "v9_readiness.json", "v9_1_pilot_health.json", "quant_shadow_health.json",
-]
 
-@st.cache_data(ttl=60, show_spinner=False)
-def remote_dashboard_bundle(remote_base, filenames):
-    return fetch_remote_bundle(remote_base, filenames)
-
-remote_payloads, dashboard_fetch_health = remote_dashboard_bundle(
-    REMOTE_BASE, tuple([*files.values(), *json_files])
-)
 data, sources = {}, {}
-for key, filename in files.items():
-    data[key], sources[key] = load_csv(filename)
-production_manifest, production_manifest_source = load_json("production_publication_manifest.json")
-v46_cutover, v46_source = load_json("v4_6_cutover_evaluation.json")
-v45_model, v45_model_source = load_json("v4_5_model.json")
-v5_model, v5_model_source = load_json("v5_model.json")
-v6_model, v6_model_source = load_json("v6_model.json")
-v7_health, v7_health_source = load_json("v7_allocation_health.json")
-evidence_health, evidence_health_source = load_json("v7_1_evidence_health.json")
-v72_proposal, v72_proposal_source = load_json("v7_2_criteria_proposal.json")
-v73_health, v73_health_source = load_json("v7_3_challenger_health.json")
-social_health, social_health_source = load_json("social_engine_health.json")
-v81_health, v81_health_source = load_json("v8_1_operational_health.json")
-v82_scorecard, v82_scorecard_source = load_json("v8_2_evidence_scorecard.json")
-v9_readiness, v9_readiness_source = load_json("v9_readiness.json")
-v91_pilot, v91_pilot_source = load_json("v9_1_pilot_health.json")
-quant_shadow_health, quant_shadow_health_source = load_json("quant_shadow_health.json")
+for key, dataset_name in files.items():
+    data[key], sources[key] = load_dataset(dataset_name)
+v46_cutover, v46_source = load_object("v4_6_cutover_evaluation")
+v45_model, v45_model_source = load_object("v4_5_model")
+v5_model, v5_model_source = load_object("v5_model")
+v6_model, v6_model_source = load_object("v6_model")
+v7_health, v7_health_source = load_object("v7_allocation_health")
+evidence_health, evidence_health_source = load_object("v7_1_evidence_health")
+v72_proposal, v72_proposal_source = load_object("v7_2_criteria_proposal")
+v73_health, v73_health_source = load_object("v7_3_challenger_health")
+social_health, social_health_source = load_object("social_engine_health")
+v81_health, v81_health_source = load_object("v8_1_operational_health")
+v82_scorecard, v82_scorecard_source = load_object("v8_2_evidence_scorecard")
+v9_readiness, v9_readiness_source = load_object("v9_readiness")
+v91_pilot, v91_pilot_source = load_object("v9_1_pilot_health")
+quant_shadow_health, quant_shadow_health_source = load_object("quant_shadow_health")
 
-# Resilience fallback: if the full-scan publisher is delayed or GitHub Actions
-# is queued, derive legendary-agent lists from the latest published deep-scan
-# candidate table directly on Render. Remote scan-data remains the preferred
-# source and automatically replaces these local fallback files when available.
 if data["legendary"].empty and not data["candidates"].empty:
-    try:
-        LOCAL_DIR.mkdir(parents=True, exist_ok=True)
-        run_legendary_agents(data["candidates"], LOCAL_DIR, top_n=25)
-        legendary_keys = [
-            "legendary", "legendary_consensus",
-            "trader_minervini", "trader_oneil", "trader_weinstein",
-            "trader_darvas", "trader_livermore", "trader_qullamaggie",
-            "trader_druckenmiller", "trader_lawwaisum", "trader_martinluk",
-            "trader_top500swing", "trader_highmomentumbeta", "trader_superstock", "trader_brownmoose", "trader_venu",
-        ]
-        for key in legendary_keys:
-            data[key], sources[key] = load_csv(files[key])
-    except Exception as exc:
-        st.warning(f"Legendary-agent fallback could not run: {exc}")
+    st.warning("Legendary-agent publication is unavailable for the active PostgreSQL snapshot.")
 
 st.markdown("""<div class="hero"><div class="hero-grid"><div>
 <div class="eyebrow">AI MARKET INTELLIGENCE · V3 LIVE · V4–V6 SHADOW · V7 PAPER · V7.2–V7.3 CRITERIA RESEARCH</div>
@@ -439,10 +354,10 @@ st.markdown("""<div class="hero"><div class="hero-grid"><div>
 <p>Discover liquid U.S. swing opportunities, momentum leaders, catalyst-driven setups and multi-agent consensus from one research command center.</p>
 </div><div class="hero-mark">⚡</div></div></div>""", unsafe_allow_html=True)
 
-scan_meta, live_meta, health, monitor = data["scan_meta"], data["live_meta"], data["health"], data["monitor"]
-scan_stamp = str(scan_meta.iloc[0].get("generated_at_utc", "Waiting for first scan")) if not scan_meta.empty else "Waiting for first scan"
-live_stamp = str(live_meta.iloc[0].get("updated_at_utc", "Waiting for monitor")) if not live_meta.empty else "Waiting for monitor"
-production_validated = production_manifest.get("status") == "PASS"
+health, monitor = data["health"], data["monitor"]
+scan_stamp = str(production_manifest.get("published_at_utc", "Waiting for first publication"))
+live_stamp = scan_stamp
+production_validated = production_manifest.get("status") == "PUBLISHED"
 source_state = "VALIDATED" if production_validated else "BLOCKED"
 st.markdown(
     f'<div class="status-row">'
@@ -832,8 +747,8 @@ with opportunities:
                       "effective_target","effective_rr","runway_to_next_resistance_pct","pattern"]
         st.caption(f"Showing {min(len(broad_view), int(broad_limit))} of {len(broad_view):,} matching broad-market candidates")
         st.dataframe(broad_view.head(int(broad_limit))[columns(broad_view,broad_cols)], hide_index=True, use_container_width=True)
-        st.download_button("Download broad opportunities", broad_view.to_csv(index=False),
-                           "market_hunt_broad_opportunities.csv", "text/csv", use_container_width=True,
+        st.download_button("Download broad opportunities", broad_view.to_json(orient="records", date_format="iso"),
+                           "market_hunt_broad_opportunities.json", "application/json", use_container_width=True,
                            key="download_broad_opportunities")
 
     superstocks = add_live_table_context(data["trader_superstock"], live, momentum_signals, rotation_leaders)
@@ -912,7 +827,7 @@ with opportunities:
         st.info("No actionable recommendation currently passes every gate.")
     else:
         st.dataframe(recommendations[columns(recommendations,recommendation_cols)],hide_index=True,use_container_width=True)
-        st.download_button("Download recommendations", recommendations.to_csv(index=False), "market_hunt_recommendations.csv", "text/csv", use_container_width=True)
+        st.download_button("Download recommendations", recommendations.to_json(orient="records", date_format="iso"), "market_hunt_recommendations.json", "application/json", use_container_width=True)
 
     base_picks = data["watchlist"] if not data["watchlist"].empty else data["picks"]
     v4_live_picks = data["v4_live_snapshot"]
@@ -949,7 +864,7 @@ with opportunities:
                   "risk_pct","effective_target","effective_rr","target_5","target_8","target_10",
                   "runway_to_next_resistance_pct","pattern"]
         st.dataframe(view[columns(view,priority)],hide_index=True,use_container_width=True)
-        st.download_button("Download watchlist", view.to_csv(index=False), "market_hunt_watchlist.csv", "text/csv", use_container_width=True)
+        st.download_button("Download watchlist", view.to_json(orient="records", date_format="iso"), "market_hunt_watchlist.json", "application/json", use_container_width=True)
     with st.expander("All deep-scanned candidates"):
         candidates=data["candidates"]
         st.dataframe(candidates,hide_index=True,use_container_width=True) if not candidates.empty else st.write("Not available.")
@@ -1012,9 +927,9 @@ with legendary_tab:
                 st.dataframe(frame[columns(frame, preferred)], hide_index=True, use_container_width=True)
                 st.download_button(
                     f"Download {trader_name} list",
-                    frame.to_csv(index=False),
-                    f"{key}.csv",
-                    "text/csv",
+                    frame.to_json(orient="records", date_format="iso"),
+                    f"{key}.json",
+                    "application/json",
                     key=f"download_{key}",
                     use_container_width=True,
                 )
@@ -1075,11 +990,10 @@ with event_tab:
 
 with v4_tab:
     st.subheader("Current V4 Live Intelligence")
-    v4_live_meta = data["v4_live_meta"]
     v4_shortlist = data["v4_monitor_shortlist"]
     v4_snapshot = data["v4_live_snapshot"]
     v4_cycles = data["v4_worker_cycles"]
-    v4_stamp = str(v4_live_meta.iloc[0].get("updated_at_utc","Waiting for V4 live cycle")) if not v4_live_meta.empty else "Waiting for V4 live cycle"
+    v4_stamp = str(v4_cycles.iloc[-1].get("cycle_finished_at_utc","Waiting for V4 live cycle")) if not v4_cycles.empty else "Waiting for V4 live cycle"
     st.caption(f"Intraday V4 refresh · {v4_stamp} UTC")
 
     if not v4_snapshot.empty:
@@ -1383,7 +1297,7 @@ with quant_tab:
     st.markdown(
         '<div class="section-note">PostgreSQL is the sole authoritative OHLCV source. '
         'The tables below are immutable, derived publication artifacts for audit, forward validation and dashboard display only; '
-        'they are never provider or CSV market-data fallbacks. V3 remains production-primary and broker execution is disabled.</div>',
+        'they never bypass the PostgreSQL market-data contract. V3 remains production-primary and broker execution is disabled.</div>',
         unsafe_allow_html=True,
     )
     quant_signals = data["quant_shadow_signals"]

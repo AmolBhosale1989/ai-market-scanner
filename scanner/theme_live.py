@@ -9,12 +9,12 @@ from .warehouse import DataRequirement, provide
 
 from .config import (
     CORE_INTRADAY_MARKET_SYMBOLS,
-    OUTPUT_DIR,
     THEME_INTRADAY_MAX_AGE_MINUTES,
     THEME_INTRADAY_MIN_COVERAGE,
 )
 from .session_contract import latest_frame_session
 from .themes import THEMES, rank_themes
+from .control_plane import write_dataset
 
 NY = ZoneInfo("America/New_York")
 
@@ -104,9 +104,8 @@ def run():
     out["theme_state_live"]=pd.cut(out["live_theme_score"],[-1,49.99,59.99,69.99,100],
                                     labels=["WEAK","NEUTRAL","STRONG","LEADING"]).astype(str)
 
-    OUTPUT_DIR.mkdir(parents=True,exist_ok=True)
-    out.to_csv(OUTPUT_DIR/"trending_themes.csv",index=False)
-    pd.DataFrame([{
+    write_dataset("trending_themes",out,entity_key="theme")
+    health=pd.DataFrame([{
         "updated_at_et":datetime.now(NY).isoformat(timespec="seconds"),
         "session_date":str(session_date),
         "spy_live_change_pct":round(spy_move,2) if math.isfinite(spy_move) else math.nan,
@@ -117,7 +116,8 @@ def run():
         "live_etfs_quarantined":len(quarantined_etfs),
         "quarantined_etf_sample":",".join(quarantined_etfs[:10]),
         "mode":"BATCHED_LIVE_EXTENDED_HOURS_PLUS_DAILY_TREND",
-    }]).to_csv(OUTPUT_DIR/"theme_health.csv",index=False)
+    }])
+    write_dataset("theme_health",health,entity_key=None)
     return out
 
 if __name__=="__main__":

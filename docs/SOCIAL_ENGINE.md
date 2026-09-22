@@ -6,7 +6,7 @@ rankings, signals, alerts, portfolio allocation or broker execution.
 
 ## Safety and approval contract
 
-- `scan_health.csv` must report `PASS`; missing or failed health produces no drafts.
+- `scan_health` must report `PASS`; missing or failed health produces no drafts.
 - Every draft contains a stable content ID and SHA-256 source fingerprint.
 - Every draft is `DRAFT_REVIEW_REQUIRED`, `publish_authorized: false` and has no
   external post ID or scheduled timestamp.
@@ -14,7 +14,7 @@ rankings, signals, alerts, portfolio allocation or broker execution.
 - Guaranteed-return, risk-free, urgency and direct buy/sell claims are rejected.
 - The engine never calls X, Metricool or any other external publishing API.
 
-The CLI writes `social_content_queue.csv`, `social_content_calendar.csv` and
+The CLI writes the `social_content_queue`, `social_content_calendar`, and
 `social_engine_health.json`. The daily broad-scan workflow publishes these files
 to the dashboard only after the source scan succeeds.
 

@@ -3,47 +3,41 @@ from __future__ import annotations
 from datetime import datetime
 import argparse
 from zoneinfo import ZoneInfo
-import json
-from pathlib import Path
 
 import pandas as pd
 
-from .config import OUTPUT_DIR
 from .session_contract import expected_market_data_session
+from .control_plane import read_dataset, write_dataset
 
 NY = ZoneInfo("America/New_York")
 
 PRODUCTION_CHECKS = [
-    ("Warehouse Snapshot", "warehouse_snapshot.json", "as_of_utc", 20, "REGULAR"),
-    ("V3 Live Production", "monitor_health.csv", "checked_at_et", 20, "REGULAR"),
-    ("Themes", "theme_health.csv", "updated_at_et", 20, "REGULAR"),
-    ("Sector Rotation", "sector_rotation_health.csv", "updated_at_et", 20, "REGULAR"),
-    ("Momentum", "momentum_health.csv", "updated_at_et", 20, "REGULAR"),
-    ("Order Flow", "order_flow_strategy_health.csv", "updated_at_et", 20, "REGULAR"),
+    ("Warehouse Snapshot", "warehouse_snapshot", "as_of_utc", 20, "REGULAR"),
+    ("V3 Live Production", "monitor_health", "checked_at_et", 20, "REGULAR"),
+    ("Themes", "theme_health", "updated_at_et", 20, "REGULAR"),
+    ("Sector Rotation", "sector_rotation_health", "updated_at_et", 20, "REGULAR"),
+    ("Momentum", "momentum_health", "updated_at_et", 20, "REGULAR"),
+    ("Order Flow", "order_flow_strategy_health", "updated_at_et", 20, "REGULAR"),
 ]
 
 SHADOW_CHECKS = [
-    ("V4 Live Intelligence", "v4_worker_health.json", "generated_at_utc", 25, "REGULAR"),
-    ("Broad Breakout", "broad_breakout_health.csv", "updated_at_et", 20, "REGULAR"),
-    ("High Conviction Alerts", "high_conviction_alert_health.csv", "checked_at_et", 20, "REGULAR"),
-    ("Premarket Discovery", "premarket_health.csv", "checked_at_et", 45, "PREMARKET"),
-    ("Daily Pick Validation", "daily_top_pick_summary.csv", "updated_at_et", 90, "SESSION"),
-    ("Quant Strategy Suite", "quant_shadow_health.json", "generated_at_utc", 1800, "SESSION"),
+    ("V4 Live Intelligence", "v4_worker_health", "generated_at_utc", 25, "REGULAR"),
+    ("Broad Breakout", "broad_breakout_health", "updated_at_et", 20, "REGULAR"),
+    ("High Conviction Alerts", "high_conviction_alert_health", "checked_at_et", 20, "REGULAR"),
+    ("Premarket Discovery", "premarket_health", "checked_at_et", 45, "PREMARKET"),
+    ("Daily Pick Validation", "daily_top_pick_summary", "updated_at_et", 90, "SESSION"),
+    ("Quant Strategy Suite", "quant_shadow_health", "generated_at_utc", 1800, "SESSION"),
 ]
 
 
-def _read_timestamp(path: Path, field: str):
-    if not path.exists() or path.stat().st_size == 0:
+def _read_timestamp(dataset_name: str, field: str):
+    frame=read_dataset(dataset_name,required=False)
+    if frame.empty:
         return None, "MISSING"
     try:
-        if path.suffix.lower() == ".json":
-            obj=json.loads(path.read_text())
-            raw=obj.get(field)
-        else:
-            df=pd.read_csv(path)
-            if df.empty or field not in df.columns:
-                return None, "INVALID"
-            raw=df.iloc[-1].get(field)
+        if field not in frame.columns:
+            return None, "INVALID"
+        raw=frame.iloc[-1].get(field)
         ts=pd.to_datetime(raw, errors="coerce", utc=True)
         if pd.isna(ts):
             return None, "INVALID"
@@ -52,15 +46,9 @@ def _read_timestamp(path: Path, field: str):
         return None, "INVALID"
 
 
-def _last_csv(name: str) -> dict:
-    path=OUTPUT_DIR/name
-    if not path.exists() or not path.stat().st_size:
-        return {}
-    try:
-        frame=pd.read_csv(path)
-        return frame.iloc[-1].to_dict() if not frame.empty else {}
-    except Exception:
-        return {}
+def _last_record(name: str) -> dict:
+    frame=read_dataset(name,required=False)
+    return frame.iloc[-1].to_dict() if not frame.empty else {}
 
 
 def _int(value) -> int:
@@ -69,29 +57,29 @@ def _int(value) -> int:
 
 
 def _production_semantics(expected_session: str) -> dict[str, tuple[str,str]]:
-    theme=_last_csv("theme_health.csv")
-    sector=_last_csv("sector_rotation_health.csv")
-    momentum=_last_csv("momentum_health.csv")
-    order_flow=_last_csv("order_flow_strategy_health.csv")
+    theme=_last_record("theme_health")
+    sector=_last_record("sector_rotation_health")
+    momentum=_last_record("momentum_health")
+    order_flow=_last_record("order_flow_strategy_health")
     results={}
 
     def session_ok(row):
         return str(row.get("session_date","")).strip()==expected_session
 
-    results["theme_health.csv"]=(
+    results["theme_health"]=(
         ("OK","") if session_ok(theme) and _int(theme.get("themes_ranked"))>0
         else ("INVALID",f"expected_session={expected_session} themes_ranked={_int(theme.get('themes_ranked'))}"))
-    results["sector_rotation_health.csv"]=(
+    results["sector_rotation_health"]=(
         ("OK","") if session_ok(sector) and _int(sector.get("themes_scanned"))>0 and _int(sector.get("stocks_scanned"))>0
         else ("INVALID",f"expected_session={expected_session} themes={_int(sector.get('themes_scanned'))} stocks={_int(sector.get('stocks_scanned'))}"))
     momentum_inputs=_int(momentum.get("candidate_inputs"))
     momentum_evaluated=_int(momentum.get("leaders_evaluated"))
-    results["momentum_health.csv"]=(
+    results["momentum_health"]=(
         ("OK","") if session_ok(momentum) and momentum_inputs>=0 and momentum_evaluated==momentum_inputs
         else ("INVALID",f"expected_session={expected_session} inputs={momentum_inputs} evaluated={momentum_evaluated}"))
     flow_expected=_int(order_flow.get("expected_inputs"))
     flow_evaluated=_int(order_flow.get("evaluated"))
-    results["order_flow_strategy_health.csv"]=(
+    results["order_flow_strategy_health"]=(
         ("OK","") if session_ok(order_flow) and flow_expected==momentum_inputs and flow_evaluated==flow_expected
         else ("INVALID",f"expected_session={expected_session} expected={flow_expected} evaluated={flow_evaluated}"))
     return results
@@ -111,7 +99,7 @@ def run() -> pd.DataFrame:
 
     rows=[]
     for module, filename, field, max_age, window in PRODUCTION_CHECKS + SHADOW_CHECKS:
-        ts,status=_read_timestamp(OUTPUT_DIR/filename, field)
+        ts,status=_read_timestamp(filename, field)
         semantic_status,semantic_detail=semantics.get(filename,("OK",""))
         if status=="OK" and semantic_status!="OK":
             status=semantic_status
@@ -129,7 +117,7 @@ def run() -> pd.DataFrame:
                 status="OK"
         rows.append({
             "module":module,
-            "file":filename,
+            "dataset":filename,
             "last_update_utc":ts.isoformat() if ts is not None else "",
             "age_minutes":round(age_min,1) if age_min is not None else "",
             "max_age_minutes":max_age,
@@ -142,7 +130,7 @@ def run() -> pd.DataFrame:
         })
 
     out=pd.DataFrame(rows)
-    out.to_csv(OUTPUT_DIR/"live_system_health.csv",index=False)
+    write_dataset("live_system_health",out,entity_key="module")
     production=out[out["role"]=="PRODUCTION"]
     bad=production["status"].isin(["STALE","MISSING","INVALID"])
     summary=pd.DataFrame([{
@@ -156,7 +144,7 @@ def run() -> pd.DataFrame:
         "shadow_modules_unhealthy":int(((out["role"]=="SHADOW") & out["status"].isin(["STALE","MISSING","INVALID"])).sum()),
         "overall_status":"DEGRADED" if bad.any() and market_open else "OK",
     }])
-    summary.to_csv(OUTPUT_DIR/"live_system_health_summary.csv",index=False)
+    write_dataset("live_system_health_summary",summary,entity_key=None)
     return out
 
 

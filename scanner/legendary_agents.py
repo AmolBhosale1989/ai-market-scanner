@@ -7,7 +7,6 @@ not claims that the original traders used these exact formulas.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 import numpy as np
 import pandas as pd
 
@@ -760,7 +759,7 @@ _RUNNERS = {
 }
 
 
-def run_legendary_agents(candidates: pd.DataFrame, output_dir: Path, top_n: int = 25) -> pd.DataFrame:
+def run_legendary_agents(candidates: pd.DataFrame, top_n: int = 25) -> pd.DataFrame:
     """Run all trader agents and publish one list per trader plus a consensus list."""
     if candidates is None or candidates.empty:
         return pd.DataFrame()
@@ -769,19 +768,20 @@ def run_legendary_agents(candidates: pd.DataFrame, output_dir: Path, top_n: int 
     all_rows = []
     for agent in AGENTS:
         result = _RUNNERS[agent.slug](d, agent).head(top_n)
-        result.to_csv(output_dir / f"trader_{agent.slug}.csv", index=False)
+        from .control_plane import write_dataset
+        write_dataset(f"trader_{agent.slug}",result)
         if not result.empty:
             all_rows.append(result)
 
     if not all_rows:
         empty = pd.DataFrame()
-        empty.to_csv(output_dir / "legendary_setups.csv", index=False)
-        empty.to_csv(output_dir / "legendary_consensus.csv", index=False)
+        write_dataset("legendary_setups",empty)
+        write_dataset("legendary_consensus",empty)
         return empty
 
     combined = pd.concat(all_rows, ignore_index=True)
     combined = combined.sort_values(["legendary_score", "market_hunt_score"], ascending=False)
-    combined.to_csv(output_dir / "legendary_setups.csv", index=False)
+    write_dataset("legendary_setups",combined)
 
     consensus = (
         combined.groupby("ticker", as_index=False)
@@ -795,5 +795,5 @@ def run_legendary_agents(candidates: pd.DataFrame, output_dir: Path, top_n: int 
         .sort_values(["legendary_agent_count", "legendary_best_score"], ascending=False)
     )
     consensus["legendary_avg_score"] = consensus["legendary_avg_score"].round(1)
-    consensus.to_csv(output_dir / "legendary_consensus.csv", index=False)
+    write_dataset("legendary_consensus",consensus)
     return combined

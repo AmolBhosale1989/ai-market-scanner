@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-from pathlib import Path
 
 import pandas as pd
 
 from .broad_breakout import run as run_broad_discovery
-from .config import LIVE_ENRICH_LIMIT, OUTPUT_DIR
+from .config import LIVE_ENRICH_LIMIT
 from .intraday import run as run_intraday
 from .v3_live_refresh import refresh_v3_candidates
+from .control_plane import write_dataset
 
 
 def _fresh_discovery() -> pd.DataFrame:
@@ -27,14 +27,14 @@ def _fresh_discovery() -> pd.DataFrame:
     out = discovered.drop_duplicates("ticker").copy()
     out["v3_discovery_source"] = "POSTGRES_WAREHOUSE_DISCOVERY"
     out["v3_discovered_at_utc"] = datetime.now(timezone.utc).isoformat()
-    out.to_csv(OUTPUT_DIR / "v3_live_discovery.csv", index=False)
+    write_dataset("v3_live_discovery",out)
     return out
 
 
 def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
     """Production V3: PostgreSQL discovery -> warehouse refresh -> V3 decision.
 
-    Refactor 2 deliberately removes latest_scan.csv from the production path.
+    Persisted candidate artifacts are deliberately absent from the production path.
     input_file is retained only as a compatibility argument and is rejected so
     an old persisted scan cannot accidentally become a live V3 dependency.
     """
@@ -45,10 +45,8 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
 
     base = _fresh_discovery()
     refreshed = refresh_v3_candidates(base)
-    refreshed_path = OUTPUT_DIR / "v3_live_snapshot.csv"
-    refreshed.to_csv(refreshed_path, index=False)
-
-    return run_intraday(input_file=str(refreshed_path), limit=limit)
+    write_dataset("v3_live_snapshot",refreshed)
+    return run_intraday(input_frame=refreshed, limit=limit)
 
 
 def main():

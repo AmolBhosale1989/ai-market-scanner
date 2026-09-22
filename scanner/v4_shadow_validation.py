@@ -1,98 +1,62 @@
 from __future__ import annotations
 
 import argparse
-import json
-from pathlib import Path
 
 import pandas as pd
 
-from .config import OUTPUT_DIR
-from .data import download_batch
+from .control_plane import read_dataset, read_state
 from .v4.shadow_validation import ShadowValidationLedger, infer_as_of_session
-from .v4.source import HttpCandidateSource
+from .v4.source import ControlPlaneCandidateSource
+from .warehouse import frames as warehouse_frames
 
 
-def _csv(path: Path) -> pd.DataFrame:
-    try:
-        return pd.read_csv(path)
-    except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError):
-        return pd.DataFrame()
+def build_ledger() -> ShadowValidationLedger:
+    return ShadowValidationLedger()
 
 
-def _json(path: Path) -> dict:
-    try:
-        value = json.loads(path.read_text())
-        return value if isinstance(value, dict) else {}
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
-def build_ledger(state_dir: Path, output_dir: Path) -> ShadowValidationLedger:
-    return ShadowValidationLedger(
-        state_file=state_dir / "v4_shadow_observations.json",
-        observations_csv=output_dir / "v4_shadow_observations.csv",
-        summary_csv=output_dir / "v4_shadow_strategy_summary.csv",
-        daily_csv=output_dir / "v4_shadow_daily_comparison.csv",
-        breakdowns_csv=output_dir / "v4_shadow_breakdowns.csv",
-        health_json=output_dir / "v4_shadow_validation_health.json",
-    )
-
-
-def resolve_existing(state_dir: Path, output_dir: Path) -> pd.DataFrame:
-    ledger = build_ledger(state_dir, output_dir)
+def resolve_existing() -> pd.DataFrame:
+    ledger = build_ledger()
     unresolved = ledger.unresolved_tickers()
-    histories = download_batch(unresolved, period="3mo", interval="1d") if unresolved else {}
+    histories = warehouse_frames(unresolved, period="3mo", interval="1d", require_complete=False) if unresolved else {}
     return ledger.resolve_histories(histories)
 
 
-def record_current(state_dir: Path, output_dir: Path, as_of_session: str = "") -> pd.DataFrame:
-    ledger = build_ledger(state_dir, output_dir)
-    source = HttpCandidateSource().load()
-    v3 = source.frame
-    v45 = _csv(output_dir / "v4_5_ranked_candidates.csv")
-    v5 = _csv(output_dir / "v5_ranked_candidates.csv")
-    v6 = _csv(output_dir / "v6_ranked_candidates.csv")
-    v7 = _csv(output_dir / "v7_paper_portfolio.csv")
-    model = _json(state_dir / "v4_5_model.json") or _json(output_dir / "v4_5_model.json")
-    session = as_of_session or infer_as_of_session(v3, source.source_timestamp_utc)
+def record_current(as_of_session: str = "") -> pd.DataFrame:
+    ledger = build_ledger()
+    source = ControlPlaneCandidateSource().load()
+    model = read_state("v4_models", "v4_5_model", default={}) or {}
+    session = as_of_session or infer_as_of_session(source.frame, source.source_timestamp_utc)
     frame = ledger.record_snapshot(
-        v3,
-        v45,
+        source.frame,
+        read_dataset("v4_5_ranked_candidates", required=False),
         as_of_session=session,
         observed_at_utc=source.source_timestamp_utc,
         model_payload=model,
         source_name=source.source_name,
-        v5_candidates=v5,
-        v6_candidates=v6,
-        v7_candidates=v7,
+        v5_candidates=read_dataset("v5_ranked_candidates", required=False),
+        v6_candidates=read_dataset("v6_ranked_candidates", required=False),
+        v7_candidates=read_dataset("v7_paper_portfolio", required=False),
     )
-    print(
-        f"V4 shadow validation: session={session} observations={len(frame)} "
-        f"mature={(pd.to_numeric(frame.get('daily_bars_resolved'), errors='coerce').fillna(0) >= 5).sum() if len(frame) else 0}"
-    )
+    print(f"V4 shadow validation: session={session} observations={len(frame)}")
     return frame
 
 
-def run(state_dir: Path, output_dir: Path, as_of_session: str = "") -> pd.DataFrame:
-    resolve_existing(state_dir, output_dir)
-    return record_current(state_dir, output_dir, as_of_session)
+def run(as_of_session: str = "") -> pd.DataFrame:
+    resolve_existing()
+    return record_current(as_of_session)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Market Hunt V3 versus V4.5 daily shadow validation")
-    parser.add_argument("--state-dir", default=".state/v4")
-    parser.add_argument("--output-dir", default=str(OUTPUT_DIR))
     parser.add_argument("--as-of-session", default="")
     parser.add_argument("--resolve-only", action="store_true")
     parser.add_argument("--record-only", action="store_true")
     args = parser.parse_args()
-    state_dir, output_dir = Path(args.state_dir), Path(args.output_dir)
     if args.resolve_only and args.record_only:
         parser.error("choose only one of --resolve-only or --record-only")
     if args.resolve_only:
-        frame = resolve_existing(state_dir, output_dir)
-        print(f"V4 shadow resolution: observations={len(frame)}")
+        resolve_existing()
     elif args.record_only:
-        record_current(state_dir, output_dir, args.as_of_session)
+        record_current(args.as_of_session)
     else:
-        run(state_dir, output_dir, args.as_of_session)
+        run(args.as_of_session)

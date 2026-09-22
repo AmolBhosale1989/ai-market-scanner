@@ -14,20 +14,6 @@ def _normalize_single(df: pd.DataFrame) -> pd.DataFrame:
         out.columns=[c[0] for c in out.columns]
     return out.dropna(how="all").copy()
 
-def download_history(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
-    try:
-        df = yf.download(
-            ticker, period=period, interval=interval,
-            auto_adjust=True, progress=False, threads=False,
-            timeout=20,
-        )
-    except TypeError:
-        df = yf.download(
-            ticker, period=period, interval=interval,
-            auto_adjust=True, progress=False, threads=False,
-        )
-    return _normalize_single(df)
-
 def _download_once(tickers, period, interval):
     if not tickers:
         return {}

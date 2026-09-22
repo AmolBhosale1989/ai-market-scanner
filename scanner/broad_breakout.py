@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from .warehouse import frames as warehouse_frames, history as warehouse_history
 
-from .config import OUTPUT_DIR
 from .session_contract import latest_frame_session
+from .control_plane import read_dataset, write_dataset
 
 NY = ZoneInfo("America/New_York")
 
@@ -61,10 +61,7 @@ def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float
 
 
 def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.DataFrame:
-    src=OUTPUT_DIR/"live_universe.csv"
-    if not src.exists():
-        raise RuntimeError("BROAD_BREAKOUT_INPUT_MISSING: shared live universe is unavailable")
-    u=pd.read_csv(src)
+    u=read_dataset("live_universe")
     if u.empty or "ticker" not in u.columns:
         return pd.DataFrame()
 
@@ -185,8 +182,8 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
     out=pd.DataFrame(rows)
     if not out.empty:
         out=out.sort_values(["broad_breakout_score","rel_vs_spy_pct","day_change_pct"],ascending=[False,False,False]).head(top_n)
-    out.to_csv(OUTPUT_DIR/"broad_breakout_discovery.csv",index=False)
-    pd.DataFrame([{
+    write_dataset("broad_breakout_discovery",out)
+    health=pd.DataFrame([{
         "updated_at_et":now.isoformat(timespec="seconds"),
         "universe_scanned":len(tickers),
         "scan_limit":scan_limit,
@@ -194,7 +191,8 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
         "session_date":str(session_date),
         **gates,
         "mode":"THEME_INDEPENDENT_BROAD_BREAKOUT",
-    }]).to_csv(OUTPUT_DIR/"broad_breakout_health.csv",index=False)
+    }])
+    write_dataset("broad_breakout_health",health,entity_key=None)
     return out
 
 

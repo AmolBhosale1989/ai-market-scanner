@@ -1,0 +1,110 @@
+name: PostgreSQL production publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Full rebuild or live refresh from the last atomic snapshot
+        type: choice
+        options: [full, live]
+        default: live
+  schedule:
+    - cron: "30 12 * * 1-5"
+    - cron: "*/15 13-22 * * 1-5"
+
+concurrency:
+  group: market-hunt-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSLMODE: require
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Select run type
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "PIPELINE_MODE=${{ inputs.mode }}" >> "$GITHUB_ENV"
+          elif [[ "${{ github.event.schedule }}" == "30 12 * * 1-5" ]]; then
+            echo "PIPELINE_MODE=full" >> "$GITHUB_ENV"
+          else
+            echo "PIPELINE_MODE=live" >> "$GITHUB_ENV"
+          fi
+      - name: Initialize transactional run
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m scanner.control_plane migrate
+          echo "PRODUCTION_RUN_ID=$(python -m scanner.control_plane start --mode production)" >> "$GITHUB_ENV"
+      - name: Execute complete dependency chain
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() {
+            python -m scanner.production_telemetry --failure-stage "${CURRENT_STAGE:-initialization}" --message "command failed at line $1"
+          }
+          trap 'fail $LINENO' ERR
+          stage() {
+            CURRENT_STAGE="$1"
+            local order="$2"
+            shift 2
+            python -m scanner.control_plane stage-begin --name "$CURRENT_STAGE" --order "$order"
+            "$@"
+            python -m scanner.control_plane stage-pass --name "$CURRENT_STAGE"
+          }
+
+          if [[ "$PIPELINE_MODE" == "live" ]]; then
+            stage seed_snapshot 10 python -m scanner.production_telemetry --seed --mode production
+          else
+            stage master_universe 10 python -m scanner.universe --refresh
+            stage daily_warehouse 20 timeout 4200s python -m scanner.warehouse_refresh --dataset master_universe --period 1y --interval 1d
+            stage daily_gate 30 python -m scanner.warehouse_gate --tier MASTER_DAILY --tier CRITICAL_DAILY
+            stage daily_scan 40 timeout 4200s python -m scanner.main
+            stage live_plan 50 python -m scanner.universe_plan
+          fi
+
+          stage intraday_warehouse 60 timeout 3600s python -m scanner.warehouse_refresh --dataset live_universe --period 5d --interval 5m
+          stage warehouse_gate 70 python -m scanner.warehouse_gate --tier MASTER_DAILY --tier CRITICAL_DAILY --tier CRITICAL_INTRADAY --tier THEME_INTRADAY --tier LIVE_INTRADAY
+          stage v3_live 80 python -m scanner.v3_live
+          stage theme_live 90 python -m scanner.theme_live
+          stage sector_rotation 100 python -m scanner.sector_rotation
+          stage broad_breakout 110 python -m scanner.broad_breakout
+          stage momentum 120 python -m scanner.momentum_signals
+          stage order_flow 130 python -m scanner.order_flow_strategy
+          stage order_flow_validation 140 python -m scanner.order_flow_validation
+          stage v31_challenger 145 python -m scanner.v31_challenger
+          stage paper_performance 150 bash -c 'python -m scanner.performance && python -m scanner.readiness'
+          stage discovery_products 160 bash -c 'python -m scanner.premarket && python -m scanner.daily_pick && python -m scanner.high_conviction_alerts && python -m scanner.product_feed'
+          stage quant_shadow 170 python -m scanner.quant_shadow
+          stage v4_live 180 python -m scanner.v4_worker --once --catalysts --options-microstructure
+
+          if [[ "$PIPELINE_MODE" == "full" ]]; then
+            stage v4_outcomes 190 bash -c 'python -m scanner.v4_outcomes --resolve-daily --fit-calibration'
+            stage v5_model 200 python -m scanner.v5_model
+            stage v6_model 210 python -m scanner.v6_model
+            stage v7_allocator 220 python -m scanner.v7_allocator
+            stage v4_shadow 230 python -m scanner.v4_shadow_validation
+            stage evidence 240 bash -c 'python -m scanner.v4_evidence --health && python -m scanner.v4_model_monitor && python -m scanner.v4_cutover --evaluate --enforce-safety'
+            stage v7_research 250 bash -c 'python -m scanner.v7_criteria_optimizer && python -m scanner.v7_challenger'
+          fi
+
+          stage social 260 python -m scanner.social_engine
+          stage operational_health 270 bash -c 'python -m scanner.system_health --require-production && python -m scanner.v8_operations && python -m scanner.v8_scorecard && python -m scanner.v9_readiness && python -m scanner.v9_pilot'
+          stage audit 280 python -m scanner.production_audit
+          stage acceptance 290 python -m scanner.production_acceptance
+          CURRENT_STAGE=publication
+          python -m scanner.production_telemetry --finalize --mode production

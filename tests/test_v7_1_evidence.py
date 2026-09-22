@@ -1,12 +1,11 @@
 from datetime import datetime, timezone
-import json
-
 import pandas as pd
 
 from scanner.v4.evidence import (
     EvidenceHealthSettings,
+    _freeze_earliest_daily_cohorts,
+    _merge_record,
     evaluate_evidence_health,
-    import_durable_evidence,
     training_outcomes,
 )
 
@@ -25,60 +24,37 @@ def observation(identifier: str, resolved: int, hit: bool = True):
     }
 
 
-def test_durable_import_bootstraps_csv_and_preserves_more_resolved_local_record(tmp_path):
-    durable = tmp_path / "durable"
-    state = tmp_path / "state"
-    (durable / "dashboard-data").mkdir(parents=True)
-    pd.DataFrame([observation("2026-09-01|A", 1)]).to_csv(
-        durable / "dashboard-data/v4_shadow_observations.csv", index=False
-    )
-    state.mkdir()
+def test_evidence_merge_preserves_more_resolved_record():
+    durable = observation("2026-09-01|A", 1)
     local = observation("2026-09-01|A", 5)
-    (state / "v4_shadow_observations.json").write_text(json.dumps({"observations": {local["observation_id"]: local}}))
-
-    counts = import_durable_evidence(state, durable)
-
-    payload = json.loads((state / "v4_shadow_observations.json").read_text())
-    assert counts["observations"] == 1
-    assert payload["observations"]["2026-09-01|A"]["daily_bars_resolved"] == 5
+    assert _merge_record(durable, local)["daily_bars_resolved"] == 5
 
 
-def test_durable_import_keeps_only_earliest_point_in_time_cohort(tmp_path):
-    durable = tmp_path / "durable"
-    state = tmp_path / "state"
-    (durable / "evidence-state").mkdir(parents=True)
+def test_evidence_keeps_only_earliest_point_in_time_cohort():
     first_a = observation("2026-09-01|A", 0)
     first_b = observation("2026-09-01|B", 0)
     later = observation("2026-09-01|LATE", 0)
     first_a["observed_at_utc"] = first_b["observed_at_utc"] = "2026-09-01T20:00:00+00:00"
     later["observed_at_utc"] = "2026-09-01T21:00:00+00:00"
     records = {row["observation_id"]: row for row in (first_a, first_b, later)}
-    (durable / "evidence-state/v4_shadow_observations.json").write_text(
-        json.dumps({"observations": records})
-    )
-
-    counts = import_durable_evidence(state, durable)
-
-    payload = json.loads((state / "v4_shadow_observations.json").read_text())
-    assert counts["observations"] == 2
-    assert set(payload["observations"]) == {"2026-09-01|A", "2026-09-01|B"}
+    frozen = _freeze_earliest_daily_cohorts(records)
+    assert set(frozen) == {"2026-09-01|A", "2026-09-01|B"}
 
 
-def test_training_outcomes_uses_only_mature_forward_evidence(tmp_path):
+def test_training_outcomes_uses_only_mature_forward_evidence(memory_control_plane):
     mature = observation("2026-09-01|A", 5)
     unresolved = observation("2026-09-02|B", 3)
-    (tmp_path / "v4_shadow_observations.json").write_text(json.dumps({
-        "observations": {mature["observation_id"]: mature, unresolved["observation_id"]: unresolved}
-    }))
+    key = (memory_control_plane["run_id"], "v4_shadow_observations")
+    memory_control_plane["datasets"][key] = pd.DataFrame([mature, unresolved])
     triggered = {
         **mature,
         "signal_id": "A-trigger",
         "entry_session": "2026-09-01",
         "entered_at_utc": "2026-09-01T21:00:00+00:00",
     }
-    (tmp_path / "v4_outcomes.json").write_text(json.dumps({"signals": {"A-trigger": triggered}}))
+    memory_control_plane["datasets"][(memory_control_plane["run_id"], "v4_outcomes")] = pd.DataFrame([triggered])
 
-    frame = training_outcomes(tmp_path)
+    frame = training_outcomes()
 
     assert frame["ticker"].tolist() == ["A"]
     assert frame.iloc[0]["evidence_source"] == "DAILY_SNAPSHOT"

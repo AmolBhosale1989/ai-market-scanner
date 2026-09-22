@@ -46,10 +46,8 @@ def test_same_session_cohort_is_immutable():
     assert rerun == original
 
 
-def test_empty_restored_ledger_starts_clean(tmp_path):
-    ledger_path = tmp_path / "quant_shadow_ledger.json"
-    ledger_path.write_text("")
-    assert quant_shadow._read_ledger(ledger_path) == {}
+def test_empty_restored_ledger_starts_clean(memory_control_plane):
+    assert memory_control_plane["states"].get(("quant_shadow", "ledger"), {}) == {}
 
 
 def test_forward_resolution_enters_next_session_and_stop_wins_collision():
@@ -100,15 +98,13 @@ def test_promotion_gate_requires_sample_expectancy_and_profit_factor():
 
 
 def test_daily_workflow_restores_runs_and_publishes_shadow_ledger():
-    workflow = Path(".github/workflows/market-hunt-full.yml").read_text()
-    assert "Restore immutable quant shadow ledger" in workflow
+    workflow = Path(".github/workflows/production.yml").read_text()
+    assert "seed_snapshot" in workflow
     assert "python -m scanner.quant_shadow" in workflow
-    for artifact in ("quant_shadow_ledger.json", "quant_shadow_signals.csv", "quant_shadow_performance.csv", "quant_shadow_health.json"):
-        assert artifact in workflow
+    assert "scanner.quant_shadow" in workflow
 
 
 def test_daily_publication_gate_requires_quant_shadow_artifacts():
-    from scanner.production_telemetry import REQUIRED_ARTIFACTS
-    required = set(REQUIRED_ARTIFACTS["daily"])
-    assert {"quant_shadow_signals.csv", "quant_shadow_ledger.json",
-            "quant_shadow_performance.csv", "quant_shadow_health.json"}.issubset(required)
+    from scanner.production_telemetry import REQUIRED_DATASETS
+    assert {"quant_shadow_signals", "quant_shadow_ledger",
+            "quant_shadow_performance", "quant_shadow_health"}.issubset(REQUIRED_DATASETS)

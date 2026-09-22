@@ -12,10 +12,10 @@ def test_quant_shadow_tab_is_exposed():
 
 def test_quant_shadow_artifacts_are_loaded():
     for artifact in (
-        "quant_shadow_signals.csv",
-        "quant_shadow_ledger.csv",
-        "quant_shadow_performance.csv",
-        "quant_shadow_health.json",
+        "quant_shadow_signals",
+        "quant_shadow_ledger",
+        "quant_shadow_performance",
+        "quant_shadow_health",
     ):
         assert artifact in APP
 

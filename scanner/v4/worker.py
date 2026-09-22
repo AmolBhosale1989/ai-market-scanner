@@ -2,29 +2,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import json
 import math
-import os
-from pathlib import Path
 import signal
-import tempfile
 import threading
 import time
 
 import numpy as np
 import pandas as pd
 
-from ..config import OUTPUT_DIR
+from ..control_plane import append_state, read_state, write_dataset, write_record
 from ..live import NY, _market_state
 from .adapters import LiveMarketAdapter
 from .alerting import AlertRouter
-from .cutover import SHADOW_MODE, apply_active_ranking
+from .cutover import SHADOW_MODE
 from .catalysts import (
     CatalystAdapter,
     apply_catalyst_evidence,
     events_frame,
-    load_recent_catalyst_events,
 )
+from .contracts import MarketEvent
 from .engine import MomentumEngine
 from .health import CycleMetric, HealthRecorder, age_seconds, parse_utc
 from .options_microstructure import OptionsMicrostructureAdapter
@@ -72,13 +68,10 @@ class ContinuousMomentumWorker:
         alerts: AlertRouter,
         health: HealthRecorder,
         settings: WorkerSettings | None = None,
-        output_dir: Path = OUTPUT_DIR,
-        runtime_state_file: Path | None = None,
         outcome_ledger: SignalOutcomeLedger | None = None,
         catalyst_adapter: CatalystAdapter | None = None,
         options_microstructure_adapter: OptionsMicrostructureAdapter | None = None,
-        cutover_state_file: Path | None = None,
-        v45_model_file: Path | None = None,
+        namespace: str = "v4_worker",
     ):
         self.source = source
         self.adapter = adapter
@@ -86,54 +79,25 @@ class ContinuousMomentumWorker:
         self.alerts = alerts
         self.health = health
         self.settings = settings or WorkerSettings()
-        self.output_dir = Path(output_dir)
-        self.runtime_state_file = Path(runtime_state_file) if runtime_state_file else None
+        self.namespace = namespace
         self.outcome_ledger = outcome_ledger
         self.catalyst_adapter = catalyst_adapter
         self.options_microstructure_adapter = options_microstructure_adapter
-        self.cutover_state_file = Path(cutover_state_file) if cutover_state_file else None
-        self.v45_model_file = Path(v45_model_file) if v45_model_file else None
         self.stop_requested = threading.Event()
         runtime_state = self._load_runtime_state()
         self.cycle_index = int(runtime_state.get("cycle_index", 0))
         self.consecutive_failures = int(runtime_state.get("consecutive_failures", 0))
 
     def _load_runtime_state(self) -> dict:
-        if self.runtime_state_file is None or not self.runtime_state_file.exists():
-            return {}
-        try:
-            value = json.loads(self.runtime_state_file.read_text())
-            return value if isinstance(value, dict) else {}
-        except (OSError, json.JSONDecodeError):
-            return {}
+        value = read_state(self.namespace, "runtime", default={}) or {}
+        return value if isinstance(value, dict) else {}
 
     def _save_runtime_state(self) -> None:
-        if self.runtime_state_file is None:
-            return
-        self.runtime_state_file.parent.mkdir(parents=True, exist_ok=True)
-        fd, temporary = tempfile.mkstemp(
-            prefix=f".{self.runtime_state_file.name}.",
-            dir=self.runtime_state_file.parent,
-            text=True,
-        )
-        try:
-            with os.fdopen(fd, "w") as handle:
-                json.dump(
-                    {
-                        "cycle_index": self.cycle_index,
-                        "consecutive_failures": self.consecutive_failures,
-                        "updated_at_utc": datetime.now(timezone.utc).isoformat(),
-                    },
-                    handle,
-                    indent=2,
-                    sort_keys=True,
-                )
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, self.runtime_state_file)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
+        append_state(self.namespace, "runtime", {
+            "cycle_index": self.cycle_index,
+            "consecutive_failures": self.consecutive_failures,
+            "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+        })
 
     def request_stop(self, *_args) -> None:
         self.stop_requested.set()
@@ -173,12 +137,6 @@ class ContinuousMomentumWorker:
                 detail = f"{detail}; stale scan source".strip("; ")
             ranked_source = source_result.frame
             ranking_mode = SHADOW_MODE
-            if self.cutover_state_file is not None and self.v45_model_file is not None:
-                ranked_source, ranking_mode = apply_active_ranking(
-                    ranked_source,
-                    self.cutover_state_file,
-                    self.v45_model_file,
-                )
             shortlist = build_monitor_shortlist(
                 ranked_source,
                 hot_limit=self.settings.hot_limit,
@@ -190,15 +148,12 @@ class ContinuousMomentumWorker:
             if self.catalyst_adapter is not None:
                 catalyst_result = self.catalyst_adapter.poll(batch)
                 new_catalysts = self.engine.store.append_events(catalyst_result.events)
-                retained_events = load_recent_catalyst_events(self.engine.store.event_file)
+                retained_events = [MarketEvent.from_dict(item) for item in self.engine.store.load_events()]
                 active_catalysts = events_frame(retained_events)
                 batch = apply_catalyst_evidence(batch, active_catalysts)
-                self.output_dir.mkdir(parents=True, exist_ok=True)
-                active_catalysts.to_csv(self.output_dir / "v4_catalyst_events.csv", index=False)
+                write_dataset("v4_catalyst_events", active_catalysts, entity_key="event_id")
                 catalyst_result.health["retained_active_events"] = len(active_catalysts)
-                (self.output_dir / "v4_catalyst_health.json").write_text(
-                    json.dumps(catalyst_result.health, indent=2, sort_keys=True, allow_nan=False)
-                )
+                write_record("v4_catalyst_health", catalyst_result.health)
                 catalyst_status = catalyst_result.health.get("status", "UNKNOWN")
                 detail = (
                     f"{detail}; catalysts={len(catalyst_result.events)} "
@@ -208,19 +163,18 @@ class ContinuousMomentumWorker:
                 try:
                     evidence = self.options_microstructure_adapter.poll(batch)
                     new_evidence = self.engine.store.append_events(evidence.events)
-                    self.output_dir.mkdir(parents=True, exist_ok=True)
-                    evidence.frame.to_csv(
-                        self.output_dir / "v4_options_microstructure.csv", index=False
-                    )
-                    (self.output_dir / "v4_options_microstructure_health.json").write_text(
-                        json.dumps(evidence.health, indent=2, sort_keys=True, allow_nan=False)
-                    )
+                    write_dataset("v4_options_microstructure", evidence.frame, entity_key="ticker")
+                    write_record("v4_options_microstructure_health", evidence.health)
                     detail = (
                         f"{detail}; v4.4_events={len(evidence.events)} "
                         f"new={new_evidence} status={evidence.health.get('status', 'UNKNOWN')}"
                     ).strip("; ")
                 except Exception as exc:
-                    self.output_dir.mkdir(parents=True, exist_ok=True)
+                    write_dataset(
+                        "v4_options_microstructure",
+                        pd.DataFrame(columns=["ticker", "options_status", "microstructure_status"]),
+                        entity_key="ticker",
+                    )
                     evidence_health = {
                         "provider": "options-microstructure",
                         "status": "FAILED",
@@ -229,9 +183,7 @@ class ContinuousMomentumWorker:
                         "execution_grade": False,
                         "error_type": type(exc).__name__,
                     }
-                    (self.output_dir / "v4_options_microstructure_health.json").write_text(
-                        json.dumps(evidence_health, indent=2, sort_keys=True, allow_nan=False)
-                    )
+                    write_record("v4_options_microstructure_health", evidence_health)
                     detail = (
                         f"{detail}; v4.4_status=FAILED nonfatal={type(exc).__name__}"
                     ).strip("; ")
@@ -260,12 +212,10 @@ class ContinuousMomentumWorker:
             transitions_count = len(transitions)
             alert_deliveries, alert_failures = self.alerts.route(transitions)
 
-            self.output_dir.mkdir(parents=True, exist_ok=True)
-            shortlist.to_csv(self.output_dir / "v4_monitor_shortlist.csv", index=False)
-            poll.frame.to_csv(self.output_dir / "v4_live_snapshot.csv", index=False)
-            pd.DataFrame([item.to_dict() for item in transitions]).to_csv(
-                self.output_dir / "v4_transitions.csv", index=False
-            )
+            write_dataset("v4_monitor_shortlist", shortlist, entity_key="ticker")
+            write_dataset("v4_live_snapshot", poll.frame, entity_key="ticker")
+            write_dataset("v4_transitions", pd.DataFrame([item.to_dict() for item in transitions]),
+                          entity_key="signal_id")
             coverage = (received / polled) if polled else 1.0
             success = coverage >= self.settings.min_provider_coverage
         except Exception as exc:

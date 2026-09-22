@@ -8,21 +8,11 @@ import numpy as np
 import pandas as pd
 import requests
 
-from .config import OUTPUT_DIR
+from .control_plane import append_state, read_dataset, read_state, write_dataset
 
 NY = ZoneInfo("America/New_York")
-LOG = OUTPUT_DIR / "high_conviction_alert_log.csv"
-HEALTH = OUTPUT_DIR / "high_conviction_alert_health.csv"
-
-
 def _read(name: str) -> pd.DataFrame:
-    p = OUTPUT_DIR / name
-    if not p.exists() or p.stat().st_size == 0:
-        return pd.DataFrame()
-    try:
-        return pd.read_csv(p)
-    except Exception:
-        return pd.DataFrame()
+    return read_dataset(name, required=False)
 
 
 def _num(series, index=None, default=0.0):
@@ -48,8 +38,8 @@ def _send_telegram(message: str) -> tuple[bool, str]:
 
 
 def _candidate_rows() -> pd.DataFrame:
-    momentum = _read("momentum_signals.csv")
-    live = _read("intraday_live.csv")
+    momentum = _read("momentum_signals")
+    live = _read("intraday_live")
     rows = []
 
     if not momentum.empty and "ticker" in momentum.columns:
@@ -151,12 +141,11 @@ def _candidate_rows() -> pd.DataFrame:
 
 
 def run() -> pd.DataFrame:
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     now = datetime.now(NY)
     session_date = now.date().isoformat()
     candidates = _candidate_rows()
 
-    existing = _read("high_conviction_alert_log.csv")
+    existing = pd.DataFrame(read_state("high_conviction", "alert_log", default=[]) or [])
     if existing.empty:
         existing = pd.DataFrame(columns=[
             "session_date_et","alerted_at_et","ticker","source","conviction_score","price","entry","stop","target",
@@ -210,9 +199,10 @@ def run() -> pd.DataFrame:
     if new_rows:
         existing = pd.concat([existing, pd.DataFrame(new_rows)], ignore_index=True, sort=False)
 
-    existing.to_csv(LOG, index=False)
+    write_dataset("high_conviction_alert_log", existing, entity_key="ticker")
+    append_state("high_conviction", "alert_log", existing.to_dict("records"))
     configured = bool(os.getenv("TELEGRAM_BOT_TOKEN", "").strip() and os.getenv("TELEGRAM_CHAT_ID", "").strip())
-    pd.DataFrame([{
+    health = pd.DataFrame([{
         "checked_at_et": now.isoformat(timespec="seconds"),
         "session_date_et": session_date,
         "high_conviction_candidates": len(candidates),
@@ -220,7 +210,8 @@ def run() -> pd.DataFrame:
         "telegram_sent": sent_count,
         "telegram_configured": configured,
         "status": "OK" if configured else "TELEGRAM_NOT_CONFIGURED",
-    }]).to_csv(HEALTH, index=False)
+    }])
+    write_dataset("high_conviction_alert_health", health, entity_key=None)
 
     return candidates
 

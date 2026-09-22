@@ -10,7 +10,7 @@ Broker order execution stays disabled.
 - Full universe scan: weekdays at 12:30 UTC.
 - Intraday monitor: every 15 minutes, 12:00–22:59 UTC, weekdays.
 - Forward validation report: weekdays at 22:30 UTC.
-- Dashboard reads the published scan-data branch and refreshes every 60 seconds.
+- Dashboard reads one atomic PostgreSQL publication snapshot and refreshes every 60 seconds.
 
 ## Promotion gate
 
@@ -25,7 +25,7 @@ Every condition must pass:
 | Usable probability buckets | 1 |
 | Monitor health | PASS / OK / HEALTHY |
 
-The gate output is published as dashboard-data/validation_gate.csv on the scan-data branch.
+The gate output is the versioned `validation_gate` dataset in the same atomic snapshot.
 A failed gate is normal while samples accumulate and is not a software failure.
 
 ## Paper-validation protocol

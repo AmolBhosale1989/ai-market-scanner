@@ -7,9 +7,9 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from .warehouse import DataRequirement, provide
 
-from .config import OUTPUT_DIR
 from .order_flow import bar_order_flow_proxy
 from .session_contract import latest_frame_session
+from .control_plane import read_dataset, write_dataset
 
 NY = ZoneInfo("America/New_York")
 
@@ -23,20 +23,15 @@ MOMENTUM_COLUMNS = [
 ]
 
 
-def _read_optional(path) -> pd.DataFrame:
-    if not path.exists() or not path.stat().st_size:
-        return pd.DataFrame()
-    try:
-        return pd.read_csv(path)
-    except (OSError,pd.errors.EmptyDataError,pd.errors.ParserError):
-        return pd.DataFrame()
+def _read_optional(name: str) -> pd.DataFrame:
+    return read_dataset(name,required=False)
 
 
 def _write_outputs(out: pd.DataFrame, now: datetime, session_date: str, candidate_inputs: int) -> pd.DataFrame:
     if out.empty:
         out=pd.DataFrame(columns=MOMENTUM_COLUMNS)
-    out.to_csv(OUTPUT_DIR/"momentum_signals.csv",index=False)
-    pd.DataFrame([{
+    write_dataset("momentum_signals",out)
+    health=pd.DataFrame([{
         "updated_at_et":now.isoformat(timespec="seconds"),
         "session_date":session_date,
         "candidate_inputs":candidate_inputs,
@@ -44,13 +39,14 @@ def _write_outputs(out: pd.DataFrame, now: datetime, session_date: str, candidat
         "momentum_buys":int(out["signal"].eq("MOMENTUM BUY").sum()),
         "extended_waits":int(out["signal"].eq("EXTENDED / WAIT RETEST").sum()),
         "mode":"FAST_ROTATION_MOMENTUM",
-    }]).to_csv(OUTPUT_DIR/"momentum_health.csv",index=False)
+    }])
+    write_dataset("momentum_health",health,entity_key=None)
     return out
 
 
 def _upstream_session_date() -> str:
-    for name in ("broad_breakout_health.csv","sector_rotation_health.csv"):
-        health=_read_optional(OUTPUT_DIR/name)
+    for name in ("broad_breakout_health","sector_rotation_health"):
+        health=_read_optional(name)
         if not health.empty and "session_date" in health.columns:
             value=str(health.iloc[-1].get("session_date","")).strip()
             if value and value.lower()!="nan":
@@ -110,10 +106,8 @@ def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float
 
 
 def run(limit: int = 40):
-    src=OUTPUT_DIR/"rotation_leaders.csv"
-    broad_src=OUTPUT_DIR/"broad_breakout_discovery.csv"
-    themed=_read_optional(src)
-    broad=_read_optional(broad_src)
+    themed=_read_optional("rotation_leaders")
+    broad=_read_optional("broad_breakout_discovery")
     now=datetime.now(NY)
 
     if not themed.empty:

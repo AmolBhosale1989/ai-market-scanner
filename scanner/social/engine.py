@@ -122,7 +122,7 @@ def build_social_content(
         health = {
             "schema_version": SOCIAL_SCHEMA,
             "status": "BLOCKED_UNHEALTHY_SCAN",
-            "reason": "verified scan_health.csv is absent or not PASS",
+            "reason": "verified scan health dataset is absent or not PASS",
             "drafts_generated": 0,
             "publish_authorized": False,
             "external_actions_taken": 0,
@@ -143,7 +143,7 @@ def build_social_content(
         item = _draft(
             "MARKET_PULSE",
             f"Market Hunt pulse: {theme} is {state} ({score:.0f}/100) in the latest verified scan. Watching relative strength and clean risk/reward—not chasing extension.",
-            "trending_themes.csv",
+            "trending_themes",
             {key: top.get(key) for key in ("theme", "theme_state", "theme_score", "theme_rank", "etf")},
             "08:45 ET",
             now,
@@ -169,7 +169,7 @@ def build_social_content(
             item = _draft(
                 "SETUP_BREAKDOWN",
                 f"${ticker} research watch: {stage}. Trigger {trigger}; invalidation {stop}; R/R {rr:.1f}:1; theme {theme}. No prediction—the levels define the test.",
-                "recommended_trades.csv",
+                "recommended_trades",
                 {key: row.get(key) for key in ("ticker", "stage", "entry_trigger", "stop", "effective_rr", "theme", "market_hunt_score")},
                 "10:15 ET",
                 now,
@@ -191,7 +191,7 @@ def build_social_content(
     item = _draft(
         "BUILD_IN_PUBLIC",
         f"Market Hunt scan complete: {int(_number(source['analyzable_symbols'])):,} symbols analyzed, {candidate_count:,} evidence-backed candidates, {recommendation_count} live-confirmed setups. The engine can abstain when evidence is weak.",
-        "scan_health.csv + all_candidates.csv + recommended_trades.csv",
+        "scan_health + all_candidates + recommended_trades",
         source,
         "16:30 ET",
         now,

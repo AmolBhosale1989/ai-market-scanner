@@ -255,94 +255,15 @@ def _compression_stats(symbol: str):
 
 
 def _options_implied_move(symbol: str, event_date):
-    try:
-        raise RuntimeError("WAREHOUSE_ONLY: request options/news/profile dataset through warehouse manager")
-        expiries=list(t.options or [])
-    except Exception:
-        return {"options_implied_move_pct":math.nan,"options_expiry":"","options_data_status":"UNAVAILABLE"}
-    if not expiries:
-        return {"options_implied_move_pct":math.nan,"options_expiry":"","options_data_status":"NO_OPTIONS"}
-
-    ed=pd.Timestamp(event_date)
-    if ed.tzinfo is not None:
-        ed=ed.tz_convert("UTC").tz_localize(None)
-    ed=ed.normalize()
-    candidates=[]
-    for x in expiries:
-        try:
-            d=pd.Timestamp(x)
-            if d>=ed:
-                candidates.append(d)
-        except Exception:
-            continue
-    if not candidates:
-        return {"options_implied_move_pct":math.nan,"options_expiry":"","options_data_status":"NO_POST_EVENT_EXPIRY"}
-    exp=min(candidates)
-    try:
-        chain=t.option_chain(exp.strftime("%Y-%m-%d"))
-        spot=_safe_float(t.history(period="5d",auto_adjust=True)["Close"].iloc[-1])
-        if not math.isfinite(spot) or spot<=0:
-            return {"options_implied_move_pct":math.nan,"options_expiry":exp.strftime("%Y-%m-%d"),"options_data_status":"NO_SPOT"}
-        calls=chain.calls.copy(); puts=chain.puts.copy()
-        if calls.empty or puts.empty:
-            return {"options_implied_move_pct":math.nan,"options_expiry":exp.strftime("%Y-%m-%d"),"options_data_status":"EMPTY_CHAIN"}
-        cidx=(pd.to_numeric(calls["strike"],errors="coerce")-spot).abs().idxmin()
-        strike=float(calls.loc[cidx,"strike"])
-        pidx=(pd.to_numeric(puts["strike"],errors="coerce")-strike).abs().idxmin()
-        c=calls.loc[cidx]
-        p=puts.loc[pidx]
-        def px(r):
-            bid=_safe_float(r.get("bid")); ask=_safe_float(r.get("ask")); last=_safe_float(r.get("lastPrice"))
-            if math.isfinite(bid) and math.isfinite(ask) and ask>=bid and (bid>0 or ask>0):
-                return (bid+ask)/2
-            return last
-        cp=px(c); pp=px(p)
-        if not (math.isfinite(cp) and math.isfinite(pp)):
-            raise ValueError("missing option prices")
-        move=(cp+pp)/spot*100
-        return {
-            "options_implied_move_pct":round(float(move),2),
-            "options_expiry":exp.strftime("%Y-%m-%d"),
-            "options_atm_strike":round(strike,2),
-            "options_data_status":"OK",
-        }
-    except Exception:
-        return {"options_implied_move_pct":math.nan,"options_expiry":exp.strftime("%Y-%m-%d"),"options_data_status":"UNAVAILABLE"}
+    # Options observations are optional context. Until they have an explicit
+    # warehouse lane, do not derive spot prices through a second OHLCV provider.
+    return {"options_implied_move_pct":math.nan,"options_expiry":"","options_data_status":"UNAVAILABLE"}
 
 
 def _guidance_context(symbol: str):
-    try:
-        raise RuntimeError("WAREHOUSE_ONLY: request options/news/profile dataset through warehouse manager")
-        try:
-            news=t.get_news(count=15)
-        except TypeError:
-            news=t.news
-    except Exception:
-        return {}
-
-    pos_terms=["raises guidance","raised guidance","guidance raised","outlook raised","raises outlook","reaffirms guidance"]
-    neg_terms=["cuts guidance","cut guidance","guidance cut","lowers guidance","lowered outlook","withdraws guidance"]
-    revision_up=["price target raised","estimate raised","estimates raised","upgrade"]
-    revision_down=["price target cut","estimate cut","estimates cut","downgrade"]
-
-    pos=neg=up=down=0
-    for item in news or []:
-        src=item.get("content") if isinstance(item,dict) and isinstance(item.get("content"),dict) else item
-        if not isinstance(src,dict):
-            continue
-        title=str(src.get("title") or "").lower()
-        pos+=sum(1 for x in pos_terms if x in title)
-        neg+=sum(1 for x in neg_terms if x in title)
-        up+=sum(1 for x in revision_up if x in title)
-        down+=sum(1 for x in revision_down if x in title)
-    guidance_score=max(-100,min(100,(pos-neg)*30+(up-down)*15))
-    return {
-        "guidance_positive_mentions":pos,
-        "guidance_negative_mentions":neg,
-        "revision_up_mentions":up,
-        "revision_down_mentions":down,
-        "guidance_revision_score":int(guidance_score),
-    }
+    # Guidance/news stays unavailable until its provider is ingested and
+    # versioned instead of being fetched ad hoc inside a strategy consumer.
+    return {}
 
 
 def enrich_earnings_intelligence(events: pd.DataFrame, limit: int=EARNINGS_INTEL_LIMIT):

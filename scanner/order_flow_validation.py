@@ -1,28 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
 from zoneinfo import ZoneInfo
 import math
 
 import numpy as np
 import pandas as pd
-from .config import OUTPUT_DIR
 from .warehouse import history as warehouse_history
+from .control_plane import append_state, read_dataset, read_state, write_dataset
 
 ET = ZoneInfo("America/New_York")
-LEDGER = OUTPUT_DIR / "order_flow_strategy_journal.csv"
-SUMMARY = OUTPUT_DIR / "order_flow_strategy_performance.csv"
-
-
 def _read(name: str) -> pd.DataFrame:
-    p = OUTPUT_DIR / name
-    if not p.exists() or p.stat().st_size == 0:
-        return pd.DataFrame()
-    try:
-        return pd.read_csv(p)
-    except Exception:
-        return pd.DataFrame()
+    return read_dataset(name,required=False)
 
 
 def _num(v, default=np.nan):
@@ -54,10 +43,7 @@ def _update_open(row: pd.Series, now_et: datetime) -> pd.Series:
     if not np.isfinite(entry) or entry <= 0:
         return row
 
-    try:
-        hist = warehouse_history(ticker, period="10d", interval="5m", max_age_minutes=10)
-    except Exception:
-        hist = pd.DataFrame()
+    hist = warehouse_history(ticker, period="10d", interval="5m", max_age_minutes=10)
 
     if hist is None or hist.empty:
         return row
@@ -130,8 +116,9 @@ def _update_open(row: pd.Series, now_et: datetime) -> pd.Series:
 
 def run() -> pd.DataFrame:
     now_et = datetime.now(timezone.utc).astimezone(ET)
-    signals = _read("order_flow_strategy.csv")
-    journal = _read("order_flow_strategy_journal.csv")
+    signals = _read("order_flow_strategy")
+    journal_payload=read_state("order_flow","strategy_journal",default=[])
+    journal = pd.DataFrame(journal_payload) if journal_payload else pd.DataFrame()
 
     if journal.empty:
         journal = pd.DataFrame(columns=[
@@ -195,7 +182,8 @@ def run() -> pd.DataFrame:
             existing_ids.add(sid)
 
     journal = journal.sort_values(["signal_date_et","signal_at_et"], ascending=[False,False])
-    journal.to_csv(LEDGER, index=False)
+    append_state("order_flow","strategy_journal",journal.to_dict("records"))
+    write_dataset("order_flow_strategy_journal",journal,entity_key="signal_id")
 
     closed = journal[journal["status"].astype(str).isin(["TARGET2_HIT","STOP_HIT","EXPIRED"])] if not journal.empty else pd.DataFrame()
     wins = closed["status"].astype(str).eq("TARGET2_HIT") if not closed.empty else pd.Series(dtype=bool)
@@ -215,7 +203,7 @@ def run() -> pd.DataFrame:
         "updated_at_et": now_et.isoformat(timespec="seconds"),
         "mode": "ORDER_FLOW_FORWARD_VALIDATION",
     }])
-    perf.to_csv(SUMMARY, index=False)
+    write_dataset("order_flow_strategy_performance",perf,entity_key=None)
     return journal
 
 

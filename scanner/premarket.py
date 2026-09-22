@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import argparse
 import math
-from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 from .warehouse import DataRequirement, provide
 
-from .config import OUTPUT_DIR
+from .control_plane import read_dataset, write_dataset
 
 NY = ZoneInfo("America/New_York")
 
@@ -50,12 +49,9 @@ def _warehouse_batch(tickers: list[str], consumer: str, period: str="5d") -> dic
     return out
 
 def run(input_file: str | None = None, batch_size: int = 80, top_n: int = 100):
-    source = Path(input_file) if input_file else OUTPUT_DIR / "tradable_universe.csv"
-    if not source.exists():
-        print(f"No broad tradable universe found at {source}.")
-        return pd.DataFrame()
-
-    base = pd.read_csv(source)
+    if input_file:
+        raise RuntimeError("FILE_INPUT_DISABLED: use the tradable_universe control-plane dataset")
+    base = read_dataset("tradable_universe")
     if base.empty or "ticker" not in base.columns:
         print("Tradable universe is empty.")
         return pd.DataFrame()
@@ -80,9 +76,8 @@ def run(input_file: str | None = None, batch_size: int = 80, top_n: int = 100):
         try:
             raw = _warehouse_batch(batch,"premarket",period="1d")
         except Exception as exc:
-            print(f"Batch failed: {exc}")
-            continue
-        if raw is None or raw.empty:
+            raise RuntimeError(f"PREMARKET_WAREHOUSE_BATCH_FAILED: batch={bi}") from exc
+        if not raw:
             continue
 
         for ticker in batch:
@@ -134,17 +129,17 @@ def run(input_file: str | None = None, batch_size: int = 80, top_n: int = 100):
         out["premarket_rank"] = range(1, len(out) + 1)
         out = out.head(top_n).copy()
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    out.to_csv(OUTPUT_DIR / "premarket_discovery.csv", index=False)
+    write_dataset("premarket_discovery", out, entity_key="ticker")
 
-    pd.DataFrame([{
+    health = pd.DataFrame([{
         "checked_at_et": now_et.isoformat(timespec="seconds"),
-        "universe_source": str(source),
+        "universe_source": "control-plane:tradable_universe",
         "tradable_symbols_scanned": len(tickers),
         "symbols_with_premarket_data": len(rows),
         "published_rows": len(out),
         "scope": "BROAD_TRADABLE_UNIVERSE",
-    }]).to_csv(OUTPUT_DIR / "premarket_health.csv", index=False)
+    }])
+    write_dataset("premarket_health", health, entity_key=None)
 
     print(f"Premarket discovery complete: {len(rows):,} symbols had premarket data; published top {len(out):,}.")
     return out

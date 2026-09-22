@@ -294,5 +294,5 @@ def update(*args, **kwargs):
 
 
 def request_dataset(dataset: str, consumer: str, tickers: Iterable[str] | None = None, max_age_minutes: int = 60) -> pd.DataFrame:
-    """Auxiliary datasets are Phase 4; fail closed rather than falling back to CSV/provider access."""
+    """Auxiliary datasets fail closed until an explicit warehouse ingestion lane exists."""
     raise RuntimeError(f"WAREHOUSE_DATASET_NOT_MIGRATED: {dataset} for {consumer}")

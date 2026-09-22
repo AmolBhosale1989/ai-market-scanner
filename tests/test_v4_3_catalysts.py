@@ -5,7 +5,7 @@ import pandas as pd
 from scanner.v4.catalysts import (
     CatalystPollResult,
     CompositeCatalystAdapter,
-    LocalEventCalendarAdapter,
+    ControlPlaneEventCalendarAdapter,
     apply_catalyst_evidence,
     classify_news_headline,
     classify_sec_filing,
@@ -22,7 +22,7 @@ from scanner.v4.contracts import EventType, MarketEvent
 from scanner.v4.engine import MomentumEngine
 from scanner.v4.health import HealthRecorder
 from scanner.v4.source import CandidateSourceResult
-from scanner.v4.store import FileEventStore
+from scanner.v4.store import PostgresEventStore
 from scanner.v4.worker import ContinuousMomentumWorker, WorkerSettings
 
 
@@ -89,10 +89,10 @@ def test_sec_events_keep_source_time_url_and_deduplicate(tmp_path):
         now=NOW + timedelta(minutes=15),
     )
     assert repeated[0].event_id == event.event_id
-    store = FileEventStore(tmp_path / "events")
+    store = PostgresEventStore(str(tmp_path))
     assert store.append_events(events) == 1
     assert store.append_events(repeated) == 0
-    assert [item.event_id for item in load_recent_catalyst_events(store.event_file, now=NOW)] == [event.event_id]
+    assert [item.event_id for item in load_recent_catalyst_events(store.load_events(), now=NOW)] == [event.event_id]
 
 
 def test_stale_sec_filings_are_excluded():
@@ -119,7 +119,7 @@ def test_sec_full_text_search_fallback_preserves_items_and_event_identity():
 def test_sec_adapter_uses_official_search_when_submissions_endpoint_is_blocked(tmp_path, monkeypatch):
     from scanner.v4.catalysts import SecFilingAdapter
 
-    adapter = SecFilingAdapter(tmp_path / "ticker-map.json", max_workers=1, max_retries=0)
+    adapter = SecFilingAdapter("test-map-1", max_workers=1, max_retries=0)
     monkeypatch.setattr(adapter, "_ticker_map", lambda _now: {"CRDO": "0001759414"})
 
     def get_json(url):
@@ -157,7 +157,7 @@ def test_nasdaq_filing_fallback_uses_form_evidence_only():
 def test_sec_adapter_uses_nasdaq_after_both_sec_hosts_are_blocked(tmp_path, monkeypatch):
     from scanner.v4.catalysts import SecFilingAdapter
 
-    adapter = SecFilingAdapter(tmp_path / "ticker-map.json", max_workers=1, max_retries=0)
+    adapter = SecFilingAdapter("test-map-2", max_workers=1, max_retries=0)
     monkeypatch.setattr(adapter, "_ticker_map", lambda _now: {"CRDO": "0001759414"})
     monkeypatch.setattr(adapter, "_get_proxied_json", lambda _url: (_ for _ in ()).throw(RuntimeError("relay denied")))
 
@@ -179,7 +179,7 @@ def test_sec_adapter_uses_nasdaq_after_both_sec_hosts_are_blocked(tmp_path, monk
 def test_sec_adapter_validates_relay_cik_before_accepting_events(tmp_path, monkeypatch):
     from scanner.v4.catalysts import SecFilingAdapter
 
-    adapter = SecFilingAdapter(tmp_path / "ticker-map.json", max_workers=1, max_retries=0)
+    adapter = SecFilingAdapter("test-map-3", max_workers=1, max_retries=0)
     monkeypatch.setattr(adapter, "_ticker_map", lambda _now: {"CRDO": "0001759414"})
     monkeypatch.setattr(adapter, "_get_json", lambda _url: (_ for _ in ()).throw(RuntimeError("direct denied")))
     relayed = sec_payload(["424B5"], [""])
@@ -240,9 +240,8 @@ def test_composite_adapter_surfaces_review_and_source_lag():
     assert not events_frame(events, now=NOW).empty
 
 
-def test_local_event_calendar_surfaces_earnings_inside_72_hours(tmp_path):
-    path = tmp_path / "upcoming_events.csv"
-    pd.DataFrame([
+def test_control_plane_event_calendar_surfaces_earnings_inside_72_hours(memory_control_plane):
+    frame = pd.DataFrame([
         {
             "ticker": "CRDO", "event_type": "EARNINGS",
             "event_date_utc": "2026-09-16T12:00:00+00:00", "event_source": "ALPHA_VANTAGE",
@@ -251,15 +250,16 @@ def test_local_event_calendar_surfaces_earnings_inside_72_hours(tmp_path):
             "ticker": "AXTI", "event_type": "EARNINGS",
             "event_date_utc": "2026-09-20T12:00:00+00:00", "event_source": "ALPHA_VANTAGE",
         },
-    ]).to_csv(path, index=False)
-    adapter = LocalEventCalendarAdapter(path)
+    ])
+    memory_control_plane["datasets"][(memory_control_plane["run_id"], "upcoming_events")] = frame
+    adapter = ControlPlaneEventCalendarAdapter()
     events, health = adapter.poll(pd.DataFrame([{"ticker": "CRDO"}, {"ticker": "AXTI"}]), now=NOW)
     assert health["events"] == 1
     assert events[0].ticker == "CRDO"
     assert events[0].payload["classification_reason"] == "EARNINGS_WITHIN_72H"
 
 
-def test_worker_applies_retained_negative_veto_before_price_state_transition(tmp_path):
+def test_worker_applies_retained_negative_veto_before_price_state_transition(tmp_path, memory_control_plane):
     candidate = pd.DataFrame([{
         "ticker": "AXTI", "universal_10pct_gate": True, "stage": "ARMED",
         "market_hunt_score": 90, "catalyst_score": 40,
@@ -301,14 +301,14 @@ def test_worker_applies_retained_negative_veto_before_price_state_transition(tmp
 
     worker = ContinuousMomentumWorker(
         source=Source(), adapter=Prices(),
-        engine=MomentumEngine(FileEventStore(tmp_path / "state")),
-        alerts=AlertRouter(tmp_path / "dispatch.json", []),
-        health=HealthRecorder(tmp_path / "cycles.csv", tmp_path / "health.json"),
-        catalyst_adapter=Catalyst(), output_dir=tmp_path / "output",
+        engine=MomentumEngine(PostgresEventStore(str(tmp_path))),
+        alerts=AlertRouter([], namespace=str(tmp_path)),
+        health=HealthRecorder(namespace=str(tmp_path)),
+        catalyst_adapter=Catalyst(), namespace=str(tmp_path),
         settings=WorkerSettings(hot_limit=1, warm_limit=0, warm_batch_size=0),
     )
     metric = worker.run_cycle()
-    transitions = pd.read_csv(tmp_path / "output" / "v4_transitions.csv")
+    transitions = memory_control_plane["datasets"][(memory_control_plane["run_id"], "v4_transitions")]
     assert metric.success is True
     assert transitions.iloc[0]["current_state"] == "INVALIDATED"
-    assert (tmp_path / "output" / "v4_catalyst_events.csv").exists()
+    assert (memory_control_plane["run_id"], "v4_catalyst_events") in memory_control_plane["datasets"]

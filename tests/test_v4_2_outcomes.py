@@ -6,7 +6,7 @@ from scanner.v4.contracts import EventType, MarketEvent
 from scanner.v4.engine import MomentumEngine
 from scanner.v4.outcomes import SignalOutcomeLedger, classify_failure
 from scanner.v4.replay import verify_deterministic_replay
-from scanner.v4.store import FileEventStore
+from scanner.v4.store import PostgresEventStore
 
 
 def payload(**overrides):
@@ -42,8 +42,8 @@ def event(at, **overrides):
 
 
 def test_ledger_uses_close_only_on_ambiguous_entry_bar_and_captures_30m(tmp_path):
-    engine = MomentumEngine(FileEventStore(tmp_path / "events"))
-    ledger = SignalOutcomeLedger(tmp_path / "outcomes.json", tmp_path / "outcomes.csv")
+    engine = MomentumEngine(PostgresEventStore(str(tmp_path / "events")))
+    ledger = SignalOutcomeLedger(str(tmp_path))
     start = datetime(2026, 9, 14, 14, 0, tzinfo=timezone.utc)
     first = event(start, live_price=10.5, live_bar_high=14.0, live_bar_low=7.0)
     first_transition = engine.process(first)
@@ -64,10 +64,10 @@ def test_ledger_uses_close_only_on_ambiguous_entry_bar_and_captures_30m(tmp_path
 
 
 def test_daily_horizons_use_only_first_five_future_sessions(tmp_path):
-    ledger = SignalOutcomeLedger(tmp_path / "outcomes.json")
+    ledger = SignalOutcomeLedger(str(tmp_path))
     start = datetime(2026, 9, 14, 14, 0, tzinfo=timezone.utc)
     first = event(start)
-    engine = MomentumEngine(FileEventStore(tmp_path / "events"))
+    engine = MomentumEngine(PostgresEventStore(str(tmp_path / "events")))
     ledger.observe_many([(first, engine.process(first))])
 
     dates = pd.date_range("2026-09-15", periods=6, freq="B")
@@ -90,10 +90,10 @@ def test_daily_horizons_use_only_first_five_future_sessions(tmp_path):
 
 
 def test_daily_bar_uses_conservative_stop_first_when_target_and_stop_both_touch(tmp_path):
-    ledger = SignalOutcomeLedger(tmp_path / "outcomes.json")
+    ledger = SignalOutcomeLedger(str(tmp_path))
     start = datetime(2026, 9, 14, 14, 0, tzinfo=timezone.utc)
     first = event(start, stop=9.0, effective_target=11.0)
-    engine = MomentumEngine(FileEventStore(tmp_path / "events"))
+    engine = MomentumEngine(PostgresEventStore(str(tmp_path / "events")))
     ledger.observe_many([(first, engine.process(first))])
     history = pd.DataFrame(
         {"High": [12.0], "Low": [8.0], "Close": [10.0]},
@@ -110,8 +110,8 @@ def test_daily_bar_uses_conservative_stop_first_when_target_and_stop_both_touch(
 
 
 def test_post_terminal_snapshot_cannot_improve_trade_path_but_can_resolve_30m(tmp_path):
-    ledger = SignalOutcomeLedger(tmp_path / "outcomes.json")
-    engine = MomentumEngine(FileEventStore(tmp_path / "events"))
+    ledger = SignalOutcomeLedger(str(tmp_path))
+    engine = MomentumEngine(PostgresEventStore(str(tmp_path / "events")))
     start = datetime(2026, 9, 14, 14, 0, tzinfo=timezone.utc)
     first = event(start, live_price=10.5)
     ledger.observe_many([(first, engine.process(first))])
@@ -147,13 +147,13 @@ def test_failure_taxonomy_is_explainable():
 
 
 def test_event_replay_is_deterministic(tmp_path):
-    store = FileEventStore(tmp_path / "source")
+    store = PostgresEventStore("v4")
     start = datetime(2026, 9, 14, 14, 0, tzinfo=timezone.utc)
     store.append_events([
         event(start, live_trade_action="WAIT / LIVE CONFIRMATION"),
         event(start + timedelta(minutes=5)),
     ])
-    report = verify_deterministic_replay(store.event_file)
+    report = verify_deterministic_replay()
     assert report["events_replayed"] == 2
     assert report["deterministic"] is True
     assert report["first_checksum"] == report["second_checksum"]
