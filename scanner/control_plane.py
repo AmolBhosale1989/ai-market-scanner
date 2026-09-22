@@ -64,11 +64,71 @@ def current_run_id(required: bool = True) -> str:
     return value
 
 
+def _migration_checksum(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def migrate(sql_dir: Path | None = None) -> None:
+    """Apply each immutable migration once, committing only after its ledger row.
+
+    A session advisory lock serializes migration attempts outside GitHub Actions.
+    Every file is its own transaction: a failed migration is rolled back and is
+    never recorded as applied, so production initialization remains fail-closed.
+    """
     root = sql_dir or Path(__file__).resolve().parents[1] / "sql"
-    with _connect() as conn, conn.cursor() as cur:
-        for path in sorted(root.glob("*.sql")):
-            cur.execute(path.read_text())
+    paths = sorted(root.glob("*.sql"))
+    with _connect() as conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT pg_advisory_lock(hashtextextended(%s,0))",
+                    ("market-hunt-schema-migrations",),
+                )
+            conn.commit()
+            with conn.cursor() as cur:
+                cur.execute(
+                    """CREATE TABLE IF NOT EXISTS schema_migration (
+                           migration_name TEXT PRIMARY KEY,
+                           checksum TEXT NOT NULL,
+                           applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                       )"""
+                )
+            conn.commit()
+
+            for path in paths:
+                checksum = _migration_checksum(path)
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT checksum FROM schema_migration WHERE migration_name=%s",
+                            (path.name,),
+                        )
+                        row = cur.fetchone()
+                        if row is not None:
+                            if row[0] != checksum:
+                                raise RuntimeError(
+                                    f"CONTROL_PLANE_MIGRATION_CHECKSUM_MISMATCH: {path.name}"
+                                )
+                            conn.rollback()
+                            continue
+                        cur.execute(path.read_text())
+                        cur.execute(
+                            """INSERT INTO schema_migration(migration_name,checksum)
+                               VALUES (%s,%s)""",
+                            (path.name, checksum),
+                        )
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+        finally:
+            conn.rollback()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT pg_advisory_unlock(hashtextextended(%s,0))",
+                    ("market-hunt-schema-migrations",),
+                )
+            conn.commit()
 
 
 def start_run(mode: str, *, source_commit: str = "", warehouse_as_of: datetime | None = None) -> str:
