@@ -94,3 +94,55 @@ def test_atomic_publication_fail_closed_and_event_idempotency():
     assert control_plane.append_state(namespace, "state", {"value": 1}, run_id=first) == 1
     assert control_plane.append_state(namespace, "state", {"value": 2}, run_id=first) == 2
     assert control_plane.read_state(namespace, "state") == {"value": 2}
+
+
+def test_migrations_are_versioned_idempotent_and_fail_closed(tmp_path):
+    _require_database()
+    control_plane.migrate()
+    with _connect() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """SELECT migration_name,checksum FROM schema_migration
+               WHERE migration_name IN ('001_bitemporal_warehouse.sql',
+                                        '002_postgres_control_plane.sql')
+               ORDER BY migration_name"""
+        )
+        before = cursor.fetchall()
+
+    control_plane.migrate()
+    with _connect() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """SELECT migration_name,checksum FROM schema_migration
+               WHERE migration_name IN ('001_bitemporal_warehouse.sql',
+                                        '002_postgres_control_plane.sql')
+               ORDER BY migration_name"""
+        )
+        after = cursor.fetchall()
+
+    assert [row[0] for row in before] == [
+        "001_bitemporal_warehouse.sql",
+        "002_postgres_control_plane.sql",
+    ]
+    assert after == before
+
+    suffix = uuid.uuid4().hex
+    good_name = f"900_{suffix}_good.sql"
+    bad_name = f"901_{suffix}_bad.sql"
+    (tmp_path / good_name).write_text(
+        f"CREATE TABLE migration_probe_{suffix} (id integer PRIMARY KEY);"
+    )
+    (tmp_path / bad_name).write_text(
+        f"INSERT INTO migration_probe_{suffix}(missing_column) VALUES (1);"
+    )
+
+    with pytest.raises(Exception):
+        control_plane.migrate(tmp_path)
+
+    with _connect() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """SELECT migration_name FROM schema_migration
+               WHERE migration_name IN (%s,%s) ORDER BY migration_name""",
+            (good_name, bad_name),
+        )
+        recorded = [row[0] for row in cursor.fetchall()]
+
+    assert recorded == [good_name]
