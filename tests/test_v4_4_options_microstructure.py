@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-import json
 
 import pandas as pd
 
@@ -10,7 +9,7 @@ from scanner.v4.engine import MomentumEngine
 from scanner.v4.health import HealthRecorder
 from scanner.v4.options_microstructure import YahooOptionsMicrostructureAdapter
 from scanner.v4.source import CandidateSourceResult
-from scanner.v4.store import FileEventStore
+from scanner.v4.store import PostgresEventStore
 from scanner.v4.worker import ContinuousMomentumWorker, WorkerSettings
 from scanner.v4_worker import build_worker, parser
 
@@ -116,22 +115,50 @@ def test_v44_empty_input_is_explicit_nonfatal_skip():
     assert result.events == []
 
 
-def test_v44_worker_provider_failure_does_not_break_live_cycle(tmp_path):
+def test_v44_microstructure_uses_postgres_ohlcv(monkeypatch):
+    adapter = YahooOptionsMicrostructureAdapter(max_tickers=1)
+    bars = pd.DataFrame({
+        "High": [10.0, 10.2, 10.4, 10.6, 10.8, 11.0],
+        "Low": [9.8, 10.0, 10.2, 10.4, 10.6, 10.8],
+        "Close": [9.9, 10.1, 10.3, 10.5, 10.7, 10.9],
+        "Volume": [100, 100, 100, 200, 300, 400],
+    })
+    calls = []
+    monkeypatch.setattr(
+        "scanner.v4.options_microstructure.warehouse_history",
+        lambda symbol, **kwargs: calls.append((symbol, kwargs)) or bars,
+    )
+    monkeypatch.setattr(adapter, "_options_snapshot", lambda ticker: {
+        "options_status": "NO_CHAIN", "option_expiry": "", "call_volume": None,
+        "put_volume": None, "call_put_volume_ratio": None, "call_open_interest": None,
+        "put_open_interest": None, "unusual_call_contracts": 0,
+        "unusual_put_contracts": 0, "call_implied_volatility": None,
+        "put_implied_volatility": None,
+    })
+
+    result = adapter._fetch_ticker("AXTI")
+
+    assert calls == [("AXTI", {"period": "1d", "interval": "5m", "max_age_minutes": 15})]
+    assert result["microstructure_status"] == "OK"
+    assert result["bar_count"] == 6
+
+
+def test_v44_worker_provider_failure_does_not_break_live_cycle(tmp_path, memory_control_plane):
     output = tmp_path / "output"
     state = tmp_path / "state"
     worker = ContinuousMomentumWorker(
         source=StaticSource(),
         adapter=StaticLiveAdapter(),
-        engine=MomentumEngine(FileEventStore(state)),
-        alerts=AlertRouter(state / "dispatch.json", []),
-        health=HealthRecorder(output / "cycles.csv", output / "health.json"),
+        engine=MomentumEngine(PostgresEventStore(str(state))),
+        alerts=AlertRouter([], namespace=str(state)),
+        health=HealthRecorder(namespace=str(output)),
         settings=WorkerSettings(hot_limit=2, warm_limit=0, warm_batch_size=0),
-        output_dir=output,
+        namespace=str(state),
         options_microstructure_adapter=BrokenEvidenceAdapter(),
     )
 
     metric = worker.run_cycle()
-    health = json.loads((output / "v4_options_microstructure_health.json").read_text())
+    health = memory_control_plane["datasets"][(memory_control_plane["run_id"], "v4_options_microstructure_health")].iloc[0].to_dict()
 
     assert metric.success is True
     assert health["status"] == "FAILED"
@@ -142,9 +169,6 @@ def test_v44_worker_provider_failure_does_not_break_live_cycle(tmp_path):
 
 def test_v44_cli_is_opt_in_and_bounded(tmp_path):
     args = parser().parse_args([
-        "--candidate-source", "local",
-        "--state-dir", str(tmp_path / "state"),
-        "--output-dir", str(tmp_path / "output"),
         "--options-microstructure",
         "--options-limit", "3",
         "--options-workers", "2",

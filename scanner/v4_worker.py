@@ -1,81 +1,40 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
-from .config import OUTPUT_DIR
 from .v4.adapters import YahooPollingAdapter
-from .v4.alerting import AlertRouter, FileAlertSink, TelegramAlertSink
-from .v4.catalysts import (
-    CompositeCatalystAdapter,
-    LocalEventCalendarAdapter,
-    SecFilingAdapter,
-    YahooNewsCatalystAdapter,
-)
+from .v4.alerting import AlertRouter, DatabaseAlertSink, TelegramAlertSink
+from .v4.catalysts import CompositeCatalystAdapter, YahooNewsCatalystAdapter
 from .v4.engine import MomentumEngine
 from .v4.health import HealthRecorder
 from .v4.options_microstructure import YahooOptionsMicrostructureAdapter
 from .v4.outcomes import SignalOutcomeLedger
-from .v4.source import FallbackCandidateSource, HttpCandidateSource, LocalCandidateSource
-from .v4.store import FileEventStore
+from .v4.source import ControlPlaneCandidateSource
+from .v4.store import PostgresEventStore
 from .v4.worker import ContinuousMomentumWorker, WorkerSettings
 
 
 def build_worker(args) -> ContinuousMomentumWorker:
-    state_dir = Path(args.state_dir)
-    output_dir = Path(args.output_dir)
-    local = LocalCandidateSource(output_dir)
-    source = local if args.candidate_source == "local" else FallbackCandidateSource(
-        HttpCandidateSource(args.scan_data_base_url), local
-    )
-    sinks = [FileAlertSink(
-        state_dir / "v4_alerts.ndjson",
-        mirror_path=output_dir / "v4_alerts.ndjson",
-    )]
+    sinks = [DatabaseAlertSink()]
     telegram = TelegramAlertSink.from_environment() if args.telegram_alerts else None
     if telegram is not None:
         sinks.append(telegram)
-    catalyst_adapter = None
-    if args.catalysts:
-        catalyst_adapter = CompositeCatalystAdapter([
-            SecFilingAdapter(
-                cache_file=state_dir / "sec_ticker_map.json",
-                max_workers=args.catalyst_workers,
-            ),
-            YahooNewsCatalystAdapter(
-                max_workers=args.catalyst_workers,
-                max_tickers=args.news_limit,
-            ),
-            LocalEventCalendarAdapter(output_dir / "upcoming_events.csv"),
-        ])
-    options_microstructure_adapter = None
-    if args.options_microstructure:
-        options_microstructure_adapter = YahooOptionsMicrostructureAdapter(
-            max_workers=args.options_workers,
-            max_tickers=args.options_limit,
-        )
+    catalysts = CompositeCatalystAdapter([
+        YahooNewsCatalystAdapter(max_workers=args.catalyst_workers, max_tickers=args.news_limit)
+    ]) if args.catalysts else None
+    options = YahooOptionsMicrostructureAdapter(
+        max_workers=args.options_workers,
+        max_tickers=args.options_limit,
+    ) if args.options_microstructure else None
     return ContinuousMomentumWorker(
-        source=source,
+        source=ControlPlaneCandidateSource(),
         adapter=YahooPollingAdapter(max_workers=args.max_workers),
-        engine=MomentumEngine(FileEventStore(state_dir)),
-        alerts=AlertRouter(state_dir / "v4_alert_dispatch.json", sinks),
-        health=HealthRecorder(
-            state_dir / "v4_worker_cycles.csv",
-            state_dir / "v4_worker_health.json",
-            mirror_cycles_file=output_dir / "v4_worker_cycles.csv",
-            mirror_summary_file=output_dir / "v4_worker_health.json",
-        ),
-        output_dir=output_dir,
-        runtime_state_file=state_dir / "v4_worker_runtime.json",
-        outcome_ledger=SignalOutcomeLedger(
-            state_file=state_dir / "v4_outcomes.json",
-            mirror_csv=output_dir / "v4_outcomes.csv",
-            summary_csv=output_dir / "v4_outcome_summary.csv",
-        ),
-        catalyst_adapter=catalyst_adapter,
-        options_microstructure_adapter=options_microstructure_adapter,
-        cutover_state_file=state_dir / "v4_6_cutover_state.json",
-        v45_model_file=state_dir / "v4_5_active_model.json",
+        engine=MomentumEngine(PostgresEventStore()),
+        alerts=AlertRouter(sinks),
+        health=HealthRecorder(),
+        outcome_ledger=SignalOutcomeLedger(),
+        catalyst_adapter=catalysts,
+        options_microstructure_adapter=options,
         settings=WorkerSettings(
             hot_limit=args.hot_limit,
             warm_limit=args.warm_limit,
@@ -95,13 +54,6 @@ def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser(description="Market Hunt V4 continuous shadow worker")
     value.add_argument("--once", action="store_true")
     value.add_argument("--max-cycles", type=int, default=None)
-    value.add_argument("--candidate-source", choices=["remote", "local"], default="remote")
-    value.add_argument(
-        "--scan-data-base-url",
-        default="https://raw.githubusercontent.com/AmolBhosale1989/ai-market-scanner/scan-data/dashboard-data",
-    )
-    value.add_argument("--state-dir", default=".state/v4")
-    value.add_argument("--output-dir", default=str(OUTPUT_DIR))
     value.add_argument("--hot-limit", type=int, default=20)
     value.add_argument("--warm-limit", type=int, default=80)
     value.add_argument("--warm-batch-size", type=int, default=10)
@@ -109,25 +61,13 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--market-interval", type=int, default=60)
     value.add_argument("--off-hours-interval", type=int, default=900)
     value.add_argument("--max-workers", type=int, default=8)
-    value.add_argument(
-        "--catalysts",
-        action="store_true",
-        help="Enable audit-only SEC filing and fresh-news catalyst ingestion.",
-    )
+    value.add_argument("--catalysts", action="store_true")
     value.add_argument("--catalyst-workers", type=int, default=4)
     value.add_argument("--news-limit", type=int, default=20)
-    value.add_argument(
-        "--options-microstructure",
-        action="store_true",
-        help="Enable V4.4 shadow-only options and bar-derived microstructure evidence.",
-    )
+    value.add_argument("--options-microstructure", action="store_true")
     value.add_argument("--options-workers", type=int, default=4)
     value.add_argument("--options-limit", type=int, default=8)
-    value.add_argument(
-        "--telegram-alerts",
-        action="store_true",
-        help="Enable Telegram delivery. Default is audit-only even when secrets exist.",
-    )
+    value.add_argument("--telegram-alerts", action="store_true")
     value.add_argument("--max-source-age", type=int, default=43_200)
     value.add_argument("--min-provider-coverage", type=float, default=0.80)
     value.add_argument("--failure-backoff-initial", type=int, default=300)

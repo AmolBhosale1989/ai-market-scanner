@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from .config import (
-    OUTPUT_DIR, MIN_PRICE, MIN_AVG_DOLLAR_VOLUME, MIN_AVG_SHARE_VOLUME,
+    MIN_PRICE, MIN_AVG_DOLLAR_VOLUME, MIN_AVG_SHARE_VOLUME,
     MIN_MEDIAN_DOLLAR_VOLUME, MIN_ADR20_PCT, MIN_ATR_PCT, MAX_ATR_PCT,
     TOP_N, LEADER_WATCHLIST_LIMIT, CORE_LEADER_TICKERS,
     BATCH_SIZE, BENCHMARK,
@@ -25,6 +25,7 @@ from .regime import evaluate_regime
 from .stocks import analyze_dataframe
 from .themes import rank_themes, enrich_candidate_themes
 from .universe import load_or_build_universe
+from .control_plane import write_dataset
 
 def _benchmark_context():
     df=warehouse_history(BENCHMARK,"6mo","1d",max_age_minutes=20)
@@ -43,7 +44,7 @@ def _representative_sample(universe: pd.DataFrame, limit: int) -> pd.DataFrame:
     return universe.iloc[idx].reset_index(drop=True)
 
 def _write_health(**kwargs):
-    pd.DataFrame([kwargs]).to_csv(OUTPUT_DIR/"scan_health.csv",index=False)
+    write_dataset("scan_health",pd.DataFrame([kwargs]),entity_key=None)
 
 def _final_decision(row):
     technical=row["decision"]
@@ -95,7 +96,7 @@ def _prefilter_universe(universe: pd.DataFrame):
     pfdf=pfdf.sort_values(
         ["tradable","avg_dollar_volume20"],ascending=[False,False]
     ).reset_index(drop=True)
-    pfdf.to_csv(OUTPUT_DIR/"tradable_universe.csv",index=False)
+    write_dataset("tradable_universe",pfdf)
     return pfdf,coverage,len(fetched)
 
 def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, deep_limit: int|None=None):
@@ -274,7 +275,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     print("Enriching upcoming earnings with historical reactions, beat/miss, compression, guidance/revision context and options...")
     event_watchlist=enrich_earnings_intelligence(event_watchlist)
     if event_watchlist is not None:
-        event_watchlist.to_csv(OUTPUT_DIR/"upcoming_events.csv",index=False)
+        write_dataset("upcoming_events",event_watchlist)
     stage_rank={"CONFIRMED":5,"ARMED":4,"FORMING":3,"DISCOVER":2,"EXTENDED":1,"REJECT":0}
     df["stage_rank"]=df["stage"].map(stage_rank).fillna(0)
 
@@ -318,13 +319,13 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     df["universal_10pct_gate"]=(explosive30 | max_up30.ge(10.0))
 
     print("Running legendary trader setup agents...")
-    legendary=run_legendary_agents(df, OUTPUT_DIR, top_n=max(25, top_n))
+    legendary=run_legendary_agents(df, top_n=max(25, top_n))
     if not legendary.empty:
         agent_count = legendary["trader"].nunique()
         print(f"Legendary trader agents identified {len(legendary):,} setup matches across {agent_count} agents.")
 
-    all_out=OUTPUT_DIR/"all_candidates.csv"
-    df.sort_values(["market_hunt_score","avg_dollar_volume"],ascending=[False,False]).to_csv(all_out,index=False)
+    all_candidates=df.sort_values(["market_hunt_score","avg_dollar_volume"],ascending=[False,False])
+    write_dataset("all_candidates",all_candidates)
 
     recommended=df[
         df["universal_10pct_gate"]
@@ -334,7 +335,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     recommended=recommended.sort_values(
         ["market_hunt_score","avg_dollar_volume"],ascending=[False,False]
     ).head(top_n)
-    recommended.to_csv(OUTPUT_DIR/"recommended_trades.csv",index=False)
+    write_dataset("recommended_trades",recommended)
 
     # Keep widely followed liquid leaders visible even when they do not have an
     # actionable setup. Failing names remain research-only with the exact gate
@@ -378,7 +379,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
         leaders["leader_order"]=leaders["ticker"].map(leader_order).fillna(999)
         leaders=leaders.sort_values(["leader_order","median_dollar_volume20"],ascending=[True,False])
         leaders=leaders.head(LEADER_WATCHLIST_LIMIT).drop(columns=["leader_order"],errors="ignore")
-    leaders.to_csv(OUTPUT_DIR/"liquid_leaders.csv",index=False)
+    write_dataset("liquid_leaders",leaders)
 
     eligible=df[
         df["universal_10pct_gate"]
@@ -393,9 +394,8 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     shortlist=pd.concat([leader_candidates,emerging_candidates],ignore_index=True)
     shortlist=shortlist.drop(columns=["stage_rank"],errors="ignore")
 
-    out=OUTPUT_DIR/"latest_scan.csv"
-    shortlist.to_csv(out,index=False)
-    shortlist.to_csv(OUTPUT_DIR/"watchlist.csv",index=False)
+    write_dataset("latest_scan",shortlist)
+    write_dataset("watchlist",shortlist)
     _write_health(**health)
 
     print("\nTOP MARKET HUNT CANDIDATES")
@@ -406,19 +406,9 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
         "live_confirmation_score","live_trade_action",
     ]
     print(shortlist[cols].to_string(index=False))
-    print(f"\nSaved tradable universe: {OUTPUT_DIR/'tradable_universe.csv'}")
-    print(f"Saved liquid leader tracker: {OUTPUT_DIR/'liquid_leaders.csv'}")
-    print(f"Saved live-confirmed recommendations: {OUTPUT_DIR/'recommended_trades.csv'}")
-    print(f"Saved research watchlist: {OUTPUT_DIR/'watchlist.csv'}")
-    print(f"Saved monitor input shortlist: {out}")
-    print(f"Saved all technical candidates: {all_out}")
-    print(f"Saved legendary trader setup lists: {OUTPUT_DIR/'legendary_setups.csv'}")
-    print(f"Saved legendary consensus: {OUTPUT_DIR/'legendary_consensus.csv'}")
-    print(f"Saved themes: {OUTPUT_DIR/'trending_themes.csv'}")
-    print(f"Saved event-first watchlist: {OUTPUT_DIR/'upcoming_events.csv'}")
-    print(f"Saved scan health: {OUTPUT_DIR/'scan_health.csv'}")
+    print("\nSaved daily scan datasets to PostgreSQL control plane")
     build_product_feed()
-    print(f"Saved product feed: {OUTPUT_DIR/'product_feed.json'}")
+    print("Saved product feed to PostgreSQL control plane")
     return shortlist
 
 if __name__=="__main__":

@@ -306,11 +306,14 @@ def fit_model(outcomes: pd.DataFrame, settings: FitSettings | None = None) -> tu
     return CalibratedRankingModel(core), pd.DataFrame(metrics_rows)
 
 
-def save_model(model: CalibratedRankingModel, path: Path) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(model.payload, indent=2, sort_keys=True, allow_nan=False))
+def save_model(model: CalibratedRankingModel, document_key: str = "v4_5_model") -> None:
+    from ..control_plane import append_state
+    append_state("v4_models", document_key, model.payload)
 
 
-def load_model(path: Path) -> CalibratedRankingModel:
-    return CalibratedRankingModel(json.loads(Path(path).read_text()))
+def load_model(document_key: str = "v4_5_model") -> CalibratedRankingModel:
+    from ..control_plane import read_state
+    payload = read_state("v4_models", document_key, default={}) or {}
+    if not payload:
+        raise RuntimeError(f"MODEL_UNAVAILABLE: {document_key}")
+    return CalibratedRankingModel(payload)

@@ -1,19 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
 from .warehouse import DataRequirement, provide
 
-from .config import OUTPUT_DIR
+from .control_plane import append_state, read_dataset, read_state, write_dataset
 
 ET = ZoneInfo("America/New_York")
-LOG_PATH = OUTPUT_DIR / "daily_top_pick_log.csv"
-SUMMARY_PATH = OUTPUT_DIR / "daily_top_pick_summary.csv"
-
 LOG_COLUMNS = [
     "selection_date_et","selected_at_et","ticker","source","selection_score","theme",
     "entry_price","stop_price","target_price","target_pct","risk_pct",
@@ -33,13 +29,7 @@ def _num(value, default=np.nan):
 
 
 def _read(name: str) -> pd.DataFrame:
-    path = OUTPUT_DIR / name
-    if not path.exists() or path.stat().st_size == 0:
-        return pd.DataFrame()
-    try:
-        return pd.read_csv(path)
-    except Exception:
-        return pd.DataFrame()
+    return read_dataset(name, required=False)
 
 
 def _now_et() -> datetime:
@@ -242,11 +232,10 @@ def _monitor_row(row: pd.Series, now_et: datetime) -> pd.Series:
 
 
 def run() -> pd.DataFrame:
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     now_et = _now_et()
     today = now_et.date().isoformat()
 
-    log = _read("daily_top_pick_log.csv")
+    log = pd.DataFrame(read_state("daily_pick", "log", default=[]) or [])
     if log.empty:
         log = pd.DataFrame(columns=LOG_COLUMNS)
 
@@ -269,8 +258,8 @@ def run() -> pd.DataFrame:
     selection_window_open = (now_et.hour, now_et.minute) >= (9, 45)
 
     if not already_selected and is_weekday and selection_window_open:
-        momentum = _read("momentum_signals.csv")
-        live = _read("intraday_live.csv")
+        momentum = _read("momentum_signals")
+        live = _read("intraday_live")
         candidate = _pick_candidate(momentum, live)
         if candidate:
             entry = _num(candidate["entry_price"])
@@ -310,7 +299,8 @@ def run() -> pd.DataFrame:
         if col not in log.columns:
             log[col] = np.nan
     log = log[LOG_COLUMNS].sort_values(["selection_date_et","selected_at_et"], ascending=[False,False])
-    log.to_csv(LOG_PATH, index=False)
+    write_dataset("daily_top_pick_log", log, entity_key="ticker")
+    append_state("daily_pick", "log", log.to_dict("records"))
 
     closed = log[log["status"].astype(str).isin(["TARGET_HIT","STOP_HIT","EXPIRED"])] if not log.empty else pd.DataFrame()
     summary = pd.DataFrame([{
@@ -326,7 +316,7 @@ def run() -> pd.DataFrame:
         "updated_at_et": now_et.isoformat(),
         "selection_policy": "ONE_TOP_CONVICTION_PAPER_PICK_PER_ET_TRADING_DAY",
     }])
-    summary.to_csv(SUMMARY_PATH, index=False)
+    write_dataset("daily_top_pick_summary", summary, entity_key=None)
     return log
 
 

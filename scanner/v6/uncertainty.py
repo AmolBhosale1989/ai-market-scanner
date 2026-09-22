@@ -251,6 +251,6 @@ def fit_uncertainty_model(
     return UncertaintyEnsembleModel(core), pd.DataFrame(metrics)
 
 
-def save_model(model: UncertaintyEnsembleModel, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(model.payload, indent=2, sort_keys=True, allow_nan=False))
+def save_model(model: UncertaintyEnsembleModel, document_key: str = "v6_model") -> None:
+    from ..control_plane import append_state
+    append_state("v4_models", document_key, model.payload)

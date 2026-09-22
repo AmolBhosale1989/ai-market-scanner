@@ -7,7 +7,6 @@ import os
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
@@ -22,12 +21,12 @@ from .config import (
     LIVE_INTRADAY_MIN_COVERAGE,
     MASTER_DAILY_MIN_COVERAGE,
     MASTER_UNIVERSE_MINIMUM,
-    OUTPUT_DIR,
     THEME_INTRADAY_MARKET_SYMBOLS,
     THEME_INTRADAY_MAX_AGE_MINUTES,
     THEME_INTRADAY_MIN_COVERAGE,
 )
 from .warehouse import _freshness_failures
+from .control_plane import current_run_id, read_dataset, write_dataset
 
 
 @dataclass(frozen=True)
@@ -40,17 +39,16 @@ class CoverageTier:
     max_age_minutes: int
 
 
-def _symbols(path: Path, *, required: bool = True) -> tuple[str, ...]:
-    if not path.exists() or not path.stat().st_size:
+def _symbols(frame: pd.DataFrame, dataset_name: str, *, required: bool = True) -> tuple[str, ...]:
+    if frame is None or frame.empty:
         if required:
-            raise RuntimeError(f"WAREHOUSE_GATE_INPUT_MISSING: {path}")
+            raise RuntimeError(f"WAREHOUSE_GATE_INPUT_MISSING: {dataset_name}")
         return ()
-    frame=pd.read_csv(path)
     for col in ("ticker","symbol","Ticker","Symbol"):
         if col in frame.columns:
             values=frame[col].dropna().astype(str).str.upper().str.strip()
             return tuple(dict.fromkeys(x for x in values if x))
-    raise RuntimeError(f"WAREHOUSE_GATE_INPUT_INVALID: {path} has no symbol column")
+    raise RuntimeError(f"WAREHOUSE_GATE_INPUT_INVALID: {dataset_name} has no symbol column")
 
 
 def _catalogue_hash(symbols: Iterable[str]) -> str:
@@ -146,16 +144,17 @@ def build_tiers(master: Iterable[str], live: Iterable[str]) -> tuple[CoverageTie
     )
 
 
-def run(master_file: Path, live_file: Path, as_of: datetime | None = None, selected: set[str] | None = None) -> dict:
+def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | None = None, selected: set[str] | None = None) -> dict:
     verify_health()
-    master=_symbols(master_file)
-    live=_symbols(live_file)
+    selected=selected or set()
+    master=_symbols(master_frame,"master_universe")
+    live=_symbols(live_frame,"live_universe",required="LIVE_INTRADAY" in selected or not selected)
     as_of=as_of or datetime.now(timezone.utc)
     tiers=[x for x in build_tiers(master,live) if not selected or x.name in selected]
     results=[evaluate_tier(tier,coverage_frame(tier,as_of)) for tier in tiers]
     snapshot={
         "schema_version":1,
-        "production_run_id":os.getenv("PRODUCTION_RUN_ID") or str(uuid.uuid4()),
+        "production_run_id":current_run_id(),
         "as_of_utc":as_of.isoformat(),
         "master_catalogue_hash":_catalogue_hash(master),
         "master_symbols":len(master),
@@ -163,10 +162,11 @@ def run(master_file: Path, live_file: Path, as_of: datetime | None = None, selec
         "tiers":results,
         "status":"PASS" if results and all(x["status"]=="PASS" for x in results) else "FAIL",
     }
-    OUTPUT_DIR.mkdir(parents=True,exist_ok=True)
-    (OUTPUT_DIR/"warehouse_snapshot.json").write_text(json.dumps(snapshot,indent=2,sort_keys=True))
-    pd.DataFrame(results).drop(columns=["missing_sample","short_history_sample","invalid_sample","stale_sample"]).to_csv(
-        OUTPUT_DIR/"warehouse_coverage.csv",index=False
+    write_dataset("warehouse_snapshot",pd.DataFrame([snapshot]),entity_key=None)
+    write_dataset(
+        "warehouse_coverage",
+        pd.DataFrame(results).drop(columns=["missing_sample","short_history_sample","invalid_sample","stale_sample"]),
+        entity_key="tier",
     )
     for result in results:
         print(
@@ -189,8 +189,6 @@ def run(master_file: Path, live_file: Path, as_of: datetime | None = None, selec
 
 def main():
     p=argparse.ArgumentParser(description="Fail-closed production warehouse coverage gate")
-    p.add_argument("--master-file",type=Path,default=OUTPUT_DIR/"master_universe.csv")
-    p.add_argument("--live-file",type=Path,default=OUTPUT_DIR/"live_universe.csv")
     p.add_argument(
         "--tier",action="append",
         choices=["MASTER_DAILY","CRITICAL_DAILY","CRITICAL_INTRADAY","THEME_INTRADAY","LIVE_INTRADAY"],
@@ -198,7 +196,12 @@ def main():
     p.add_argument("--as-of",default="now")
     args=p.parse_args()
     as_of=None if args.as_of=="now" else pd.Timestamp(args.as_of).to_pydatetime()
-    snapshot=run(args.master_file,args.live_file,as_of=as_of,selected=set(args.tier or ()))
+    master=read_dataset("master_universe")
+    live=read_dataset("live_universe", required=False)
+    selected=set(args.tier or ())
+    if live.empty and "LIVE_INTRADAY" not in selected:
+        live=master.iloc[0:0].copy()
+    snapshot=run(master,live,as_of=as_of,selected=selected)
     print(f"WAREHOUSE_SNAPSHOT_AVAILABLE run_id={snapshot['production_run_id']} as_of={snapshot['as_of_utc']}")
 
 

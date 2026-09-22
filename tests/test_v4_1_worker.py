@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-import json
 
 import pandas as pd
 
@@ -8,7 +7,7 @@ from scanner.v4.alerting import AlertRouter
 from scanner.v4.engine import MomentumEngine, Transition
 from scanner.v4.health import CycleMetric, HealthRecorder
 from scanner.v4.source import CandidateSourceResult, FallbackCandidateSource
-from scanner.v4.store import FileEventStore
+from scanner.v4.store import PostgresEventStore
 from scanner.v4.worker import ContinuousMomentumWorker, WorkerSettings, select_poll_batch
 from scanner.v4_worker import build_worker, parser
 
@@ -94,21 +93,16 @@ def test_yahoo_adapter_counts_empty_responses_as_provider_errors(monkeypatch):
 def test_cli_defaults_to_audit_only_even_when_telegram_secrets_exist(monkeypatch, tmp_path):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "secret")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
-    args = parser().parse_args([
-        "--candidate-source", "local",
-        "--state-dir", str(tmp_path / "state"),
-        "--output-dir", str(tmp_path / "output"),
-    ])
+    args = parser().parse_args([])
     worker = build_worker(args)
-    assert [sink.name for sink in worker.alerts.sinks] == ["audit-file"]
+    assert [sink.name for sink in worker.alerts.sinks] == ["audit-database"]
     assert worker.catalyst_adapter is None
-    assert worker.health.cycles_file.parent == tmp_path / "state"
-    assert worker.health.mirror_cycles_file.parent == tmp_path / "output"
+    assert worker.health.namespace == "v4"
 
 
 def test_alert_router_deduplicates_per_sink(tmp_path):
     sink = RecordingSink()
-    router = AlertRouter(tmp_path / "dispatch.json", [sink])
+    router = AlertRouter([sink], namespace=str(tmp_path))
     transition = Transition(
         signal_id="AXTI|10.0000|9.5000",
         ticker="AXTI",
@@ -130,7 +124,7 @@ def test_alert_router_deduplicates_per_sink(tmp_path):
 
 
 def test_health_recorder_calculates_market_hours_uptime(tmp_path):
-    recorder = HealthRecorder(tmp_path / "cycles.csv", tmp_path / "summary.json")
+    recorder = HealthRecorder(namespace=str(tmp_path))
     base = dict(
         cycle_started_at_utc="2026-09-13T14:00:00+00:00",
         cycle_completed_at_utc="2026-09-13T14:00:01+00:00",
@@ -162,12 +156,11 @@ def test_worker_cycle_writes_health_state_and_deduplicated_alerts(tmp_path):
     worker = ContinuousMomentumWorker(
         source=StaticSource(),
         adapter=StaticAdapter(),
-        engine=MomentumEngine(FileEventStore(state)),
-        alerts=AlertRouter(state / "dispatch.json", [sink]),
-        health=HealthRecorder(output / "cycles.csv", output / "health.json"),
+        engine=MomentumEngine(PostgresEventStore(str(state))),
+        alerts=AlertRouter([sink], namespace=str(state)),
+        health=HealthRecorder(namespace=str(output)),
         settings=WorkerSettings(hot_limit=2, warm_limit=2, warm_batch_size=0),
-        output_dir=output,
-        runtime_state_file=state / "runtime.json",
+        namespace=str(state),
     )
     first = worker.run_cycle()
     second = worker.run_cycle()
@@ -175,19 +168,17 @@ def test_worker_cycle_writes_health_state_and_deduplicated_alerts(tmp_path):
     assert first.transitions == 2
     assert second.transitions == 0
     assert len(sink.alerts) == 2
-    assert (output / "v4_live_snapshot.csv").exists()
-    assert json.loads((output / "health.json").read_text())["cycles_recorded"] == 2
-    assert json.loads((state / "runtime.json").read_text())["cycle_index"] == 2
+    assert worker.health.record
+    assert worker._load_runtime_state()["cycle_index"] == 2
 
     restarted = ContinuousMomentumWorker(
         source=StaticSource(),
         adapter=StaticAdapter(),
-        engine=MomentumEngine(FileEventStore(state)),
-        alerts=AlertRouter(state / "dispatch.json", [sink]),
-        health=HealthRecorder(output / "cycles.csv", output / "health.json"),
+        engine=MomentumEngine(PostgresEventStore(str(state))),
+        alerts=AlertRouter([sink], namespace=str(state)),
+        health=HealthRecorder(namespace=str(output)),
         settings=WorkerSettings(hot_limit=2, warm_limit=2, warm_batch_size=0),
-        output_dir=output,
-        runtime_state_file=state / "runtime.json",
+        namespace=str(state),
     )
     assert restarted.cycle_index == 2
 
@@ -197,10 +188,10 @@ def test_stop_request_prevents_new_worker_cycle(tmp_path):
     worker = ContinuousMomentumWorker(
         source=StaticSource(),
         adapter=StaticAdapter(),
-        engine=MomentumEngine(FileEventStore(tmp_path / "state")),
-        alerts=AlertRouter(tmp_path / "dispatch.json", [sink]),
-        health=HealthRecorder(tmp_path / "cycles.csv", tmp_path / "health.json"),
-        output_dir=tmp_path / "output",
+        engine=MomentumEngine(PostgresEventStore(str(tmp_path / "state"))),
+        alerts=AlertRouter([sink], namespace=str(tmp_path)),
+        health=HealthRecorder(namespace=str(tmp_path)),
+        namespace=str(tmp_path),
     )
     worker.request_stop()
     assert worker.run_forever(max_cycles=1) == 0
@@ -211,15 +202,15 @@ def test_worker_uses_bounded_exponential_backoff_after_failures(tmp_path):
     worker = ContinuousMomentumWorker(
         source=StaticSource(),
         adapter=StaticAdapter(),
-        engine=MomentumEngine(FileEventStore(tmp_path / "state")),
-        alerts=AlertRouter(tmp_path / "dispatch.json", [sink]),
-        health=HealthRecorder(tmp_path / "cycles.csv", tmp_path / "health.json"),
+        engine=MomentumEngine(PostgresEventStore(str(tmp_path / "state"))),
+        alerts=AlertRouter([sink], namespace=str(tmp_path)),
+        health=HealthRecorder(namespace=str(tmp_path)),
         settings=WorkerSettings(
             market_interval_seconds=60,
             failure_backoff_initial_seconds=300,
             failure_backoff_max_seconds=600,
         ),
-        output_dir=tmp_path / "output",
+        namespace=str(tmp_path),
     )
     base = dict(
         cycle_started_at_utc="2026-09-13T14:00:00+00:00",

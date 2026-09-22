@@ -5,12 +5,11 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
-import os
-from pathlib import Path
-import tempfile
 from typing import Any
 
 import pandas as pd
+
+from ..control_plane import append_state, read_state
 
 
 CUTOVER_SCHEMA = "4.6.0"
@@ -48,29 +47,6 @@ class CutoverDecision:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(Path(path).read_text())
-        return value if isinstance(value, dict) else {}
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
-def _atomic_json(path: Path, value: dict[str, Any]) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
-    try:
-        with os.fdopen(fd, "w") as handle:
-            json.dump(value, handle, indent=2, sort_keys=True, allow_nan=False)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
 
 
 def _ranked_tickers(frame: pd.DataFrame, score_column: str, top_k: int) -> list[str]:
@@ -113,26 +89,17 @@ def alert_precision(outcomes: pd.DataFrame) -> tuple[int, float | None]:
 
 
 def rollback_drill() -> bool:
-    with tempfile.TemporaryDirectory() as root:
-        state = Path(root) / "cutover.json"
-        original = {
-            "schema_version": CUTOVER_SCHEMA,
-            "mode": SHADOW_MODE,
-            "active_model_version": "",
-            "previous_mode": "",
-        }
-        _atomic_json(state, original)
-        before = hashlib.sha256(state.read_bytes()).hexdigest()
-        promoted = {
-            **original,
-            "mode": PRIMARY_MODE,
-            "active_model_version": "drill-model",
-            "previous_mode": SHADOW_MODE,
-        }
-        _atomic_json(state, promoted)
-        _atomic_json(state, original)
-        after = hashlib.sha256(state.read_bytes()).hexdigest()
-        return before == after and _read_json(state).get("mode") == SHADOW_MODE
+    original = {
+        "schema_version": CUTOVER_SCHEMA,
+        "mode": SHADOW_MODE,
+        "active_model_version": "",
+        "previous_mode": "",
+    }
+    before = hashlib.sha256(json.dumps(original, sort_keys=True).encode()).hexdigest()
+    promoted = {**original, "mode": PRIMARY_MODE, "active_model_version": "drill-model"}
+    rolled_back = {**promoted, **original}
+    after = hashlib.sha256(json.dumps(rolled_back, sort_keys=True).encode()).hexdigest()
+    return before == after and rolled_back.get("mode") == SHADOW_MODE
 
 
 def evaluate_cutover(
@@ -201,11 +168,11 @@ def evaluate_cutover(
 
 
 class CutoverController:
-    def __init__(self, state_file: Path):
-        self.state_file = Path(state_file)
+    def __init__(self, namespace: str = "v4_cutover"):
+        self.namespace = namespace
 
     def state(self) -> dict[str, Any]:
-        current = _read_json(self.state_file)
+        current = read_state(self.namespace, "state", default={}) or {}
         if current:
             return current
         return {
@@ -231,7 +198,7 @@ class CutoverController:
             "updated_at_utc": datetime.now(timezone.utc).isoformat(),
             "decision": decision.to_dict(),
         }
-        _atomic_json(self.state_file, value)
+        append_state(self.namespace, "state", value)
         return value
 
     def rollback(self, reason: str) -> dict[str, Any]:
@@ -245,12 +212,12 @@ class CutoverController:
             "rolled_back_at_utc": datetime.now(timezone.utc).isoformat(),
             "updated_at_utc": datetime.now(timezone.utc).isoformat(),
         }
-        _atomic_json(self.state_file, value)
+        append_state(self.namespace, "state", value)
         return value
 
 
-def load_cutover_mode(state_file: Path, expected_model_version: str = "") -> str:
-    state = _read_json(state_file)
+def load_cutover_mode(expected_model_version: str = "") -> str:
+    state = read_state("v4_cutover", "state", default={}) or {}
     if state.get("mode") != PRIMARY_MODE:
         return SHADOW_MODE
     active = str(state.get("active_model_version", ""))
@@ -261,19 +228,18 @@ def load_cutover_mode(state_file: Path, expected_model_version: str = "") -> str
 
 def apply_active_ranking(
     candidates: pd.DataFrame,
-    state_file: Path,
-    model_file: Path,
+    model_payload: dict[str, Any],
 ) -> tuple[pd.DataFrame, str]:
     if candidates is None or candidates.empty:
         return pd.DataFrame(), SHADOW_MODE
-    state = _read_json(Path(state_file))
+    state = read_state("v4_cutover", "state", default={}) or {}
     if state.get("mode") != PRIMARY_MODE:
         return candidates.copy(), SHADOW_MODE
-    if not Path(model_file).exists():
+    if not model_payload:
         return candidates.copy(), SHADOW_MODE
     try:
-        from .calibration import load_model
-        model = load_model(Path(model_file))
+        from .calibration import CalibratedRankingModel
+        model = CalibratedRankingModel(model_payload)
     except Exception:
         return candidates.copy(), SHADOW_MODE
     active_version = str(state.get("active_model_version", ""))

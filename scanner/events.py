@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import csv
 from datetime import datetime, timezone
 import math
 import os
@@ -9,9 +10,10 @@ from io import StringIO
 import pandas as pd
 
 
-from .config import EVENT_SCAN_LIMIT, EVENT_LOOKAHEAD_DAYS, EVENT_MAX_WORKERS, EVENT_NEWS_SCAN_LIMIT, OUTPUT_DIR
+from .config import EVENT_SCAN_LIMIT, EVENT_LOOKAHEAD_DAYS, EVENT_MAX_WORKERS, EVENT_NEWS_SCAN_LIMIT
 from .catalysts import _extract_news_item, _news_relevance
 from .warehouse import request_dataset
+from .control_plane import write_dataset
 
 
 EVENT_PATTERNS = [
@@ -76,7 +78,7 @@ def _parse_alpha_vantage_calendar(body: str, tradable_df: pd.DataFrame, now=None
         return []
 
     try:
-        df=pd.read_csv(StringIO(body))
+        df=pd.DataFrame(list(csv.DictReader(StringIO(body))))
     except Exception:
         return []
     if df.empty:
@@ -143,20 +145,21 @@ def _alpha_vantage_earnings_events(tradable_df: pd.DataFrame):
         return []
 
 def _write_event_status(status: str, count: int, detail: str=""):
-    pd.DataFrame([{
+    health=pd.DataFrame([{
         "provider":"ALPHA_VANTAGE",
         "configured":bool(os.getenv("ALPHA_VANTAGE_API_KEY","").strip()),
         "status":status,
         "event_count":int(count),
         "detail":detail,
         "checked_at_utc":pd.Timestamp.now(tz="UTC").isoformat(),
-    }]).to_csv(OUTPUT_DIR/"event_status.csv",index=False)
+    }])
+    write_dataset("event_status",health,entity_key=None)
 
 
 def build_event_watchlist(tradable_df: pd.DataFrame):
     if tradable_df is None or tradable_df.empty:
         out=pd.DataFrame(columns=["ticker","company_name","event_type","event_date_utc","days_to_event","event_priority","event_source"])
-        out.to_csv(OUTPUT_DIR/"upcoming_events.csv",index=False)
+        write_dataset("upcoming_events",out)
         _write_event_status("NO_UNIVERSE",0,"Tradable universe was empty.")
         return out
 
@@ -208,7 +211,7 @@ def build_event_watchlist(tradable_df: pd.DataFrame):
         out["_priority"]=out["event_priority"].map(order).fillna(0)
         out=out.sort_values(["_priority","days_to_event","avg_dollar_volume20"],ascending=[False,True,False])
         out=out.drop(columns=["_priority"]).reset_index(drop=True)
-    out.to_csv(OUTPUT_DIR/"upcoming_events.csv",index=False)
+    write_dataset("upcoming_events",out)
     configured=bool(os.getenv("ALPHA_VANTAGE_API_KEY","").strip())
     earnings_count=int((out["event_type"].eq("EARNINGS")).sum()) if "event_type" in out.columns else 0
     if not configured:
@@ -237,5 +240,5 @@ def merge_technical_context(events: pd.DataFrame, candidates: pd.DataFrame):
     tech=candidates[keep].drop_duplicates("ticker")
     out=out.merge(tech,on="ticker",how="left")
     out["pre_event_setup_state"]=out.get("stage",pd.Series(index=out.index,dtype=object)).fillna("NO TECHNICAL SETUP")
-    out.to_csv(OUTPUT_DIR/"upcoming_events.csv",index=False)
+    write_dataset("upcoming_events",out)
     return out

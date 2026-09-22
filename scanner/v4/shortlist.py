@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
+
+from ..control_plane import read_dataset
 
 
 def _numeric(frame: pd.DataFrame, column: str, default: float = 0.0) -> pd.Series:
@@ -56,9 +56,5 @@ def build_monitor_shortlist(
     return frame.reset_index(drop=True)
 
 
-def load_shortlist_source(output_dir: Path) -> pd.DataFrame:
-    for name in ("all_candidates.csv", "latest_scan.csv"):
-        path = Path(output_dir) / name
-        if path.exists():
-            return pd.read_csv(path)
-    raise FileNotFoundError("Run the broad scan first; no V4 shortlist source exists.")
+def load_shortlist_source() -> pd.DataFrame:
+    return read_dataset("all_candidates")

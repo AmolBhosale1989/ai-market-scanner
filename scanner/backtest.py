@@ -5,12 +5,13 @@ import math
 import pandas as pd
 
 from .config import (
-    OUTPUT_DIR, MIN_HISTORY_DAYS, BACKTEST_PERIOD, BACKTEST_HORIZON_DAYS,
+    MIN_HISTORY_DAYS, BACKTEST_PERIOD, BACKTEST_HORIZON_DAYS,
     BACKTEST_MAX_TICKERS, BACKTEST_SIGNAL_STRIDE, MIN_RUNWAY_PCT,
 )
 from .warehouse import history as download_history
 from .stocks import analyze_dataframe
 from .regime import evaluate_regime
+from .control_plane import read_dataset, write_dataset
 
 RR_THRESHOLDS = [1.5, 2.0, 2.5, 3.0]
 
@@ -86,10 +87,7 @@ def run(tickers=None,max_tickers=BACKTEST_MAX_TICKERS,horizon=BACKTEST_HORIZON_D
     if tickers:
         symbols=[x.strip().upper() for x in tickers if x.strip()]
     else:
-        source=OUTPUT_DIR/"tradable_universe.csv"
-        if not source.exists():
-            raise RuntimeError("Run Market Hunt first so outputs/tradable_universe.csv exists.")
-        u=pd.read_csv(source)
+        u=read_dataset("tradable_universe")
         u=u[u["tradable"].astype(bool)] if "tradable" in u.columns else u
         if "avg_dollar_volume20" in u.columns:
             u=u.sort_values("avg_dollar_volume20",ascending=False)
@@ -178,13 +176,13 @@ def run(tickers=None,max_tickers=BACKTEST_MAX_TICKERS,horizon=BACKTEST_HORIZON_D
             })
 
     tdf=pd.DataFrame(trades)
-    tdf.to_csv(OUTPUT_DIR/"backtest_trades.csv",index=False)
+    write_dataset("backtest_trades",tdf,entity_key="ticker")
 
     thresholds=_threshold_summary(tdf,horizon,stride,len(symbols))
-    thresholds.to_csv(OUTPUT_DIR/"backtest_thresholds.csv",index=False)
+    write_dataset("backtest_thresholds",thresholds,entity_key=None)
 
     strict=thresholds[thresholds["rr_threshold"].eq(2.5)].copy()
-    strict.to_csv(OUTPUT_DIR/"backtest_summary.csv",index=False)
+    write_dataset("backtest_summary",strict,entity_key=None)
 
     print("\nR/R THRESHOLD CALIBRATION")
     print(thresholds.to_string(index=False))

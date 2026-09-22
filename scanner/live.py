@@ -205,8 +205,8 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
     result=_empty_live(); now_et=datetime.now(NY); state=_market_state(now_et)
     try:
         raw=warehouse_history(ticker, LIVE_PERIOD, LIVE_INTERVAL, max_age_minutes=10)
-    except Exception:
-        result["live_status"]="WAREHOUSE DATA UNAVAILABLE"; return result
+    except Exception as exc:
+        raise RuntimeError(f"LIVE_WAREHOUSE_UNAVAILABLE: {ticker}") from exc
     d=_normalize_intraday(raw)
     if d.empty:
         result["live_status"]="NO INTRADAY DATA"; return result
@@ -255,9 +255,6 @@ def enrich_live_candidates(df: pd.DataFrame, limit: int = LIVE_ENRICH_LIMIT):
         raise RuntimeError("V3_INPUT_SCHEMA_FAILED: market_hunt_score or final_score")
     eligible=eligible.sort_values(["live_stage_priority",score_column],ascending=[False,False]).head(limit)
     for idx,row in eligible.iterrows():
-        try:
-            live=analyze_live_candidate(ticker=str(row["ticker"]),entry_trigger=float(row.get("entry_trigger",math.nan)),stage=str(row.get("stage","")),catalyst_score=float(pd.to_numeric(pd.Series([row.get("catalyst_score",0)]),errors="coerce").fillna(0).iloc[0]),rr_to_8pct=float(pd.to_numeric(pd.Series([row.get("effective_rr",row.get("rr_to_8pct",math.nan))]),errors="coerce").iloc[0]),runway_pct=float(pd.to_numeric(pd.Series([row.get("runway_to_next_resistance_pct",math.nan)]),errors="coerce").iloc[0]),negative_catalyst_risk=bool(row.get("negative_catalyst_risk",False)),entry_condition=str(row.get("entry_condition","BREAKOUT")),technical_score=float(pd.to_numeric(pd.Series([row.get("technical_score",0)]),errors="coerce").fillna(0).iloc[0]),formation_score=float(pd.to_numeric(pd.Series([row.get("formation_score",0)]),errors="coerce").fillna(0).iloc[0]),avg_dollar_volume=float(pd.to_numeric(pd.Series([row.get("avg_dollar_volume",0)]),errors="coerce").fillna(0).iloc[0]))
-            for k,v in live.items(): out.at[idx,k]=v
-        except Exception as e:
-            out.at[idx,"live_status"]="ERROR"; out.at[idx,"live_trade_action"]=f"ERROR / {type(e).__name__}"
+        live=analyze_live_candidate(ticker=str(row["ticker"]),entry_trigger=float(row.get("entry_trigger",math.nan)),stage=str(row.get("stage","")),catalyst_score=float(pd.to_numeric(pd.Series([row.get("catalyst_score",0)]),errors="coerce").fillna(0).iloc[0]),rr_to_8pct=float(pd.to_numeric(pd.Series([row.get("effective_rr",row.get("rr_to_8pct",math.nan))]),errors="coerce").iloc[0]),runway_pct=float(pd.to_numeric(pd.Series([row.get("runway_to_next_resistance_pct",math.nan)]),errors="coerce").iloc[0]),negative_catalyst_risk=bool(row.get("negative_catalyst_risk",False)),entry_condition=str(row.get("entry_condition","BREAKOUT")),technical_score=float(pd.to_numeric(pd.Series([row.get("technical_score",0)]),errors="coerce").fillna(0).iloc[0]),formation_score=float(pd.to_numeric(pd.Series([row.get("formation_score",0)]),errors="coerce").fillna(0).iloc[0]),avg_dollar_volume=float(pd.to_numeric(pd.Series([row.get("avg_dollar_volume",0)]),errors="coerce").fillna(0).iloc[0]))
+        for k,v in live.items(): out.at[idx,k]=v
     return out

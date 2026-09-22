@@ -6,24 +6,18 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from .config import OUTPUT_DIR
+from .control_plane import read_dataset, write_dataset
 
 NY = ZoneInfo("America/New_York")
 
 
 def _read(name: str) -> pd.DataFrame:
-    p = OUTPUT_DIR / name
-    if not p.exists() or p.stat().st_size == 0:
-        return pd.DataFrame()
-    try:
-        return pd.read_csv(p)
-    except Exception:
-        return pd.DataFrame()
+    return read_dataset(name,required=False)
 
 
 def run() -> pd.DataFrame:
-    src = _read("momentum_signals.csv")
-    momentum_health = _read("momentum_health.csv")
+    src = _read("momentum_signals")
+    momentum_health = _read("momentum_health")
     session_date = ""
     expected_inputs = 0
     if not momentum_health.empty:
@@ -32,8 +26,8 @@ def run() -> pd.DataFrame:
         expected_inputs = int(parsed_inputs) if pd.notna(parsed_inputs) else 0
     now = datetime.now(NY)
     if src.empty:
-        pd.DataFrame().to_csv(OUTPUT_DIR / "order_flow_strategy.csv", index=False)
-        pd.DataFrame([{
+        write_dataset("order_flow_strategy",pd.DataFrame())
+        health=pd.DataFrame([{
             "updated_at_et": now.isoformat(timespec="seconds"),
             "updated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "session_date": session_date,
@@ -43,7 +37,8 @@ def run() -> pd.DataFrame:
             "watch_signals": 0,
             "avoid_signals": 0,
             "mode": "ORDER_FLOW_PROXY_STRATEGY",
-        }]).to_csv(OUTPUT_DIR / "order_flow_strategy_health.csv", index=False)
+        }])
+        write_dataset("order_flow_strategy_health",health,entity_key=None)
         return pd.DataFrame()
 
     d = src.copy()
@@ -174,8 +169,8 @@ def run() -> pd.DataFrame:
         ascending=[True, False, False, False],
     ).drop(columns=["_rank"])
 
-    out.to_csv(OUTPUT_DIR / "order_flow_strategy.csv", index=False)
-    pd.DataFrame([{
+    write_dataset("order_flow_strategy",out)
+    health=pd.DataFrame([{
         "updated_at_et": now.isoformat(timespec="seconds"),
         "updated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "session_date": session_date,
@@ -186,7 +181,8 @@ def run() -> pd.DataFrame:
         "extended_waits": int(out["order_flow_strategy_signal"].eq("EXTENDED / WAIT RETEST").sum()),
         "avoid_signals": int(out["order_flow_strategy_signal"].eq("AVOID / SELLING PRESSURE").sum()),
         "mode": "ORDER_FLOW_PROXY_STRATEGY",
-    }]).to_csv(OUTPUT_DIR / "order_flow_strategy_health.csv", index=False)
+    }])
+    write_dataset("order_flow_strategy_health",health,entity_key=None)
     return out
 
 

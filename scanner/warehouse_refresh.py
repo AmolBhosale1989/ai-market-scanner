@@ -2,23 +2,22 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-from pathlib import Path
 
 import pandas as pd
 import numpy as np
 
 from .bitemporal_warehouse import _connect, finish_run, ingest_observations, latest_event_timestamps, start_run, verify_health
-from .config import CRITICAL_MARKET_SYMBOLS, INGESTION_CRITICAL_SYMBOLS, OUTPUT_DIR, RETRY_CHUNK_SIZE
+from .config import CRITICAL_MARKET_SYMBOLS, INGESTION_CRITICAL_SYMBOLS, RETRY_CHUNK_SIZE
+from .control_plane import read_dataset
 from .data import download_batch
 from .warehouse import _freshness_failures
 
 
 def _symbols() -> list[str]:
-    paths = [OUTPUT_DIR / "master_universe.csv", Path("data/universe.csv"), OUTPUT_DIR / "tradable_universe.csv"]
-    for path in paths:
-        if not path.exists() or not path.stat().st_size:
+    for name in ("master_universe", "tradable_universe"):
+        df = read_dataset(name, required=False)
+        if df.empty:
             continue
-        df = pd.read_csv(path)
         for col in ("ticker", "symbol", "Ticker", "Symbol"):
             if col in df.columns:
                 vals = df[col].dropna().astype(str).str.upper().str.strip()
@@ -174,14 +173,14 @@ def main():
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--offset", type=int, default=0)
     p.add_argument("--bootstrap", action="store_true")
-    p.add_argument("--symbols-file",type=Path)
+    p.add_argument("--dataset",default="",help="Current-run PostgreSQL dataset containing symbols")
     p.add_argument("--sample",type=int,default=0,help="Deterministic representative sample before adding critical symbols")
     args = p.parse_args()
-    if args.symbols_file:
-        frame=pd.read_csv(args.symbols_file)
+    if args.dataset:
+        frame=read_dataset(args.dataset)
         col=next((c for c in ("ticker","symbol","Ticker","Symbol") if c in frame.columns),None)
         if not col:
-            raise RuntimeError(f"WAREHOUSE_REFRESH_FAILED: no symbol column in {args.symbols_file}")
+            raise RuntimeError(f"WAREHOUSE_REFRESH_FAILED: no symbol column in {args.dataset}")
         tickers=list(dict.fromkeys(frame[col].dropna().astype(str).str.upper().str.strip()))
     else:
         tickers = _symbols()

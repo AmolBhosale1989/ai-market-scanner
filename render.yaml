@@ -5,7 +5,16 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0
-    # Streamlit's lightweight built-in health endpoint does not wait for the
-    # dashboard's remote evidence bundle to finish loading.
+    # Streamlit health verifies the web process; PostgreSQL publication status
+    # is independently enforced by the dashboard and production workflow.
     healthCheckPath: /_stcore/health
-    autoDeploy: true
+    # One gated cutover: deploy manually only after CI and the first complete
+    # PostgreSQL publication both pass.
+    autoDeployTrigger: off
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: PGSSLMODE
+        value: require
+      - key: PUBLICATION_MODE
+        value: production

@@ -2,15 +2,13 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-import json
 import math
-import os
-from pathlib import Path
-import tempfile
 from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
+
+from ..control_plane import append_state, read_state, write_dataset, write_record
 
 
 SHADOW_VALIDATION_SCHEMA = "4.shadow.1"
@@ -82,27 +80,14 @@ class ShadowValidationLedger:
 
     def __init__(
         self,
-        state_file: Path,
-        observations_csv: Path | None = None,
-        summary_csv: Path | None = None,
-        daily_csv: Path | None = None,
-        breakdowns_csv: Path | None = None,
-        health_json: Path | None = None,
+        namespace: str = "v4_shadow_validation",
         settings: ShadowValidationSettings | None = None,
     ):
-        self.state_file = Path(state_file)
-        self.observations_csv = Path(observations_csv) if observations_csv else None
-        self.summary_csv = Path(summary_csv) if summary_csv else None
-        self.daily_csv = Path(daily_csv) if daily_csv else None
-        self.breakdowns_csv = Path(breakdowns_csv) if breakdowns_csv else None
-        self.health_json = Path(health_json) if health_json else None
+        self.namespace = namespace
         self.settings = settings or ShadowValidationSettings()
 
     def _load(self) -> dict[str, dict[str, Any]]:
-        try:
-            payload = json.loads(self.state_file.read_text())
-        except (OSError, json.JSONDecodeError):
-            return {}
+        payload = read_state(self.namespace, "observations", default={}) or {}
         observations = payload.get("observations", {}) if isinstance(payload, dict) else {}
         return observations if isinstance(observations, dict) else {}
 
@@ -110,22 +95,12 @@ class ShadowValidationLedger:
         return self._frame(self._load())
 
     def _save(self, observations: dict[str, dict[str, Any]]) -> None:
-        self.state_file.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "schema_version": SHADOW_VALIDATION_SCHEMA,
             "updated_at_utc": datetime.now(timezone.utc).isoformat(),
             "observations": observations,
         }
-        fd, temporary = tempfile.mkstemp(prefix=f".{self.state_file.name}.", dir=self.state_file.parent, text=True)
-        try:
-            with os.fdopen(fd, "w") as handle:
-                json.dump(payload, handle, indent=2, sort_keys=True, allow_nan=False)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, self.state_file)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
+        append_state(self.namespace, "observations", payload)
 
     @staticmethod
     def _frame(observations: dict[str, dict[str, Any]]) -> pd.DataFrame:
@@ -431,29 +406,25 @@ class ShadowValidationLedger:
         summary = self._strategy_summary(frame)
         daily = self._daily(frame)
         breakdowns = self._breakdowns(frame)
-        for path, output in (
-            (self.observations_csv, frame),
-            (self.summary_csv, summary),
-            (self.daily_csv, daily),
-            (self.breakdowns_csv, breakdowns),
+        for name, output, key in (
+            ("v4_shadow_observations", frame, "observation_id"),
+            ("v4_shadow_strategy_summary", summary, "strategy"),
+            ("v4_shadow_daily_comparison", daily, "as_of_session"),
+            ("v4_shadow_breakdowns", breakdowns, None),
         ):
-            if path is not None:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                output.to_csv(path, index=False)
-        if self.health_json is not None:
-            self.health_json.parent.mkdir(parents=True, exist_ok=True)
-            mature = pd.to_numeric(frame.get("daily_bars_resolved"), errors="coerce").fillna(0).ge(
-                self.settings.forward_sessions
-            ) if not frame.empty else pd.Series(dtype=bool)
-            health = {
-                "schema_version": SHADOW_VALIDATION_SCHEMA,
-                "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-                "status": "EVIDENCE_AVAILABLE" if mature.any() else "COLLECTING",
-                "observation_days": int(frame["as_of_session"].nunique()) if len(frame) else 0,
-                "observations": len(frame),
-                "mature_observations": int(mature.sum()),
-                "top_k": self.settings.top_k,
-                "forward_sessions": self.settings.forward_sessions,
-                "maximum_resolution_sessions": max(RETURN_HORIZONS),
-            }
-            self.health_json.write_text(json.dumps(health, indent=2, sort_keys=True, allow_nan=False))
+            write_dataset(name, output, entity_key=key)
+        mature = pd.to_numeric(frame.get("daily_bars_resolved"), errors="coerce").fillna(0).ge(
+            self.settings.forward_sessions
+        ) if not frame.empty else pd.Series(dtype=bool)
+        health = {
+            "schema_version": SHADOW_VALIDATION_SCHEMA,
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "status": "EVIDENCE_AVAILABLE" if mature.any() else "COLLECTING",
+            "observation_days": int(frame["as_of_session"].nunique()) if len(frame) else 0,
+            "observations": len(frame),
+            "mature_observations": int(mature.sum()),
+            "top_k": self.settings.top_k,
+            "forward_sessions": self.settings.forward_sessions,
+            "maximum_resolution_sessions": max(RETURN_HORIZONS),
+        }
+        write_record("v4_shadow_validation_health", health)

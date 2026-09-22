@@ -10,15 +10,13 @@ from __future__ import annotations
 import json
 import math
 import os
-import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
 
-from .config import OUTPUT_DIR
+from .control_plane import append_state, read_dataset, read_state, write_dataset, write_record
 from .session_contract import expected_market_data_session
 from .warehouse import frames as warehouse_frames
 
@@ -64,7 +62,7 @@ def _rank(values: pd.Series, higher_is_better: bool = True) -> pd.Series:
 def _base(candidates: pd.DataFrame) -> pd.DataFrame:
     data = candidates.copy()
     if "ticker" not in data:
-        raise RuntimeError("QUANT_SHADOW_INPUT_INVALID: all_candidates.csv has no ticker")
+        raise RuntimeError("QUANT_SHADOW_INPUT_INVALID: all_candidates has no ticker")
     data["ticker"] = data["ticker"].astype(str).str.upper().str.strip()
     price = _num(data, "price")
     liquid = _bool(data, "liquidity_gate_passed", True)
@@ -300,36 +298,15 @@ def performance_table(ledger: Mapping[str, Mapping[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _read_ledger(path: Path) -> dict[str, dict[str, Any]]:
-    if not path.exists() or not path.stat().st_size:
-        return {}
-    text = path.read_text().strip()
-    if not text:
-        return {}
-    payload = json.loads(text)
-    return dict(payload.get("records", payload))
-
-
-def _atomic_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False) as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True, allow_nan=False)
-        temp = Path(handle.name)
-    temp.replace(path)
-
-
-def run(output_dir: Path = OUTPUT_DIR, now: datetime | None = None) -> dict[str, Any]:
+def run(now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    source = output_dir/"all_candidates.csv"
-    if not source.exists():
-        raise RuntimeError("QUANT_SHADOW_INPUT_MISSING: outputs/all_candidates.csv")
+    source = read_dataset("all_candidates")
     session = str(expected_market_data_session(pd.Timestamp(now)))
-    signals = build_signals(pd.read_csv(source), session)
+    signals = build_signals(source, session)
     if signals.empty:
         raise RuntimeError("QUANT_SHADOW_NO_ELIGIBLE_SIGNALS")
-    ledger_path = output_dir/"quant_shadow_ledger.json"
-    ledger = freeze_cohort(_read_ledger(ledger_path), signals, now.isoformat())
+    stored = read_state("quant_shadow", "ledger", default={}) or {}
+    ledger = freeze_cohort(dict(stored.get("records", stored)), signals, now.isoformat())
     # Publication mirrors the frozen cohort, not a same-session rerun's newly
     # calculated ranks.  This preserves the point-in-time evidence contract.
     frozen_rows = [r for r in ledger.values() if str(r.get("as_of_session")) == session]
@@ -341,11 +318,12 @@ def run(output_dir: Path = OUTPUT_DIR, now: datetime | None = None) -> dict[str,
     ledger = resolve_ledger(ledger, histories)
     performance = performance_table(ledger)
     payload = {"schema_version": 1, "records": ledger}
-    _atomic_json(ledger_path, payload)
-    frozen_signals.sort_values(["strategy", "strategy_score", "ticker"], ascending=[True, False, True]).to_csv(
-        output_dir/"quant_shadow_signals.csv", index=False)
-    pd.DataFrame(ledger.values()).sort_values(["as_of_session", "strategy", "ticker"]).to_csv(output_dir/"quant_shadow_ledger.csv", index=False)
-    performance.to_csv(output_dir/"quant_shadow_performance.csv", index=False)
+    append_state("quant_shadow", "ledger", payload)
+    write_dataset("quant_shadow_signals", frozen_signals.sort_values(
+        ["strategy", "strategy_score", "ticker"], ascending=[True, False, True]), entity_key="ticker")
+    write_dataset("quant_shadow_ledger", pd.DataFrame(ledger.values()).sort_values(
+        ["as_of_session", "strategy", "ticker"]), entity_key="signal_id")
+    write_dataset("quant_shadow_performance", performance, entity_key="strategy")
     health = {
         "status": "COLLECTING" if not performance["manual_review_eligible"].any() else "REVIEW_REQUIRED",
         "generated_at_utc": now.isoformat(), "as_of_session": session,
@@ -358,7 +336,7 @@ def run(output_dir: Path = OUTPUT_DIR, now: datetime | None = None) -> dict[str,
         "automatic_promotion_allowed": False,
         "promotion_contract": "manual review only after >=30 closed, expectancy >=0.25R, profit factor >=1.20",
     }
-    _atomic_json(output_dir/"quant_shadow_health.json", health)
+    write_record("quant_shadow_health", health)
     return health
 
 

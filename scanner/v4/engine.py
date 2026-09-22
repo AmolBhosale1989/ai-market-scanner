@@ -6,7 +6,7 @@ from typing import Any, Iterable, Mapping
 
 from .contracts import CandidateState, EventType, MarketEvent
 from .state_machine import next_state
-from .store import FileEventStore
+from .store import PostgresEventStore
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,7 @@ class Transition:
 class MomentumEngine:
     """Processes normalized events without knowing the market-data provider."""
 
-    def __init__(self, store: FileEventStore):
+    def __init__(self, store: PostgresEventStore):
         self.store = store
 
     @staticmethod

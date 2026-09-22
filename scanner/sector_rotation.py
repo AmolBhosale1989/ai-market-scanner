@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from .warehouse import DataRequirement, frames as warehouse_frames, provide
 
-from .config import OUTPUT_DIR
 from .session_contract import latest_frame_session
+from .control_plane import write_dataset
 
 NY = ZoneInfo("America/New_York")
 
@@ -94,7 +94,6 @@ def _load_rotation_history() -> tuple[list[str], dict[str, pd.DataFrame]]:
 
 
 def run():
-    OUTPUT_DIR.mkdir(parents=True,exist_ok=True)
     tickers,raw=_load_rotation_history()
 
     spy_frame=_extract(raw.get("SPY",pd.DataFrame()),"SPY")
@@ -145,15 +144,16 @@ def run():
                                     ascending=[False,False,False]).reset_index(drop=True)
         leaders["rotation_rank"]=range(1,len(leaders)+1)
 
-    themes.to_csv(OUTPUT_DIR/"sector_rotation.csv",index=False)
-    leaders.to_csv(OUTPUT_DIR/"rotation_leaders.csv",index=False)
-    pd.DataFrame([{
+    write_dataset("sector_rotation",themes,entity_key="theme")
+    write_dataset("rotation_leaders",leaders)
+    health=pd.DataFrame([{
         "updated_at_et":datetime.now(NY).isoformat(timespec="seconds"),
         "session_date":str(session_date),
         "spy_change_pct":spy_chg,"themes_scanned":len(themes),"stocks_scanned":len(leaders),
         "rotation_leaders":int(leaders["rotation_leader"].sum()) if not leaders.empty else 0,
         "mode":"BATCHED_INTRADAY_ROTATION",
-    }]).to_csv(OUTPUT_DIR/"sector_rotation_health.csv",index=False)
+    }])
+    write_dataset("sector_rotation_health",health,entity_key=None)
     return themes,leaders
 
 if __name__=="__main__":

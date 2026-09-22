@@ -1,5 +1,5 @@
 -- Bitemporal Market Hunt warehouse.
--- PostgreSQL is authoritative; CSV/dashboard files are downstream exports only.
+-- PostgreSQL is authoritative for OHLCV and every published consumer view.
 
 CREATE TABLE IF NOT EXISTS warehouse_run_log (
     warehouse_run_id UUID PRIMARY KEY,

@@ -5,22 +5,18 @@ import json
 import math
 import os
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
 
-from .config import OUTPUT_DIR, LIVE_ENRICH_LIMIT
+from .config import LIVE_ENRICH_LIMIT
 from .live import enrich_live_candidates
 from .performance import build_performance_reports, build_empirical_calibration
 from .product_feed import build_product_feed
+from .control_plane import append_state, read_state, write_dataset
 
 NY = ZoneInfo("America/New_York")
-STATE_DIR = Path(".state")
-STATE_FILE = STATE_DIR / "market_hunt_state.json"
-TRANSITIONS_FILE = STATE_DIR / "state_transitions.csv"
-JOURNAL_FILE = STATE_DIR / "paper_journal.csv"
 ALERT_STATES = {"TRIGGERED", "LIVE_CONFIRMED", "FAILED_BREAKOUT", "INVALIDATED", "TARGET_HIT"}
 
 def _truthy(v):
@@ -46,17 +42,12 @@ def _write_recommendations(live: pd.DataFrame):
         sort_col="market_hunt_score" if "market_hunt_score" in out.columns else None
         if sort_col:
             out=out.sort_values(sort_col,ascending=False)
-    out.to_csv(OUTPUT_DIR/"recommended_trades.csv",index=False)
+    write_dataset("recommended_trades",out)
     return out
 
 
 def _load_state():
-    if not STATE_FILE.exists():
-        return {}
-    try:
-        return json.loads(STATE_FILE.read_text())
-    except Exception:
-        return {}
+    return read_state("v3","market_hunt_state",default={}) or {}
 
 def _derive_state(row, previous):
     if str(row.get("live_status",""))!="LIVE":
@@ -99,13 +90,8 @@ def _update_paper_journal(live: pd.DataFrame, now: str):
         "triggered_at_et","live_confirmed_at_et","closed_at_et","outcome","return_pct","r_multiple",
         "max_price_seen","min_price_seen","mfe_pct","mae_pct","hit_5pct","hit_8pct","hit_10pct"
     ]
-    if JOURNAL_FILE.exists():
-        try:
-            journal=pd.read_csv(JOURNAL_FILE)
-        except Exception:
-            journal=pd.DataFrame(columns=cols)
-    else:
-        journal=pd.DataFrame(columns=cols)
+    payload=read_state("v3","paper_journal",default=[])
+    journal=pd.DataFrame(payload) if payload else pd.DataFrame(columns=cols)
 
     for _,row in live.iterrows():
         sid=_signal_id(row)
@@ -207,9 +193,8 @@ def _update_paper_journal(live: pd.DataFrame, now: str):
                     if math.isfinite(risk) and risk>0:
                         journal.at[idx,"r_multiple"]=round((price-entry)/risk,2)
 
-    STATE_DIR.mkdir(exist_ok=True)
-    journal.to_csv(JOURNAL_FILE,index=False)
-    journal.to_csv(OUTPUT_DIR/"paper_journal.csv",index=False)
+    append_state("v3","paper_journal",journal.to_dict("records"))
+    write_dataset("paper_journal",journal,entity_key="signal_id")
     return journal
 
 def _write_monitor_health(live: pd.DataFrame, now: str, alert_count: int, telegram_configured: bool, telegram_sent: bool):
@@ -217,7 +202,7 @@ def _write_monitor_health(live: pd.DataFrame, now: str, alert_count: int, telegr
     live_rows=int(live.get("live_status",pd.Series(dtype=object)).eq("LIVE").sum()) if rows else 0
     actionable=int(live.get("monitor_state",pd.Series(dtype=object)).isin(ALERT_STATES).sum()) if rows else 0
     status="OK" if rows>0 else "NO_ACTIVE_CANDIDATES"
-    pd.DataFrame([{
+    health=pd.DataFrame([{
         "status":status,
         "checked_at_et":now,
         "monitored_candidates":rows,
@@ -226,7 +211,8 @@ def _write_monitor_health(live: pd.DataFrame, now: str, alert_count: int, telegr
         "alerts_generated":int(alert_count),
         "telegram_configured":bool(telegram_configured),
         "telegram_sent":bool(telegram_sent),
-    }]).to_csv(OUTPUT_DIR/"monitor_health.csv",index=False)
+    }])
+    write_dataset("monitor_health",health,entity_key=None)
 
 
 def _send_telegram(messages):
@@ -244,27 +230,14 @@ def _send_telegram(messages):
     except Exception:
         return False
 
-def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
-    if not input_file:
+def run(input_file=None, input_frame=None, limit=LIVE_ENRICH_LIMIT):
+    if input_file:
+        raise RuntimeError("INTRADAY_PERSISTED_INPUT_REJECTED: file inputs are disabled")
+    if input_frame is None:
         raise RuntimeError(
             "INTRADAY_INPUT_REQUIRED: production monitoring requires the current run's V3 snapshot"
         )
-    source=Path(input_file)
-    if source.name in {"latest_scan.csv","all_candidates.csv","watchlist.csv"}:
-        raise RuntimeError(
-            f"INTRADAY_PERSISTED_INPUT_REJECTED: {source.name} is not authoritative market data"
-        )
-    if not source.exists():
-        print(f"No base shortlist found at {source}. Nothing to monitor.")
-        now=datetime.now(NY).isoformat(timespec="seconds")
-        build_performance_reports()
-        build_empirical_calibration()
-        _write_monitor_health(pd.DataFrame(),now,0,bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip()),False)
-        _write_recommendations(pd.DataFrame())
-        build_product_feed()
-        return pd.DataFrame()
-
-    base=pd.read_csv(source)
+    base=input_frame.copy()
     # Always monitor the strongest current candidates, not only ARMED/CONFIRMED.
     # BUY permission remains restricted downstream to fully qualified setups,
     # but FORMING/DISCOVER names must still receive live VWAP/ORB/RVOL updates.
@@ -273,7 +246,7 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
         print("No active candidates to monitor.")
         now=datetime.now(NY).isoformat(timespec="seconds")
         empty=pd.DataFrame()
-        empty.to_csv(OUTPUT_DIR/"intraday_live.csv",index=False)
+        write_dataset("intraday_live",empty)
         build_performance_reports()
         build_empirical_calibration()
         _write_monitor_health(empty,now,0,bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip()),False)
@@ -334,25 +307,23 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
                     f"Theme {row.get('theme','')}"
                 )
 
-    STATE_DIR.mkdir(exist_ok=True)
-    STATE_FILE.write_text(json.dumps(state_out,indent=2,sort_keys=True))
+    append_state("v3","market_hunt_state",state_out)
 
     if transitions:
         tdf=pd.DataFrame(transitions)
-        if TRANSITIONS_FILE.exists():
-            tdf=pd.concat([pd.read_csv(TRANSITIONS_FILE),tdf],ignore_index=True)
-        tdf.to_csv(TRANSITIONS_FILE,index=False)
-        tdf.to_csv(OUTPUT_DIR/"state_transitions.csv",index=False)
-    elif TRANSITIONS_FILE.exists():
-        pd.read_csv(TRANSITIONS_FILE).to_csv(OUTPUT_DIR/"state_transitions.csv",index=False)
+        prior_transitions=read_state("v3","state_transitions",default=[])
+        if prior_transitions:
+            tdf=pd.concat([pd.DataFrame(prior_transitions),tdf],ignore_index=True)
+        append_state("v3","state_transitions",tdf.to_dict("records"))
+        write_dataset("state_transitions",tdf)
 
-    live.to_csv(OUTPUT_DIR/"intraday_live.csv",index=False)
+    write_dataset("intraday_live",live)
     recommendations=_write_recommendations(live)
     journal=_update_paper_journal(live,now)
     build_performance_reports(journal)
     build_empirical_calibration(journal)
     alert_text="\n\n".join(alerts)
-    (OUTPUT_DIR/"live_alerts.txt").write_text(alert_text)
+    append_state("v3","live_alerts",{"text":alert_text,"checked_at_et":now})
     telegram_configured=bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip())
     sent=_send_telegram(alerts)
     _write_monitor_health(live,now,len(alerts),telegram_configured,sent)
@@ -372,7 +343,7 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT):
 
 if __name__=="__main__":
     p=argparse.ArgumentParser(description="Market Hunt intraday state monitor")
-    p.add_argument("--input",default=None)
     p.add_argument("--limit",type=int,default=LIVE_ENRICH_LIMIT)
     args=p.parse_args()
-    run(input_file=args.input,limit=args.limit)
+    from .control_plane import read_dataset
+    run(input_frame=read_dataset("v3_live_snapshot"),limit=args.limit)

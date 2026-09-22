@@ -6,15 +6,11 @@ import math
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 
-from .config import OUTPUT_DIR
+from .warehouse import history as warehouse_history
+from .control_plane import append_state, read_dataset, read_state, write_dataset
 
 ET=ZoneInfo("America/New_York")
-LOG_PATH=OUTPUT_DIR/"v31_challenger_log.csv"
-SUMMARY_PATH=OUTPUT_DIR/"v31_challenger_summary.csv"
-DECISION_PATH=OUTPUT_DIR/"v31_challenger_decisions.csv"
-
 LOG_COLUMNS=[
     "selection_date_et","selected_at_et","ticker","source","selection_score","theme",
     "entry_price","stop_price","target_price","target_pct","risk_pct","rr_to_target",
@@ -30,11 +26,7 @@ def _num(v, default=np.nan):
     except (TypeError,ValueError): return default
 
 def _read(name):
-    p=OUTPUT_DIR/name
-    if not p.exists() or p.stat().st_size==0:
-        return pd.DataFrame()
-    try: return pd.read_csv(p)
-    except Exception: return pd.DataFrame()
+    return read_dataset(name,required=False)
 
 def _now_et():
     return datetime.now(timezone.utc).astimezone(ET)
@@ -53,10 +45,7 @@ def _monitor_row(row, now_et):
     row["business_days_open"]=days
     if not np.isfinite(entry) or entry<=0:
         return row
-    try:
-        hist=yf.download(ticker,period="10d",interval="5m",auto_adjust=False,progress=False,prepost=True,threads=False)
-    except Exception:
-        hist=pd.DataFrame()
+    hist=warehouse_history(ticker,period="10d",interval="5m",max_age_minutes=10)
     if hist is None or hist.empty:
         return row
     if isinstance(hist.columns,pd.MultiIndex):
@@ -177,18 +166,19 @@ def _pick_candidate(momentum, order_flow, live):
     },"SELECTED"
 
 def run():
-    OUTPUT_DIR.mkdir(parents=True,exist_ok=True)
     now=_now_et(); today=now.date().isoformat()
-    log=_read("v31_challenger_log.csv")
+    log_payload=read_state("v31","challenger_log",default=[])
+    log=pd.DataFrame(log_payload) if log_payload else pd.DataFrame()
     if log.empty: log=pd.DataFrame(columns=LOG_COLUMNS)
     if not log.empty:
         log=pd.DataFrame([_monitor_row(r.copy(),now) for _,r in log.iterrows()])
 
-    decisions=_read("v31_challenger_decisions.csv")
+    decision_payload=read_state("v31","challenger_decisions",default=[])
+    decisions=pd.DataFrame(decision_payload) if decision_payload else pd.DataFrame()
     already=not decisions.empty and "selection_date_et" in decisions.columns and decisions["selection_date_et"].astype(str).eq(today).any()
     within=(now.hour,now.minute)>=(9,45) and (now.hour,now.minute)<=(14,30)
     if not already and now.weekday()<5 and within:
-        candidate,decision=_pick_candidate(_read("momentum_signals.csv"),_read("order_flow_strategy.csv"),_read("intraday_live.csv"))
+        candidate,decision=_pick_candidate(_read("momentum_signals"),_read("order_flow_strategy"),_read("intraday_live"))
         drow={"selection_date_et":today,"decision_at_et":now.isoformat(),"decision":decision,"ticker":candidate["ticker"] if candidate else "","selection_score":candidate["selection_score"] if candidate else np.nan}
         decisions=pd.concat([decisions,pd.DataFrame([drow])],ignore_index=True)
         if candidate:
@@ -201,8 +191,10 @@ def run():
     for col in LOG_COLUMNS:
         if col not in log.columns: log[col]=np.nan
     log=log[LOG_COLUMNS]
-    log.to_csv(LOG_PATH,index=False)
-    decisions.to_csv(DECISION_PATH,index=False)
+    append_state("v31","challenger_log",log.to_dict("records"))
+    append_state("v31","challenger_decisions",decisions.to_dict("records"))
+    write_dataset("v31_challenger_log",log)
+    write_dataset("v31_challenger_decisions",decisions,entity_key=None)
 
     closed=log[log["status"].astype(str).isin(["TARGET_HIT","STOP_HIT","EXPIRED"])] if not log.empty else pd.DataFrame()
     summary=pd.DataFrame([{
@@ -218,7 +210,7 @@ def run():
         "updated_at_et":now.isoformat(),
         "mode":"SHADOW_FORWARD_ONLY_NO_PRODUCTION_OVERRIDE"
     }])
-    summary.to_csv(SUMMARY_PATH,index=False)
+    write_dataset("v31_challenger_summary",summary,entity_key=None)
     return log
 
 if __name__=="__main__":

@@ -9,15 +9,15 @@ scanner until the V4 validation and cutover gates pass.
 ## V8.1 operational validation
 
 V8.1 hardens the research service before longer forward validation. The Streamlit
-dashboard fetches published artifacts concurrently with bounded per-file timeouts,
-uses `/_stcore/health` as its lightweight Render health probe, and displays remote
-load telemetry. The weekday outcome workflow publishes
-`v8_1_operational_health.json` and `.csv` after verifying four fail-closed invariants:
+dashboard pins one immutable PostgreSQL publication run for every page load,
+uses `/_stcore/health` as its lightweight Render health probe, and blocks when
+the atomic publication head is unavailable. The unified production workflow publishes
+the `v8_1_operational_health` dataset after verifying four fail-closed invariants:
 
 - the latest broad scan has a verified `PASS` health result;
 - the social engine has taken zero external actions and cannot self-authorize;
 - broker execution remains disabled in the V7 paper allocator;
-- durable point-in-time observation and outcome ledgers are valid JSON objects.
+- durable point-in-time observation and outcome state is versioned in PostgreSQL.
 
 Missing evidence leaves V8.1 in `COLLECTING` and blocks model promotion. A corrupt
 ledger or disabled safety lock marks the release `DEGRADED`. These checks do not
@@ -26,8 +26,8 @@ enable live trading or automated social publishing.
 ## V9 readiness foundation
 
 V9 starts with a fail-closed production-readiness controller rather than a new
-unvalidated ranking model. The weekday outcome workflow publishes
-`v9_readiness.json` and `.csv` only after checking V8.1 operational health,
+unvalidated ranking model. The unified production workflow publishes
+the `v9_readiness` dataset only after checking V8.1 operational health,
 durable evidence maturity, prospective V7.3 challenger validation, V4.6 cutover
 evidence, the paper-trading validation gate and the V7 broker lock.
 
@@ -85,7 +85,7 @@ Run:
 `python -m scanner.backtest`
 
 Default behavior:
-- uses the most liquid names from `outputs/tradable_universe.csv`
+- uses the most liquid names from the versioned `tradable_universe` dataset
 - performs walk-forward historical signal generation
 - only evaluates historically ARMED/CONFIRMED setups meeting today's runway/effective-R:R rules
 - checks whether the trigger was reached over the next 7 sessions
@@ -93,8 +93,8 @@ Default behavior:
 - uses a conservative stop-first assumption if stop and target are both touched on the same daily bar
 
 Outputs:
-- `outputs/backtest_trades.csv`
-- `outputs/backtest_summary.csv`
+- `backtest_trades`
+- `backtest_summary`
 
 The backtest is a validation framework, not proof of future performance. Daily OHLC cannot establish exact intraday ordering, slippage or fill quality.
 
@@ -171,7 +171,7 @@ The event-first watchlist:
 - merges current technical state, entry, stop, runway, R/R and market regime after the broad scan
 - remains visible even when a stock has no qualifying technical setup yet
 
-Output: `outputs/upcoming_events.csv`, also published automatically to the deployed dashboard.
+Output: the versioned `upcoming_events` dataset, published only through the atomic PostgreSQL snapshot.
 
 
 ## Forward-event discovery beyond earnings
@@ -192,7 +192,7 @@ The intraday monitor automatically maintains a persistent paper journal for ARME
 ## Alpha Vantage earnings calendar
 Upcoming earnings discovery uses Alpha Vantage's broad earnings calendar and intersects it with Market Hunt's liquid tradable universe. Set the GitHub Actions repository secret `ALPHA_VANTAGE_API_KEY` to enable this layer. Yahoo earnings-calendar endpoints are no longer used because repeated authorization/crumb failures made them unreliable in GitHub Actions.
 
-The scanner writes `outputs/event_status.csv` so the dashboard can distinguish a healthy empty event window from a missing provider key or provider failure.
+The scanner writes the `event_status` dataset so the dashboard can distinguish a healthy empty event window from a missing provider key or provider failure.
 
 
 ## Pre-earnings intelligence

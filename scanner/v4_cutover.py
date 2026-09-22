@@ -2,91 +2,46 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
-import pandas as pd
-
-from .config import OUTPUT_DIR
-from .v4.source import HttpCandidateSource
-from .v4.cutover import (
-    CutoverController,
-    CutoverSettings,
-    evaluate_cutover,
-)
+from .control_plane import append_state, read_dataset, read_record, read_state, write_record
+from .v4.cutover import CutoverController, CutoverSettings, evaluate_cutover
 
 
-def _csv(path: Path) -> pd.DataFrame:
-    try:
-        return pd.read_csv(path)
-    except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError):
-        return pd.DataFrame()
-
-
-def _json(path: Path) -> dict:
-    try:
-        value = json.loads(path.read_text())
-        return value if isinstance(value, dict) else {}
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
-def _v3_candidates(output_dir: Path) -> pd.DataFrame:
-    local = _csv(output_dir / "all_candidates.csv")
-    if not local.empty:
-        return local
-    try:
-        return HttpCandidateSource().load().frame
-    except Exception:
-        return pd.DataFrame()
-
-
-def evaluate(state_dir: Path, output_dir: Path):
-    worker_health = _json(output_dir / "v4_worker_health.json") or _json(state_dir / "v4_worker_health.json")
-    model_health = _json(output_dir / "v4_model_monitor.json")
-    evidence_health = _json(output_dir / "v7_1_evidence_health.json")
-    worker_health["model_monitor_status"] = str(model_health.get("status", "UNKNOWN"))
-    worker_health["evidence_health_status"] = str(evidence_health.get("status", "UNKNOWN"))
+def evaluate():
+    worker_health = read_record("v4_worker_health", required=False)
+    worker_health["model_monitor_status"] = str(read_record("v4_model_monitor", required=False).get("status", "UNKNOWN"))
+    worker_health["evidence_health_status"] = str(read_record("v7_1_evidence_health", required=False).get("status", "UNKNOWN"))
+    model = read_state("v4_models", "v4_5_model", default={}) or {}
     decision = evaluate_cutover(
-        _v3_candidates(output_dir),
-        _csv(output_dir / "v4_5_ranked_candidates.csv"),
-        _csv(output_dir / "v4_outcomes.csv"),
-        _json(state_dir / "v4_5_model.json") or _json(output_dir / "v4_5_model.json"),
+        read_dataset("all_candidates"),
+        read_dataset("v4_5_ranked_candidates", required=False),
+        read_dataset("v4_outcomes", required=False),
+        model,
         worker_health,
         CutoverSettings(),
     )
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "v4_6_cutover_evaluation.json").write_text(
-        json.dumps(decision.to_dict(), indent=2, sort_keys=True, allow_nan=False)
-    )
+    write_record("v4_6_cutover_evaluation", decision.to_dict())
     print(json.dumps(decision.to_dict(), indent=2))
     return decision
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Market Hunt V4.6 production cutover controller")
-    parser.add_argument("--state-dir", default=".state/v4")
-    parser.add_argument("--output-dir", default=str(OUTPUT_DIR))
+    parser = argparse.ArgumentParser(description="Market Hunt V4 production cutover controller")
     parser.add_argument("--evaluate", action="store_true")
     parser.add_argument("--activate", action="store_true")
     parser.add_argument("--rollback", default="")
     parser.add_argument("--enforce-safety", action="store_true")
     args = parser.parse_args()
-
-    state_dir = Path(args.state_dir)
-    output_dir = Path(args.output_dir)
-    controller = CutoverController(state_dir / "v4_6_cutover_state.json")
-
+    controller = CutoverController()
     if args.rollback:
         print(json.dumps(controller.rollback(args.rollback), indent=2))
     elif args.activate:
-        decision = evaluate(state_dir, output_dir)
-        model = _json(state_dir / "v4_5_model.json") or _json(output_dir / "v4_5_model.json")
+        decision = evaluate()
+        model = read_state("v4_models", "v4_5_model", default={}) or {}
         active = controller.activate(decision, str(model.get("model_version", "")))
-        (state_dir / "v4_5_active_model.json").write_text(
-            json.dumps(model, indent=2, sort_keys=True, allow_nan=False)
-        )
+        append_state("v4_models", "v4_5_active_model", model)
         print(json.dumps(active, indent=2))
     else:
-        decision = evaluate(state_dir, output_dir)
+        decision = evaluate()
         if args.enforce_safety and controller.state().get("mode") == "V4_5_PRIMARY" and not decision.eligible:
             print(json.dumps(controller.rollback("automatic safety gate: " + ",".join(decision.failed_gates)), indent=2))

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import argparse
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import json
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
+from .control_plane import read_record, write_record
 
 
 SCHEMA_VERSION = "8.2.0"
@@ -22,29 +22,19 @@ class ScorecardSettings:
     maximum_snapshot_age_days: int = 4
 
 
-def _json(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text())
-        return value if isinstance(value, dict) else {}
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
 def _progress(current: int, required: int) -> float:
     return round(min(100.0, max(0.0, current / required * 100.0)), 1) if required else 100.0
 
 
 def evaluate_scorecard(
-    output_dir: Path,
     now: datetime | None = None,
     settings: ScorecardSettings | None = None,
 ) -> dict[str, Any]:
     """Summarize genuine forward-evidence maturity without estimating performance."""
-    output_dir = Path(output_dir)
     now = now or datetime.now(timezone.utc)
     settings = settings or ScorecardSettings()
-    operational = _json(output_dir / "v8_1_operational_health.json")
-    evidence = _json(output_dir / "v7_1_evidence_health.json")
+    operational = read_record("v8_1_operational_health", required=False)
+    evidence = read_record("v7_1_evidence_health", required=False)
 
     observations = int(evidence.get("observations", 0) or 0)
     observation_days = int(evidence.get("observation_days", 0) or 0)
@@ -117,33 +107,12 @@ def evaluate_scorecard(
     }
 
 
-def run(output_dir: Path) -> dict[str, Any]:
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    report = evaluate_scorecard(output_dir)
-    (output_dir / "v8_2_evidence_scorecard.json").write_text(
-        json.dumps(report, indent=2, sort_keys=True, allow_nan=False)
-    )
-    row = {
-        "schema_version": report["schema_version"],
-        "generated_at_utc": report["generated_at_utc"],
-        "status": report["status"],
-        "observations": report["observations"],
-        "observation_days": report["observation_days"],
-        "mature_samples": report["mature_samples"],
-        "next_milestone": report["next_milestone"]["name"],
-        "milestone_remaining": report["next_milestone"]["remaining"],
-        "v9_progress_pct": report["progress_pct"]["v9_220"],
-        "failed_checks": ",".join(report["failed_checks"]),
-        "block_v9_review": report["block_v9_review"],
-    }
-    pd.DataFrame([row]).to_csv(output_dir / "v8_2_evidence_scorecard.csv", index=False)
+def run() -> dict[str, Any]:
+    report = evaluate_scorecard()
+    write_record("v8_2_evidence_scorecard", report)
     print(json.dumps(report, indent=2, sort_keys=True))
     return report
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Build the Market Hunt V8.2 evidence scorecard")
-    parser.add_argument("--output-dir", default="outputs")
-    arguments = parser.parse_args()
-    run(Path(arguments.output_dir))
+    run()

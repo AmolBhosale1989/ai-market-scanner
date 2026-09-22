@@ -4,8 +4,9 @@ import math
 import time
 import pandas as pd
 
-from .config import OUTPUT_DIR, THEME_PROFILE_LIMIT, THEME_BONUS_MAX
+from .config import THEME_PROFILE_LIMIT, THEME_BONUS_MAX
 from .warehouse import history as download_history
+from .control_plane import write_dataset
 from .indicators import add_indicators
 
 STATIC_THEME_MEMBERS = {
@@ -84,7 +85,7 @@ def rank_themes():
     if not out.empty:
         out=out.sort_values(["theme_score","rel20_vs_spy"],ascending=[False,False]).reset_index(drop=True)
         out["theme_rank"]=range(1,len(out)+1)
-        out.to_csv(OUTPUT_DIR/"trending_themes.csv",index=False)
+        write_dataset("trending_themes",out,entity_key="theme")
     return out
 
 def _theme_row(theme, theme_table):

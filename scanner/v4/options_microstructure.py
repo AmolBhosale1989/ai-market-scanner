@@ -11,6 +11,7 @@ import pandas as pd
 import yfinance as yf
 
 from .contracts import EventType, MarketEvent
+from ..warehouse import history as warehouse_history
 
 
 @dataclass(frozen=True)
@@ -122,8 +123,7 @@ class YahooOptionsMicrostructureAdapter:
         }
 
     @staticmethod
-    def _microstructure_snapshot(ticker: yf.Ticker) -> dict[str, Any]:
-        bars = ticker.history(period="1d", interval="1m", prepost=False, auto_adjust=False)
+    def _microstructure_snapshot(bars: pd.DataFrame) -> dict[str, Any]:
         if bars is None or bars.empty:
             return {
                 "microstructure_status": "NO_BARS",
@@ -206,7 +206,8 @@ class YahooOptionsMicrostructureAdapter:
                 "put_implied_volatility": None,
             }
         try:
-            micro = self._microstructure_snapshot(ticker)
+            bars = warehouse_history(symbol, period="1d", interval="5m", max_age_minutes=15)
+            micro = self._microstructure_snapshot(bars)
         except Exception as exc:
             micro_error = type(exc).__name__
             micro = {

@@ -2,14 +2,12 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-import json
 import os
-from pathlib import Path
-import tempfile
 from typing import Protocol
 
 import requests
 
+from ..control_plane import append_events, append_state, read_state
 from .engine import Transition
 
 
@@ -76,21 +74,11 @@ class AlertSink(Protocol):
     def send(self, alert: Alert) -> None: ...
 
 
-class FileAlertSink:
-    name = "audit-file"
-
-    def __init__(self, path: Path, mirror_path: Path | None = None):
-        self.path = Path(path)
-        self.mirror_path = Path(mirror_path) if mirror_path else None
+class DatabaseAlertSink:
+    name = "audit-database"
 
     def send(self, alert: Alert) -> None:
-        line = json.dumps(asdict(alert), sort_keys=True) + "\n"
-        for path in [self.path, self.mirror_path]:
-            if path is None:
-                continue
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("a") as handle:
-                handle.write(line)
+        append_events("v4.alerts", [asdict(alert)], key_field="alert_id", observed_field="observed_at_utc")
 
 
 class TelegramAlertSink:
@@ -117,31 +105,16 @@ class TelegramAlertSink:
 
 
 class AlertRouter:
-    def __init__(self, state_file: Path, sinks: list[AlertSink]):
-        self.state_file = Path(state_file)
+    def __init__(self, sinks: list[AlertSink], namespace: str = "v4"):
         self.sinks = sinks
+        self.namespace = namespace
 
     def _load(self) -> dict[str, list[str]]:
-        if not self.state_file.exists():
-            return {}
-        try:
-            value = json.loads(self.state_file.read_text())
-            return value if isinstance(value, dict) else {}
-        except (OSError, json.JSONDecodeError):
-            return {}
+        value = read_state(self.namespace, "alert_dispatch", default={}) or {}
+        return value if isinstance(value, dict) else {}
 
     def _save(self, value: dict[str, list[str]]) -> None:
-        self.state_file.parent.mkdir(parents=True, exist_ok=True)
-        fd, temporary = tempfile.mkstemp(prefix=f".{self.state_file.name}.", dir=self.state_file.parent, text=True)
-        try:
-            with os.fdopen(fd, "w") as handle:
-                json.dump(value, handle, indent=2, sort_keys=True)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, self.state_file)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
+        append_state(self.namespace, "alert_dispatch", value)
 
     def route(self, transitions: list[Transition]) -> tuple[int, list[str]]:
         delivered = self._load()

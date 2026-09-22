@@ -15,7 +15,7 @@ def test_intraday_rejects_missing_or_persisted_candidate_input():
     with pytest.raises(RuntimeError,match="INTRADAY_INPUT_REQUIRED"):
         intraday.run()
     with pytest.raises(RuntimeError,match="INTRADAY_PERSISTED_INPUT_REJECTED"):
-        intraday.run("outputs/latest_scan.csv")
+        intraday.run("legacy-persisted-input")
 
 
 def test_order_flow_validation_uses_warehouse(monkeypatch,tmp_path):
@@ -40,40 +40,37 @@ def test_live_enrichment_accepts_preconfirmation_v3_score(monkeypatch):
 
 
 def test_live_workflows_gate_the_same_frozen_universe_they_refresh():
-    expected="--live-file outputs/live_universe.csv --tier CRITICAL_DAILY"
-    for path in (
-        Path(".github/workflows/market-hunt-live-core.yml"),
-        Path(".github/workflows/market-hunt-order-flow.yml"),
-    ):
-        assert expected in path.read_text()
+    workflow=Path(".github/workflows/production.yml").read_text()
+    assert "--dataset live_universe" in workflow
+    assert "--tier LIVE_INTRADAY" in workflow
+    assert "seed_snapshot" in workflow
 
 
 def test_live_core_exposes_postgres_to_every_production_stage():
-    workflow=Path(".github/workflows/market-hunt-live-core.yml").read_text()
+    workflow=Path(".github/workflows/production.yml").read_text()
     live_job_header=workflow.split("    steps:",1)[0]
     assert "DATABASE_URL: ${{ secrets.DATABASE_URL }}" in live_job_header
     assert "PGSSLMODE: require" in live_job_header
-    for module in ("theme_live.py","sector_rotation.py","momentum_signals.py","order_flow_strategy.py"):
-        assert f"scanner/{module}" in workflow
+    for module in ("scanner.theme_live","scanner.sector_rotation","scanner.momentum_signals","scanner.order_flow_strategy"):
+        assert module in workflow
 
 
 def test_live_core_triggers_when_warehouse_contract_changes():
-    workflow=Path(".github/workflows/market-hunt-live-core.yml").read_text()
-    trigger=workflow.split("permissions:",1)[0]
-    assert "'scanner/config.py'" in trigger
-    assert "'scanner/warehouse_gate.py'" in trigger
+    workflow=Path(".github/workflows/production.yml").read_text()
+    assert 'cron: "*/15 13-22 * * 1-5"' in workflow
+    assert "workflow_dispatch:" in workflow
 
 
 def test_live_core_publishes_current_order_flow_metadata():
-    workflow=Path(".github/workflows/market-hunt-live-core.yml").read_text()
-    order_flow=workflow.split("- name: Complete production order-flow chain",1)[1]
-    order_flow=order_flow.split("- name: Build fail-closed production health",1)[0]
-    assert "outputs/order_flow_live_metadata.csv" in order_flow
-    validation=workflow.split("- name: Validate Refactor 2 freshness contract",1)[1]
-    validation=validation.split("- name: Publish V3 live production atomically",1)[0]
-    assert 'grep -q ",$GITHUB_RUN_ID,$GITHUB_SHA,FRESH"' in validation
-    publication=workflow.split("- name: Publish V3 live production atomically",1)[1]
-    assert "order_flow_live_metadata.csv" in publication
+    workflow=Path(".github/workflows/production.yml").read_text()
+    assert "scanner.order_flow_strategy" in workflow
+    assert "scanner.order_flow_validation" in workflow
+    assert "scanner.production_telemetry --finalize --mode production" in workflow
+
+
+def test_render_cutover_is_manual_after_atomic_publication():
+    blueprint=Path("render.yaml").read_text()
+    assert "autoDeployTrigger: off" in blueprint
 
 
 def test_smoke_calibration_fixture_represents_entered_wins_and_losses():
@@ -130,14 +127,15 @@ def test_theme_live_uses_sparse_theme_freshness_contract(monkeypatch):
     assert requirement.required_fresh_tickers==("SPY",)
 
 
-def test_momentum_emits_valid_empty_artifacts_when_session_has_no_leaders(monkeypatch,tmp_path):
+def test_momentum_emits_valid_empty_datasets_when_session_has_no_leaders(monkeypatch,memory_control_plane):
     import scanner.momentum_signals as module
-    monkeypatch.setattr(module,"OUTPUT_DIR",tmp_path)
-    (tmp_path/"rotation_leaders.csv").write_text("\n")
+    rid=memory_control_plane["run_id"]
+    memory_control_plane["datasets"][(rid,"rotation_leaders")]=pd.DataFrame()
+    memory_control_plane["datasets"][(rid,"broad_breakout_discovery")]=pd.DataFrame()
     result=module.run()
     assert result.empty
-    assert "ticker" in pd.read_csv(tmp_path/"momentum_signals.csv").columns
-    health=pd.read_csv(tmp_path/"momentum_health.csv")
+    assert "ticker" in memory_control_plane["datasets"][(rid,"momentum_signals")].columns
+    health=memory_control_plane["datasets"][(rid,"momentum_health")]
     assert int(health.loc[0,"leaders_evaluated"])==0
     assert int(health.loc[0,"candidate_inputs"])==0
 
@@ -159,18 +157,18 @@ def test_theme_and_rotation_stats_use_explicit_latest_session():
     assert rotation["day_change_pct"]==10.0
 
 
-def test_momentum_evaluates_latest_warehouse_session_on_weekend(monkeypatch,tmp_path):
+def test_momentum_evaluates_latest_warehouse_session_on_weekend(monkeypatch,memory_control_plane):
     from types import SimpleNamespace
     import scanner.momentum_signals as module
 
-    monkeypatch.setattr(module,"OUTPUT_DIR",tmp_path)
-    pd.DataFrame([{
+    rid=memory_control_plane["run_id"]
+    memory_control_plane["datasets"][(rid,"broad_breakout_discovery")]=pd.DataFrame([{
         "ticker":"TEST","source":"BROAD_BREAKOUT","theme":"BROAD",
         "broad_breakout_score":80,"theme_rotation_score":0,"rotation_leader_score":80,
         "rel_vs_spy_pct":2.0,"day_change_pct":3.0,"move_30m_pct":0.5,
         "intraday_volume":3_000_000,
-    }]).to_csv(tmp_path/"broad_breakout_discovery.csv",index=False)
-    pd.DataFrame(columns=["ticker","rotation_leader"]).to_csv(tmp_path/"rotation_leaders.csv",index=False)
+    }])
+    memory_control_plane["datasets"][(rid,"rotation_leaders")]=pd.DataFrame(columns=["ticker","rotation_leader"])
     rows=[]
     for session,base in (("2026-09-16",9.5),("2026-09-17",9.8),("2026-09-18",10.0)):
         for n,stamp in enumerate(pd.date_range(f"{session} 13:30:00Z",periods=6,freq="5min")):
@@ -182,7 +180,7 @@ def test_momentum_evaluates_latest_warehouse_session_on_weekend(monkeypatch,tmp_
     monkeypatch.setattr(module,"provide",lambda req: SimpleNamespace(frame=pd.DataFrame(rows)))
 
     out=module.run(limit=1)
-    health=pd.read_csv(tmp_path/"momentum_health.csv")
+    health=memory_control_plane["datasets"][(rid,"momentum_health")]
     assert len(out)==1
     assert out.iloc[0]["last_bar_et"].startswith("2026-09-18")
     assert health.loc[0,"session_date"]=="2026-09-18"

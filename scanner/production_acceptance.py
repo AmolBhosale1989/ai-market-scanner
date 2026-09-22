@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-
-from .config import OUTPUT_DIR
 
 
 CHAIN=("provider","postgres","discovery","v3","confirmation","order_flow","risk","publication","dashboard_validation")
@@ -71,13 +67,9 @@ def deterministic_friday_session() -> dict:
 
 
 def main():
-    p=argparse.ArgumentParser(description="Deterministic Friday production-chain acceptance")
-    p.add_argument("--output",type=Path,default=OUTPUT_DIR/"friday_e2e_acceptance.json")
-    args=p.parse_args()
     result=deterministic_friday_session()
-    args.output.parent.mkdir(parents=True,exist_ok=True)
-    args.output.write_text(json.dumps(result,indent=2,sort_keys=True))
     print("FRIDAY_E2E_ACCEPTANCE_PASS stages=9 as_of=2026-09-18T20:00:00+00:00")
+    return result
 
 
 if __name__ == "__main__":

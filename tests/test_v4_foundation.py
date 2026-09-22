@@ -1,12 +1,10 @@
-import json
-
 import pandas as pd
 
 from scanner.v4.contracts import CandidateState, EventType, MarketEvent, build_signal_id
 from scanner.v4.engine import MomentumEngine
 from scanner.v4.shortlist import build_monitor_shortlist
 from scanner.v4.state_machine import next_state
-from scanner.v4.store import FileEventStore
+from scanner.v4.store import PostgresEventStore
 
 
 def snapshot(**overrides):
@@ -46,7 +44,7 @@ def test_negative_catalyst_vetoes_live_setup():
 
 
 def test_engine_persists_versioned_state_and_deduplicates_events(tmp_path):
-    store = FileEventStore(tmp_path)
+    store = PostgresEventStore(str(tmp_path))
     engine = MomentumEngine(store)
     event = MarketEvent(
         event_type=EventType.CANDIDATE_SNAPSHOT,
@@ -58,11 +56,8 @@ def test_engine_persists_versioned_state_and_deduplicates_events(tmp_path):
     assert transition.current_state == "LIVE_CONFIRMED"
     assert engine.process(event) is None
 
-    lines = store.event_file.read_text().strip().splitlines()
-    assert len(lines) == 2  # one input event plus one transition event
-    state = json.loads(store.state_file.read_text())
-    assert state["schema_version"] == "4.0.0"
-    assert state["signals"][event.signal_id]["state"] == "LIVE_CONFIRMED"
+    assert len(store.load_events()) == 2  # one input event plus one transition event
+    assert store.load_states()[event.signal_id]["state"] == "LIVE_CONFIRMED"
 
 
 def test_shortlist_requires_explosive_gate_and_assigns_tiers():

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import math
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from .config import OUTPUT_DIR
+from .control_plane import read_dataset, write_dataset
 
 
 def _num(s):
@@ -15,8 +14,7 @@ def _num(s):
 
 def build_performance_reports(journal: pd.DataFrame | None=None):
     if journal is None:
-        path=OUTPUT_DIR/"paper_journal.csv"
-        journal=pd.read_csv(path) if path.exists() else pd.DataFrame()
+        journal=read_dataset("paper_journal",required=False)
 
     summary_cols=[
         "candidate_signals","pre_entry_invalidated","signals","open_signals","closed_signals",
@@ -27,8 +25,8 @@ def build_performance_reports(journal: pd.DataFrame | None=None):
     ]
     if journal is None or journal.empty:
         out=pd.DataFrame([{c:0 if c.endswith("signals") or c in {"signals","open_signals","closed_signals","target_hits","failed_breakouts","invalidated"} else math.nan for c in summary_cols}])
-        out.to_csv(OUTPUT_DIR/"performance_summary.csv",index=False)
-        pd.DataFrame().to_csv(OUTPUT_DIR/"performance_by_setup.csv",index=False)
+        write_dataset("performance_summary",out,entity_key=None)
+        write_dataset("performance_by_setup",pd.DataFrame(),entity_key=None)
         return out,pd.DataFrame()
 
     j=journal.copy()
@@ -74,7 +72,7 @@ def build_performance_reports(journal: pd.DataFrame | None=None):
         "expectancy_r":round(float(r.mean()),2) if r.notna().any() else math.nan,
     }
     summary=pd.DataFrame([row])
-    summary.to_csv(OUTPUT_DIR/"performance_summary.csv",index=False)
+    write_dataset("performance_summary",summary,entity_key=None)
 
     group_cols=[c for c in ["entry_model","market_regime_state","theme","catalyst_status","stage"] if c in closed.columns]
     rows=[]
@@ -97,19 +95,18 @@ def build_performance_reports(journal: pd.DataFrame | None=None):
     grouped=pd.DataFrame(rows)
     if not grouped.empty:
         grouped=grouped.sort_values(["dimension","closed_signals"],ascending=[True,False])
-    grouped.to_csv(OUTPUT_DIR/"performance_by_setup.csv",index=False)
+    write_dataset("performance_by_setup",grouped,entity_key=None)
     return summary,grouped
 
 
 def build_empirical_calibration(journal: pd.DataFrame | None=None, min_samples: int=20):
     if journal is None:
-        path=OUTPUT_DIR/"paper_journal.csv"
-        journal=pd.read_csv(path) if path.exists() else pd.DataFrame()
+        journal=read_dataset("paper_journal",required=False)
 
     cols=["metric","bin","samples","wins","raw_win_rate_pct","smoothed_probability_pct","avg_r_multiple","calibration_status"]
     if journal is None or journal.empty:
         out=pd.DataFrame(columns=cols)
-        out.to_csv(OUTPUT_DIR/"probability_calibration.csv",index=False)
+        write_dataset("probability_calibration",out,entity_key=None)
         return out
 
     j=journal.copy()
@@ -120,7 +117,7 @@ def build_empirical_calibration(journal: pd.DataFrame | None=None, min_samples: 
     j=j[entered & outcome.str.len().gt(0)].copy()
     if j.empty:
         out=pd.DataFrame(columns=cols)
-        out.to_csv(OUTPUT_DIR/"probability_calibration.csv",index=False)
+        write_dataset("probability_calibration",out,entity_key=None)
         return out
 
     r=_num(j.get("r_multiple",pd.Series(index=j.index,dtype=float)))
@@ -157,7 +154,7 @@ def build_empirical_calibration(journal: pd.DataFrame | None=None, min_samples: 
             })
 
     out=pd.DataFrame(rows,columns=cols)
-    out.to_csv(OUTPUT_DIR/"probability_calibration.csv",index=False)
+    write_dataset("probability_calibration",out,entity_key=None)
     return out
 
 

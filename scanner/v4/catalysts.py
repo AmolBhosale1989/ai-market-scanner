@@ -7,7 +7,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import tempfile
 import threading
 import time
 from typing import Any, Iterable, Mapping, Protocol
@@ -18,6 +17,7 @@ import requests
 import yfinance as yf
 
 from ..catalysts import NEGATIVE_TERMS, POSITIVE_TERMS, _extract_news_item, _news_relevance
+from ..control_plane import append_state, read_dataset, read_state
 from .contracts import EventType, MarketEvent
 from .health import parse_utc
 
@@ -68,20 +68,6 @@ def _age_hours(value: Any, now: datetime) -> float | None:
     if timestamp is None:
         return None
     return max(0.0, (now - timestamp).total_seconds() / 3600)
-
-
-def _atomic_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
-    try:
-        with os.fdopen(fd, "w") as handle:
-            json.dump(value, handle, indent=2, sort_keys=True, allow_nan=False)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
 
 
 def _stable_event_id(namespace: str, value: str) -> str:
@@ -372,7 +358,7 @@ def parse_nasdaq_filings(
 class SecFilingAdapter:
     def __init__(
         self,
-        cache_file: Path,
+        cache_key: str = "sec_ticker_map",
         session: requests.Session | None = None,
         user_agent: str | None = None,
         timeout_seconds: float = 12.0,
@@ -382,7 +368,7 @@ class SecFilingAdapter:
         requests_per_second: float = 8.0,
         max_retries: int = 2,
     ):
-        self.cache_file = Path(cache_file)
+        self.cache_key = cache_key
         self.session = session or requests.Session()
         self.user_agent = (user_agent or os.getenv("SEC_USER_AGENT") or DEFAULT_SEC_USER_AGENT).strip()
         self.timeout_seconds = timeout_seconds
@@ -441,16 +427,12 @@ class SecFilingAdapter:
 
     def _ticker_map(self, now: datetime) -> dict[str, str]:
         stale: dict[str, str] = {}
-        if self.cache_file.exists():
-            try:
-                cached = json.loads(self.cache_file.read_text())
-                stale = {str(key): str(value) for key, value in cached.get("tickers", {}).items()}
-                age = _age_hours(cached.get("fetched_at_utc"), now)
-                if age is not None and age <= self.cache_hours:
-                    self.ticker_map_source = str(cached.get("source", "CACHE"))
-                    return stale
-            except (OSError, json.JSONDecodeError, TypeError):
-                pass
+        cached = read_state("v4_catalysts", self.cache_key, default={}) or {}
+        stale = {str(key): str(value) for key, value in cached.get("tickers", {}).items()}
+        age = _age_hours(cached.get("fetched_at_utc"), now)
+        if age is not None and age <= self.cache_hours:
+            self.ticker_map_source = str(cached.get("source", "CACHE"))
+            return stale
         try:
             tickers = parse_sec_ticker_map(self._get_json(SEC_TICKERS_URL))
             source = "SEC_OFFICIAL"
@@ -469,7 +451,7 @@ class SecFilingAdapter:
                 return stale
             raise ValueError("SEC ticker map was empty")
         self.ticker_map_source = source
-        _atomic_json(self.cache_file, {
+        append_state("v4_catalysts", self.cache_key, {
             "fetched_at_utc": now.isoformat(), "source": source, "tickers": tickers,
         })
         return tickers
@@ -661,19 +643,18 @@ class YahooNewsCatalystAdapter:
         }
 
 
-class LocalEventCalendarAdapter:
+class ControlPlaneEventCalendarAdapter:
     """Normalizes the broad event-first earnings calendar into V4 events."""
 
-    def __init__(self, path: Path, horizon_days: float = 3.25):
-        self.path = Path(path)
+    def __init__(self, horizon_days: float = 3.25):
         self.horizon_days = horizon_days
 
     def poll(self, candidates: pd.DataFrame, now: datetime | None = None) -> tuple[list[MarketEvent], dict[str, Any]]:
         now = now or datetime.now(timezone.utc)
-        if not self.path.exists() or candidates is None or candidates.empty:
+        if candidates is None or candidates.empty:
             return [], {"provider": "EVENT_CALENDAR", "requested": 0, "errors": 0,
                         "events": 0, "status": "NOT_AVAILABLE"}
-        frame = pd.read_csv(self.path)
+        frame = read_dataset("upcoming_events", required=False)
         if frame.empty or "ticker" not in frame or "event_date_utc" not in frame:
             return [], {"provider": "EVENT_CALENDAR", "requested": 0, "errors": 0,
                         "events": 0, "status": "EMPTY"}
@@ -739,20 +720,16 @@ def events_frame(events: Iterable[MarketEvent], now: datetime | None = None, loo
 
 
 def load_recent_catalyst_events(
-    path: Path,
+    records: Iterable[Mapping[str, Any]],
     now: datetime | None = None,
     lookback_hours: float = 72.0,
 ) -> list[MarketEvent]:
     now = now or datetime.now(timezone.utc)
     output = []
-    if not Path(path).exists():
-        return output
-    for line in Path(path).read_text().splitlines():
-        if not line.strip():
-            continue
+    for record in records:
         try:
-            event = MarketEvent.from_dict(json.loads(line))
-        except (ValueError, TypeError, json.JSONDecodeError):
+            event = MarketEvent.from_dict(record)
+        except (ValueError, TypeError):
             continue
         age = _age_hours(event.observed_at_utc, now)
         if event.event_type is EventType.CATALYST and age is not None and age <= lookback_hours:

@@ -2,14 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import json
 import math
-import os
-from pathlib import Path
-import tempfile
 from typing import Iterable, Mapping
 
 import pandas as pd
+
+from ..control_plane import append_state, read_state, write_dataset
 
 from .contracts import EventType, MarketEvent, SCHEMA_VERSION
 from .engine import Transition
@@ -78,45 +76,26 @@ class SignalOutcomeLedger:
 
     def __init__(
         self,
-        state_file: Path,
-        mirror_csv: Path | None = None,
-        summary_csv: Path | None = None,
+        namespace: str = "v4_outcomes",
         fill_model: FillModel | None = None,
     ):
-        self.state_file = Path(state_file)
-        self.mirror_csv = Path(mirror_csv) if mirror_csv else None
-        self.summary_csv = Path(summary_csv) if summary_csv else None
+        self.namespace = namespace
         self.fill_model = fill_model or FillModel()
 
     def _load(self) -> dict[str, dict]:
-        if not self.state_file.exists():
-            return {}
-        try:
-            value = json.loads(self.state_file.read_text())
-            return value.get("signals", {}) if isinstance(value, dict) else {}
-        except (OSError, json.JSONDecodeError):
-            return {}
+        value = read_state(self.namespace, "signals", default={}) or {}
+        return value.get("signals", {}) if isinstance(value, dict) else {}
 
     def load_records(self) -> dict[str, dict]:
         return self._load()
 
     def _atomic_write(self, records: dict[str, dict]) -> None:
-        self.state_file.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "schema_version": SCHEMA_VERSION,
             "updated_at_utc": datetime.now(timezone.utc).isoformat(),
             "signals": records,
         }
-        fd, temporary = tempfile.mkstemp(prefix=f".{self.state_file.name}.", dir=self.state_file.parent, text=True)
-        try:
-            with os.fdopen(fd, "w") as handle:
-                json.dump(payload, handle, indent=2, sort_keys=True, allow_nan=False)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, self.state_file)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
+        append_state(self.namespace, "signals", payload)
 
     @staticmethod
     def _new_record(event: MarketEvent) -> dict:
@@ -391,10 +370,6 @@ class SignalOutcomeLedger:
     def _save_and_export(self, records: dict[str, dict]) -> None:
         self._atomic_write(records)
         frame = self.to_frame(records)
-        if self.mirror_csv:
-            self.mirror_csv.parent.mkdir(parents=True, exist_ok=True)
-            frame.to_csv(self.mirror_csv, index=False)
+        write_dataset("v4_outcomes", frame, entity_key="signal_id")
         summary = self.summary(records)
-        if self.summary_csv:
-            self.summary_csv.parent.mkdir(parents=True, exist_ok=True)
-            summary.to_csv(self.summary_csv, index=False)
+        write_dataset("v4_outcome_summary", summary, entity_key=None)

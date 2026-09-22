@@ -1,17 +1,18 @@
+import csv
 from io import StringIO
-from pathlib import Path
 import re
 import requests
 import pandas as pd
-from .config import NASDAQ_LISTED_URL, OTHER_LISTED_URL, UNIVERSE_FILE
-from .config import MASTER_UNIVERSE_BASELINE, MASTER_UNIVERSE_MAX_DRIFT, MASTER_UNIVERSE_MINIMUM, OUTPUT_DIR
+from .config import NASDAQ_LISTED_URL, OTHER_LISTED_URL
+from .config import MASTER_UNIVERSE_BASELINE, MASTER_UNIVERSE_MAX_DRIFT, MASTER_UNIVERSE_MINIMUM
+from .control_plane import read_dataset, write_dataset
 
 HEADERS={"User-Agent":"Mozilla/5.0 ai-market-scanner/3.0"}
 
 def _read_pipe(url:str)->pd.DataFrame:
     r=requests.get(url,headers=HEADERS,timeout=30)
     r.raise_for_status()
-    return pd.read_csv(StringIO(r.text),sep="|")
+    return pd.DataFrame(list(csv.DictReader(StringIO(r.text), delimiter="|")))
 
 def _clean_symbol(s:str):
     if not isinstance(s,str):
@@ -24,7 +25,7 @@ def _clean_symbol(s:str):
         return None
     return s
 
-def build_universe(output_file:Path=UNIVERSE_FILE)->pd.DataFrame:
+def build_universe()->pd.DataFrame:
     nas=_read_pipe(NASDAQ_LISTED_URL)
     oth=_read_pipe(OTHER_LISTED_URL)
 
@@ -73,18 +74,17 @@ def build_universe(output_file:Path=UNIVERSE_FILE)->pd.DataFrame:
         raise RuntimeError(
             f"MASTER_UNIVERSE_INCOMPLETE: got={len(u)} minimum={MASTER_UNIVERSE_MINIMUM}"
         )
-    u.to_csv(output_file,index=False)
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    u.to_csv(OUTPUT_DIR/"master_universe.csv", index=False)
+    write_dataset("master_universe", u)
     drift=len(u)-MASTER_UNIVERSE_BASELINE
-    pd.DataFrame([{
+    health=pd.DataFrame([{
         "master_symbols":len(u),
         "audited_baseline":MASTER_UNIVERSE_BASELINE,
         "drift":drift,
         "drift_within_limit":abs(drift)<=MASTER_UNIVERSE_MAX_DRIFT,
         "status":"PASS" if abs(drift)<=MASTER_UNIVERSE_MAX_DRIFT else "FAIL",
         "generated_at_utc":pd.Timestamp.now(tz="UTC").isoformat(),
-    }]).to_csv(OUTPUT_DIR/"master_universe_health.csv", index=False)
+    }])
+    write_dataset("master_universe_health", health, entity_key=None)
     if abs(drift)>MASTER_UNIVERSE_MAX_DRIFT:
         raise RuntimeError(
             f"MASTER_UNIVERSE_DRIFT: got={len(u)} baseline={MASTER_UNIVERSE_BASELINE} "
@@ -93,9 +93,9 @@ def build_universe(output_file:Path=UNIVERSE_FILE)->pd.DataFrame:
     return u
 
 def load_or_build_universe(force_refresh:bool=False)->pd.DataFrame:
-    if force_refresh or not UNIVERSE_FILE.exists():
+    if force_refresh:
         return build_universe()
-    u=pd.read_csv(UNIVERSE_FILE)
+    u=read_dataset("master_universe", required=False)
     if len(u)<500:
         return build_universe()
     return u

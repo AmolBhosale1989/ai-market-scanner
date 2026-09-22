@@ -88,7 +88,7 @@ options flow, microstructure, state transitions and outcomes.
 
 ## V4.1 worker behavior
 
-- Pulls the newest `all_candidates.csv` from the `scan-data` branch with a
+- Reads the same-run `all_candidates` version from PostgreSQL with a
   local-output fallback.
 - Monitors all HOT names every cycle and rotates a WARM batch every fifth cycle.
 - Polls independent symbols concurrently through a provider-neutral adapter.
@@ -201,7 +201,7 @@ periodic reports and prospectus offerings. Registration statements, leadership
 changes and generic 8-K disclosures require review and do not automatically
 become bearish. Mixed headlines give explicit negative phrases precedence.
 
-The shadow worker writes `v4_catalyst_events.csv` and
+The shadow worker writes `v4_catalyst_events` and
 `v4_catalyst_health.json`. Catalyst alerts and broker actions remain disabled;
 V4.3 changes candidate state only when retained high-confidence negative
 evidence sets the existing risk veto.
@@ -224,7 +224,7 @@ location, and last-bar dollar volume.
 These fields are **not execution-grade order-flow data**. Yahoo does not provide
 a licensed consolidated options-flow feed or full depth-of-book through this
 adapter. Accordingly, V4.4 evidence is appended to the event store and written to
-`v4_options_microstructure.csv` plus
+`v4_options_microstructure` plus
 `v4_options_microstructure_health.json`, but it does not change signal state,
 send alerts, or place orders.
 
@@ -257,9 +257,9 @@ base-rate predictor.
 The daily outcome workflow writes:
 
 - `v4_5_model.json` — versioned model, feature maps and promotion metadata;
-- `v4_5_validation.csv` — holdout Brier score, baseline score and gate result
+- `v4_5_validation` — holdout Brier score, baseline score and gate result
   for +5%, +10% and +15%;
-- `v4_5_ranked_candidates.csv` — current broad-scan candidates ranked by the
+- `v4_5_ranked_candidates` — current broad-scan candidates ranked by the
   calibrated shadow score.
 
 V4.5 does not replace the existing production ranking yet and cannot change a
@@ -321,11 +321,11 @@ in one bar, the stop is treated as occurring first.
 
 The workflow publishes:
 
-- `v4_shadow_observations.csv` — immutable candidate-level ranks and outcomes;
-- `v4_shadow_strategy_summary.csv` — direct V3/V4.5 hit rate, win rate,
+- `v4_shadow_observations` — immutable candidate-level ranks and outcomes;
+- `v4_shadow_strategy_summary` — direct V3/V4.5 hit rate, win rate,
   return, MFE/MAE, expectancy and Brier-score comparison;
-- `v4_shadow_daily_comparison.csv` — daily top-20 overlap and model identity;
-- `v4_shadow_breakdowns.csv` — results by theme, catalyst and market regime;
+- `v4_shadow_daily_comparison` — daily top-20 overlap and model identity;
+- `v4_shadow_breakdowns` — results by theme, catalyst and market regime;
 - `v4_shadow_validation_health.json` — collection and maturity status.
 
 The comparison is evidence-only. It cannot activate V4.5 or place an order.
@@ -399,7 +399,7 @@ hit labels, false-breakout classification and R-multiple. Model fitting excludes
 every unresolved row, preventing look-ahead leakage.
 
 Both the daily snapshot ledger and intraday-trigger ledger are versioned on the
-`scan-data` branch under `evidence-state/`. GitHub caches remain a speed
+PostgreSQL revisioned state documents. GitHub caches are not part of the
 optimization rather than the source of truth. Each scheduled evidence run merges
 durable and cached records before resolution, then republishes the merged ledgers.
 
@@ -430,7 +430,7 @@ features required for these comparisons. Missing historical fields are never
 backfilled from future data.
 
 The outputs are `v7_2_criteria_proposal.json`,
-`v7_2_criteria_validation.csv` and `v7_2_criteria_grid.csv`. Even a proposal that
+`v7_2_criteria_validation` and `v7_2_criteria_grid`. Even a proposal that
 passes every holdout gate remains `shadow_only`, `production_applied: false`,
 `activation_allowed: false` and `manual_review_required: true`. V7.2 has no code
 path that applies its recommendation to production or enables broker execution.
@@ -449,7 +449,7 @@ aggregate utility and opportunity retention. A completed result is immutable;
 additional observations do not rewrite the original verdict.
 
 The durable state is `v7_3_challenger_state.json`. Published outputs are
-`v7_3_challenger_health.json` and `v7_3_challenger_comparison.csv`. A validated
+`v7_3_challenger_health` and `v7_3_challenger_comparison`. A validated
 challenger still requires manual review and always reports `shadow_only: true`,
 `production_applied: false`, `activation_allowed: false` and
 `broker_execution_enabled: false`.
