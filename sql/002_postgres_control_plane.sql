@@ -120,66 +120,66 @@ CREATE INDEX IF NOT EXISTS ix_health_observation_run
 ON health_observation (pipeline_run_id, module_name, observed_at DESC);
 
 -- Repair duplicate legacy instruments before enforcing normalized uniqueness.
--- The observation/history rows are re-pointed without dropping distinct facts;
--- exact logical duplicates are removed first to preserve their constraints.
-CREATE TEMP TABLE instrument_merge_map ON COMMIT DROP AS
-SELECT instrument_id AS duplicate_id,
-       min(instrument_id) OVER (
-           PARTITION BY canonical_symbol, COALESCE(exchange, '')
-       ) AS keeper_id
-FROM instrument;
+-- Process one duplicate instrument at a time.  The previous whole-table window
+-- sort spilled the complete observation history to PostgreSQL temporary storage
+-- every time initialization ran.
+LOCK TABLE instrument, market_observation, instrument_dimension_history
+IN SHARE ROW EXCLUSIVE MODE;
 
-WITH ranked AS (
-    SELECT observation.observation_id, observation.event_timestamp,
-           row_number() OVER (
-               PARTITION BY map.keeper_id, observation.data_type, observation.timeframe,
-                            observation.event_timestamp, observation.ingested_at,
-                            observation.warehouse_run_id
-               ORDER BY (observation.instrument_id=map.keeper_id) DESC,
-                        observation.observation_id
-           ) AS duplicate_rank
-    FROM market_observation observation
-    JOIN instrument_merge_map map ON map.duplicate_id=observation.instrument_id
-)
-DELETE FROM market_observation observation
-USING ranked
-WHERE observation.observation_id=ranked.observation_id
-  AND observation.event_timestamp=ranked.event_timestamp
-  AND ranked.duplicate_rank>1;
+DO $$
+DECLARE
+    duplicate_instrument RECORD;
+BEGIN
+    FOR duplicate_instrument IN
+        SELECT candidate.instrument_id AS duplicate_id, keeper.keeper_id
+        FROM instrument candidate
+        JOIN (
+            SELECT canonical_symbol,
+                   COALESCE(exchange, '') AS exchange_key,
+                   min(instrument_id) AS keeper_id
+            FROM instrument
+            GROUP BY canonical_symbol, COALESCE(exchange, '')
+            HAVING count(*) > 1
+        ) keeper
+          ON keeper.canonical_symbol=candidate.canonical_symbol
+         AND keeper.exchange_key=COALESCE(candidate.exchange, '')
+        WHERE candidate.instrument_id<>keeper.keeper_id
+        ORDER BY keeper.keeper_id, candidate.instrument_id
+    LOOP
+        -- Existing indexes begin with instrument_id, so each statement is
+        -- restricted to one duplicate/keeper pair instead of sorting the table.
+        DELETE FROM market_observation duplicate
+        USING market_observation keeper
+        WHERE duplicate.instrument_id=duplicate_instrument.duplicate_id
+          AND keeper.instrument_id=duplicate_instrument.keeper_id
+          AND duplicate.data_type=keeper.data_type
+          AND duplicate.timeframe=keeper.timeframe
+          AND duplicate.event_timestamp=keeper.event_timestamp
+          AND duplicate.ingested_at=keeper.ingested_at
+          AND duplicate.warehouse_run_id=keeper.warehouse_run_id;
 
-UPDATE market_observation observation
-SET instrument_id=map.keeper_id
-FROM instrument_merge_map map
-WHERE observation.instrument_id=map.duplicate_id
-  AND map.duplicate_id<>map.keeper_id;
+        UPDATE market_observation
+        SET instrument_id=duplicate_instrument.keeper_id
+        WHERE instrument_id=duplicate_instrument.duplicate_id;
 
-WITH ranked AS (
-    SELECT history.ctid AS row_reference,
-           row_number() OVER (
-               PARTITION BY map.keeper_id, history.attribute_name,
-                            history.event_timestamp, history.ingested_at,
-                            history.warehouse_run_id
-               ORDER BY (history.instrument_id=map.keeper_id) DESC,
-                        history.ctid
-           ) AS duplicate_rank
-    FROM instrument_dimension_history history
-    JOIN instrument_merge_map map ON map.duplicate_id=history.instrument_id
-)
-DELETE FROM instrument_dimension_history history
-USING ranked
-WHERE history.ctid=ranked.row_reference
-  AND ranked.duplicate_rank>1;
+        DELETE FROM instrument_dimension_history duplicate
+        USING instrument_dimension_history keeper
+        WHERE duplicate.instrument_id=duplicate_instrument.duplicate_id
+          AND keeper.instrument_id=duplicate_instrument.keeper_id
+          AND duplicate.attribute_name=keeper.attribute_name
+          AND duplicate.event_timestamp=keeper.event_timestamp
+          AND duplicate.ingested_at=keeper.ingested_at
+          AND duplicate.warehouse_run_id=keeper.warehouse_run_id;
 
-UPDATE instrument_dimension_history history
-SET instrument_id=map.keeper_id
-FROM instrument_merge_map map
-WHERE history.instrument_id=map.duplicate_id
-  AND map.duplicate_id<>map.keeper_id;
+        UPDATE instrument_dimension_history
+        SET instrument_id=duplicate_instrument.keeper_id
+        WHERE instrument_id=duplicate_instrument.duplicate_id;
 
-DELETE FROM instrument duplicate
-USING instrument_merge_map map
-WHERE duplicate.instrument_id=map.duplicate_id
-  AND map.duplicate_id<>map.keeper_id;
+        DELETE FROM instrument
+        WHERE instrument_id=duplicate_instrument.duplicate_id;
+    END LOOP;
+END
+$$;
 
 -- Prevent duplicate NULL-exchange instruments under concurrent ingestion.
 CREATE UNIQUE INDEX IF NOT EXISTS ux_instrument_symbol_exchange_normalized
