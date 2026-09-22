@@ -50,7 +50,7 @@ def test_atomic_publication_fail_closed_and_event_idempotency():
 
     assert published["pipeline_run_id"] == first
     assert control_plane.publication_info(mode)["production_run_id"] == first
-    assert control_plane.publication_info(mode)["warehouse_as_of_utc"].isoformat() == as_of
+    assert control_plane.publication_info(mode)["warehouse_as_of_utc"] == as_of
     frame = control_plane.read_dataset("alpha", published_mode=mode)
     assert frame.to_dict("records") == [{"score": 91.5, "ticker": "TEST"}]
 
