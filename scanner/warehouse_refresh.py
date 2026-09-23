@@ -11,6 +11,7 @@ from .config import CRITICAL_MARKET_SYMBOLS, INGESTION_CRITICAL_SYMBOLS, RETRY_C
 from .control_plane import read_dataset
 from .data import download_batch
 from .warehouse import _freshness_failures
+from .ohlcv_quality import invalid_rows
 
 
 def _symbols() -> list[str]:
@@ -42,7 +43,13 @@ def _normalize(ticker: str, frame: pd.DataFrame, ingested_at: datetime) -> pd.Da
     out = out.dropna(subset=["event_timestamp"])
     out.insert(0, "ticker", str(ticker).upper())
     out["ingested_at"] = ingested_at
-    return out
+    normalized=out.rename(columns={c:c.lower() for c in ("Open","High","Low","Close","Volume")})
+    if "volume" not in normalized:
+        raise RuntimeError(f"WAREHOUSE_REFRESH_FAILED: {ticker} missing Volume")
+    bad=invalid_rows(normalized)
+    if bad.any():
+        print(f"WAREHOUSE_PROVIDER_REJECTED ticker={ticker} invalid_rows={int(bad.sum())}",flush=True)
+    return out.loc[~bad].copy()
 
 
 def _stale_watermarks(watermarks: dict[str, datetime], interval: str) -> set[str]:
