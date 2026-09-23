@@ -76,7 +76,7 @@ def test_validation_precedes_confirmation(monkeypatch):
     assert calls==["gate","confirmation"]
 
 
-@pytest.mark.parametrize("fail_at",["refresh","gate",""])
+@pytest.mark.parametrize("fail_at",["critical_refresh","critical_gate","refresh","gate",""])
 def test_full_workflow_stops_before_consumers_on_intraday_failure(fail_at):
     workflow=Path(".github/workflows/production.yml").read_text()
     body=textwrap.dedent(workflow.split("      - name: Execute complete dependency chain",1)[1]
@@ -85,6 +85,8 @@ def test_full_workflow_stops_before_consumers_on_intraday_failure(fail_at):
 PIPELINE_MODE=full
 python() {
   printf '%s\\n' "$*"
+  if [[ "$FAIL_AT" == critical_refresh && "$*" == *scanner.warehouse_refresh* && "$*" == *--critical-only* ]]; then return 124; fi
+  if [[ "$FAIL_AT" == critical_gate && "$*" == *scanner.warehouse_gate* && "$*" != *MASTER_DAILY* ]]; then return 9; fi
   if [[ "$FAIL_AT" == refresh && "$*" == *scanner.warehouse_refresh* && "$*" == *5m* ]]; then return 7; fi
   if [[ "$FAIL_AT" == gate && "$*" == *scanner.warehouse_gate* && "$*" == *LIVE_INTRADAY* ]]; then return 8; fi
   return 0
@@ -96,6 +98,9 @@ bash() { printf '%s\\n' "$*"; }
                           text=True,capture_output=True)
     if fail_at:
         assert result.returncode!=0
+        if fail_at.startswith("critical_"):
+            assert "--dataset master_universe" not in result.stdout
+            assert "--prepare-only" not in result.stdout
         assert "--finalize-prepared" not in result.stdout
         assert "-m scanner.v3_live" not in result.stdout
         assert "--finalize --mode production" not in result.stdout
