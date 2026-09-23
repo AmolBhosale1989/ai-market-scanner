@@ -146,7 +146,7 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
                 damaged=[t for t,f in batch.items() if not f.empty and
                          invalid_rows(f.rename(columns={c:c.lower() for c in
                              ("Open","High","Low","Close","Volume")})).any()]
-                for recovery_interval in ("5m","30m"):
+                for recovery_interval in ("5m","30m","60m"):
                     if not damaged:
                         break
                     recovery=download_batch(damaged,period="5d",interval=recovery_interval)
@@ -155,6 +155,10 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
                         if "daily_bar_source" not in fixed:
                             continue
                         source=_normalize(t,bars,datetime.now(timezone.utc))
+                        evidence=fixed.dropna(subset=["daily_bar_source"]).iloc[-1]
+                        source=source[source.event_timestamp.between(
+                            pd.Timestamp(evidence.source_first_bar_utc),
+                            pd.Timestamp(evidence.source_last_bar_utc))]
                         ingest_observations(source,run_id=run_id,provider="YAHOO_YFINANCE",
                                             data_type="OHLCV",timeframe=recovery_interval)
                         batch[t]=fixed

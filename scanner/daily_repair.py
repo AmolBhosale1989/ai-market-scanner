@@ -6,7 +6,7 @@ from .ohlcv_quality import invalid_rows
 
 
 def repair_daily(daily, intraday, now=None, interval="5m"):
-    if interval not in {"5m","30m"}:
+    if interval not in {"5m","30m","60m"}:
         raise ValueError("Unsupported daily reconstruction interval")
     out=daily.copy()
     now=pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC")

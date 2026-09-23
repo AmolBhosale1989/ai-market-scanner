@@ -41,12 +41,35 @@ def test_good_daily_prices_are_not_replaced():
     pd.testing.assert_frame_equal(repair_daily(daily,bars,now="2026-09-23T06:00Z"),daily)
 
 
-def test_complete_coarser_session_and_missing_closing_bar():
+@pytest.mark.parametrize("interval,count",[("30m",13),("60m",7)])
+def test_complete_coarser_session_and_missing_closing_bar(interval,count):
     daily,bars=inputs()
-    bars=bars.resample("30min",origin=bars.index[0]).agg({
+    bars=bars.resample(interval.replace("m","min"),origin=bars.index[0]).agg({
         "Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"})
-    result=repair_daily(daily,bars,now="2026-09-23T06:00Z",interval="30m")
-    assert result.iloc[-1].source_bar_count==13
-    assert result.iloc[-1].source_timeframe=="30m"
+    result=repair_daily(daily,bars,now="2026-09-23T06:00Z",interval=interval)
+    assert result.iloc[-1].source_bar_count==count
+    assert result.iloc[-1].source_timeframe==interval
     assert result.iloc[-1].Volume==7800
-    assert pd.isna(repair_daily(daily,bars.iloc[:-1],now="2026-09-23T06:00Z",interval="30m").iloc[-1].Close)
+    assert pd.isna(repair_daily(daily,bars.iloc[:-1],now="2026-09-23T06:00Z",interval=interval).iloc[-1].Close)
+
+
+def test_refresh_persists_repair_evidence_before_daily(monkeypatch):
+    from scanner import warehouse_refresh as refresh
+    daily,bars=inputs()
+    monkeypatch.setattr(pd.Timestamp,"now",classmethod(lambda cls,tz=None: pd.Timestamp("2026-09-23T06:00Z")))
+    monkeypatch.setattr(refresh,"INGESTION_CRITICAL_SYMBOLS",())
+    monkeypatch.setattr(refresh,"verify_health",lambda:None)
+    monkeypatch.setattr(refresh,"start_run",lambda **kw:"run")
+    monkeypatch.setattr(refresh,"finish_run",lambda *a,**kw:None)
+    monkeypatch.setattr(refresh,"latest_event_timestamps",lambda *a,**kw:{})
+    monkeypatch.setattr(refresh,"download_batch",lambda tickers,period,interval:{"SPY":daily if interval=="1d" else bars})
+    writes=[]
+    def ingest(frame,**kw):
+        writes.append((kw["timeframe"],frame.copy()))
+        return len(frame)
+    monkeypatch.setattr(refresh,"ingest_observations",ingest)
+    refresh.refresh(["SPY"],period="1y",interval="1d",benchmark_backfill=False)
+    assert [x[0] for x in writes]==["5m","1d"]
+    assert len(writes[0][1])==78
+    assert writes[1][1].iloc[-1].Close==11.
+    assert writes[1][1].iloc[-1].source_timeframe=="5m"
