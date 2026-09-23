@@ -1,0 +1,31 @@
+name: Provider price diagnostic
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/provider-diagnostic.yml'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Compare raw and adjusted daily prices
+        run: |
+          python -u - <<'PY'
+          import yfinance as yf
+          from yfinance.utils import auto_adjust
+          print("YFINANCE", yf.__version__)
+          raw=yf.download(["SPY","XLF","XLK"],period="5d",interval="1d",auto_adjust=False,actions=True,group_by="ticker",threads=False,progress=False,timeout=20)
+          for ticker in ["SPY","XLF","XLK"]:
+              f=raw[ticker].dropna(how="all")
+              print("RAW",ticker, f.tail(3).to_string())
+              print("ADJUSTED",ticker,auto_adjust(f).tail(3).to_string())
+          intraday=yf.download(["SPY"],period="5d",interval="5m",auto_adjust=False,threads=False,progress=False,timeout=20)
+          print("INTRADAY_SPY",intraday.tail(3).to_string())
+          PY
