@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from .ohlcv_quality import invalid_rows
+from .market_cutoff import daily_clock
 
 import pandas as pd
 import pandas_market_calendars as mcal
@@ -62,7 +63,7 @@ def _assert_coverage(df: pd.DataFrame, tickers: Iterable[str], consumer: str) ->
 
 
 def _freshness_failures(
-    df: pd.DataFrame, interval: str, max_age_minutes: int, consumer: str
+    df: pd.DataFrame, interval: str, max_age_minutes: int, consumer: str, *, now_utc=None
 ) -> tuple[list[str], pd.Timestamp, str]:
     """Return stale symbols using session-aware NYSE rules."""
     ingested = pd.to_datetime(df["ingested_at"], utc=True, errors="coerce").max()
@@ -71,7 +72,7 @@ def _freshness_failures(
     if pd.isna(ingested) or pd.isna(newest_bar):
         raise RuntimeError(f"WAREHOUSE_STALE: {consumer} {interval} has no valid timestamp")
 
-    now = pd.Timestamp.now(tz="UTC")
+    now = pd.Timestamp(now_utc) if now_utc is not None else (daily_clock() if interval == "1d" else pd.Timestamp.now(tz="UTC"))
     cal = mcal.get_calendar("NYSE")
     schedule = cal.schedule(
         start_date=(now - pd.Timedelta(days=10)).date(),

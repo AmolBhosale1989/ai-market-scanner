@@ -26,6 +26,7 @@ from .config import (
     THEME_INTRADAY_MIN_COVERAGE,
 )
 from .warehouse import _freshness_failures
+from .market_cutoff import event_cutoff, completed_daily_session
 from .ohlcv_quality import invalid_sql
 from .control_plane import current_run_id, read_dataset, write_dataset
 
@@ -80,10 +81,10 @@ def coverage_frame(tier: CoverageTier, as_of: datetime) -> pd.DataFrame:
       ) v
     ) s WHERE s.bars>0 ORDER BY w.ticker"""
     with _connect() as conn:
-        return pd.read_sql_query(sql,conn,params=(list(tier.symbols),tier.timeframe,as_of,as_of))
+        return pd.read_sql_query(sql,conn,params=(list(tier.symbols),tier.timeframe,event_cutoff(tier.timeframe,as_of),as_of))
 
 
-def evaluate_tier(tier: CoverageTier, frame: pd.DataFrame) -> dict:
+def evaluate_tier(tier: CoverageTier, frame: pd.DataFrame, *, now_utc=None) -> dict:
     wanted=set(tier.symbols)
     have=set(frame.get("ticker",pd.Series(dtype=str)).astype(str).str.upper()) if not frame.empty else set()
     missing=sorted(wanted-have)
@@ -98,7 +99,8 @@ def evaluate_tier(tier: CoverageTier, frame: pd.DataFrame) -> dict:
         bad=pd.to_numeric(frame.get("invalid_bars"),errors="coerce").fillna(0)
         invalid=frame.loc[bad>0,"ticker"].astype(str).tolist()
         stale,_,stale_expectation=_freshness_failures(
-            frame,tier.timeframe,tier.max_age_minutes,f"warehouse_gate.{tier.name}"
+            frame,tier.timeframe,tier.max_age_minutes,f"warehouse_gate.{tier.name}",
+            **({"now_utc": now_utc} if now_utc is not None else {})
         )
     quarantined=set(short)|set(invalid)|set(stale)
     usable_symbols=len(have-quarantined)
@@ -142,6 +144,28 @@ def build_tiers(master: Iterable[str], live: Iterable[str]) -> tuple[CoverageTie
     )
 
 
+def validate_publication_freshness(run_id: str, *, now_utc=None) -> None:
+    """Recheck the frozen input snapshot, never newer rows the signals did not use."""
+    from .control_plane import read_dataset
+    snapshot = read_dataset("warehouse_snapshot", run_id=run_id)
+    if len(snapshot) != 1 or snapshot.iloc[0].get("status") != "PASS":
+        raise RuntimeError("PUBLICATION_FRESHNESS_BLOCKED: warehouse snapshot missing or failed")
+    record = snapshot.iloc[0]
+    now = pd.Timestamp(now_utc) if now_utc is not None else pd.Timestamp.now(tz="UTC")
+    expected = completed_daily_session(now).isoformat()
+    if record.get("daily_session") != expected:
+        raise RuntimeError(f"PUBLICATION_FRESHNESS_BLOCKED: daily session changed; expected={expected}; rebuild required")
+    as_of = pd.Timestamp(record["as_of_utc"])
+    if pd.isna(as_of) or as_of.tzinfo is None or as_of > now:
+        raise RuntimeError("PUBLICATION_FRESHNESS_BLOCKED: invalid snapshot timestamp")
+    master = _symbols(read_dataset("master_universe", run_id=run_id), "master_universe")
+    live = _symbols(read_dataset("live_universe", run_id=run_id), "live_universe")
+    for tier in build_tiers(master, live):
+        result = evaluate_tier(tier, coverage_frame(tier, as_of), now_utc=now)
+        if result["status"] != "PASS":
+            raise RuntimeError(f"PUBLICATION_FRESHNESS_BLOCKED: {tier.name}: {result}")
+
+
 def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | None = None, selected: set[str] | None = None) -> dict:
     verify_health()
     selected=selected or set()
@@ -154,6 +178,7 @@ def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | 
         "schema_version":1,
         "production_run_id":current_run_id(),
         "as_of_utc":as_of.isoformat(),
+        "daily_session":completed_daily_session().isoformat(),
         "master_catalogue_hash":_catalogue_hash(master),
         "master_symbols":len(master),
         "live_symbols":len(live),

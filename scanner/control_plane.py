@@ -430,6 +430,9 @@ def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = No
     required = tuple(dict.fromkeys(required_datasets))
     if not required:
         raise RuntimeError("CONTROL_PLANE_PUBLICATION_EMPTY")
+    if mode == "production":
+        from .warehouse_gate import validate_publication_freshness
+        validate_publication_freshness(rid)
     with _connect() as conn, conn.cursor() as cur:
         cur.execute("SELECT status FROM pipeline_run WHERE pipeline_run_id=%s FOR UPDATE", (rid,))
         row = cur.fetchone()

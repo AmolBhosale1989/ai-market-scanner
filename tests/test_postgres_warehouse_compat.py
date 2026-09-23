@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from scanner import warehouse
+from scanner.market_cutoff import completed_daily_session
 
 
 def _rows(tickers=("AAPL",), age_minutes=1):
@@ -11,7 +12,7 @@ def _rows(tickers=("AAPL",), age_minutes=1):
     return pd.DataFrame([
         {
             "ticker": ticker,
-            "event_timestamp": now - timedelta(days=1),
+            "event_timestamp": pd.Timestamp(completed_daily_session(), tz="UTC").as_unit("ns"),
             "ingested_at": now,
             "warehouse_run_id": "00000000-0000-0000-0000-000000000001",
             "provider": "TEST",
