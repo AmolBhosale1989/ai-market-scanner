@@ -50,8 +50,12 @@ def _warehouse_batch(tickers: list[str], consumer: str, period: str="5d") -> dic
 
 def run(input_file: str | None = None, batch_size: int = 80, top_n: int = 100):
     if input_file:
-        raise RuntimeError("FILE_INPUT_DISABLED: use the tradable_universe control-plane dataset")
-    base = read_dataset("tradable_universe")
+        raise RuntimeError("FILE_INPUT_DISABLED: use the live_universe control-plane dataset")
+    # The workflow refreshes and gates exactly this bounded intraday universe.
+    # Reading tradable_universe here would request bars that the producer never
+    # promised to load, causing a false coverage failure after all data gates
+    # had already passed.  Keep the consumer on the same fail-closed contract.
+    base = read_dataset("live_universe")
     if base.empty or "ticker" not in base.columns:
         print("Tradable universe is empty.")
         return pd.DataFrame()
@@ -68,7 +72,7 @@ def run(input_file: str | None = None, batch_size: int = 80, top_n: int = 100):
     now_et = datetime.now(NY)
     rows = []
     batches = math.ceil(len(tickers) / batch_size) if tickers else 0
-    print(f"Broad premarket discovery: scanning {len(tickers):,} tradable stocks in {batches} batches...")
+    print(f"Premarket discovery: scanning {len(tickers):,} validated live-universe stocks in {batches} batches...")
 
     for bi, start in enumerate(range(0, len(tickers), batch_size), 1):
         batch = tickers[start:start + batch_size]
@@ -133,7 +137,7 @@ def run(input_file: str | None = None, batch_size: int = 80, top_n: int = 100):
 
     health = pd.DataFrame([{
         "checked_at_et": now_et.isoformat(timespec="seconds"),
-        "universe_source": "control-plane:tradable_universe",
+        "universe_source": "control-plane:live_universe",
         "tradable_symbols_scanned": len(tickers),
         "symbols_with_premarket_data": len(rows),
         "published_rows": len(out),
@@ -146,7 +150,7 @@ def run(input_file: str | None = None, batch_size: int = 80, top_n: int = 100):
 
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser(description="Market Hunt broad-universe premarket discovery")
+    p = argparse.ArgumentParser(description="Market Hunt validated live-universe premarket discovery")
     p.add_argument("--input", default=None)
     p.add_argument("--batch-size", type=int, default=80)
     p.add_argument("--top-n", type=int, default=100)

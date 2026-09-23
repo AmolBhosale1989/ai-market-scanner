@@ -46,6 +46,12 @@ def test_live_workflows_gate_the_same_frozen_universe_they_refresh():
     assert "seed_snapshot" in workflow
 
 
+def test_premarket_uses_the_same_frozen_universe_the_workflow_refreshes():
+    source=Path("scanner/premarket.py").read_text()
+    assert 'read_dataset("live_universe")' in source
+    assert 'read_dataset("tradable_universe")' not in source
+
+
 def test_live_core_exposes_postgres_to_every_production_stage():
     workflow=Path(".github/workflows/production.yml").read_text()
     live_job_header=workflow.split("    steps:",1)[0]
