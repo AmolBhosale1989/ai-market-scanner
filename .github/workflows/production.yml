@@ -49,7 +49,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m scanner.control_plane migrate
-          echo "PRODUCTION_RUN_ID=$(python -m scanner.control_plane start --mode production)" >> "$GITHUB_ENV"
+          PRODUCTION_RUN_ID=$(python -m scanner.control_plane start --mode production)
+          test -n "$PRODUCTION_RUN_ID"
+          echo "PRODUCTION_RUN_ID=$PRODUCTION_RUN_ID" >> "$GITHUB_ENV"
       - name: Execute complete dependency chain
         shell: bash
         run: |
@@ -73,12 +75,15 @@ jobs:
             stage master_universe 10 python -m scanner.universe --refresh
             stage daily_warehouse 20 timeout 4200s python -m scanner.warehouse_refresh --dataset master_universe --period 1y --interval 1d
             stage daily_gate 30 python -m scanner.warehouse_gate --tier MASTER_DAILY --tier CRITICAL_DAILY
-            stage daily_scan 40 timeout 4200s python -m scanner.main
-            stage live_plan 50 python -m scanner.universe_plan
+            stage daily_prepare 40 timeout 4200s python -m scanner.main --prepare-only
+            stage live_plan 50 python -m scanner.universe_plan --include-daily-candidates
           fi
 
           stage intraday_warehouse 60 timeout 3600s python -m scanner.warehouse_refresh --dataset live_universe --period 5d --interval 5m
           stage warehouse_gate 70 python -m scanner.warehouse_gate --tier MASTER_DAILY --tier CRITICAL_DAILY --tier CRITICAL_INTRADAY --tier THEME_INTRADAY --tier LIVE_INTRADAY
+          if [[ "$PIPELINE_MODE" == "full" ]]; then
+            stage daily_scan 75 python -m scanner.main --finalize-prepared
+          fi
           stage v3_live 80 python -m scanner.v3_live
           stage theme_live 90 python -m scanner.theme_live
           stage sector_rotation 100 python -m scanner.sector_rotation

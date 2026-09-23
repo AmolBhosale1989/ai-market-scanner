@@ -17,7 +17,9 @@ from .warehouse import frames as warehouse_frames, history as warehouse_history
 from .events import build_event_watchlist, merge_technical_context
 from .earnings_intel import enrich_earnings_intelligence
 from .indicators import add_indicators
-from .live import enrich_live_candidates
+from .live import enrich_live_candidates, select_live_candidates
+from .warehouse import DataRequirement, provide
+from .config import LIVE_INTERVAL, LIVE_PERIOD
 from .legendary_agents import run_legendary_agents
 from .prefilter import build_tradable_rows
 from .product_feed import build_product_feed
@@ -25,7 +27,7 @@ from .regime import evaluate_regime
 from .stocks import analyze_dataframe
 from .themes import rank_themes, enrich_candidate_themes
 from .universe import load_or_build_universe
-from .control_plane import write_dataset
+from .control_plane import write_dataset, read_dataset
 
 def _benchmark_context():
     df=warehouse_history(BENCHMARK,"6mo","1d",max_age_minutes=20)
@@ -99,7 +101,7 @@ def _prefilter_universe(universe: pd.DataFrame):
     write_dataset("tradable_universe",pfdf)
     return pfdf,coverage,len(fetched)
 
-def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, deep_limit: int|None=None):
+def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, deep_limit: int|None=None, prepare_only: bool=False):
     universe=load_or_build_universe(force_refresh=refresh_universe).sort_values("ticker").reset_index(drop=True)
     full_count=len(universe)
     if limit:
@@ -304,6 +306,22 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     df["final_score"]=(df["rank_score"].fillna(-100)+theme_bonus+catalyst*0.20-neg*15).round(1)
     df["final_decision"]=df.apply(_final_decision,axis=1)
 
+    write_dataset("daily_prepared_candidates",df)
+    write_dataset("daily_prepared_health",pd.DataFrame([health]),entity_key=None)
+    if prepare_only:
+        print("DAILY_PREPARED: awaiting intraday ingestion and validation")
+        return df
+    return finalize_daily(df,pfdf,health,top_n)
+
+def finalize_daily(df, pfdf, health, top_n=TOP_N):
+    # Validate the exact consumers, even if an aggregate tier tolerates gaps.
+    selected=select_live_candidates(df,LIVE_ENRICH_LIMIT)
+    if not selected.empty:
+        provide(DataRequirement(
+            consumer="daily_live_confirmation",tickers=tuple(selected["ticker"].astype(str)),
+            interval=LIVE_INTERVAL,period=LIVE_PERIOD,max_age_minutes=10,
+            min_bars_per_symbol=20,minimum_fresh_coverage=1.0,
+        ))
     print(f"Checking live VWAP/opening-range/volume confirmation for up to {LIVE_ENRICH_LIMIT} advanced candidates...")
     df=enrich_live_candidates(df,limit=LIVE_ENRICH_LIMIT)
 
@@ -417,5 +435,13 @@ if __name__=="__main__":
     p.add_argument("--limit",type=int,default=None)
     p.add_argument("--top",type=int,default=TOP_N)
     p.add_argument("--deep-limit",type=int,default=None,help="Limit expensive 1y analysis after full-universe prefilter; 0/omitted scans all tradable names")
+    phases=p.add_mutually_exclusive_group()
+    phases.add_argument("--prepare-only",action="store_true")
+    phases.add_argument("--finalize-prepared",action="store_true")
     args=p.parse_args()
-    run(refresh_universe=args.refresh_universe,limit=args.limit,top_n=args.top,deep_limit=args.deep_limit)
+    if args.finalize_prepared:
+        finalize_daily(read_dataset("daily_prepared_candidates"),read_dataset("tradable_universe"),
+                       read_dataset("daily_prepared_health").iloc[0].to_dict(),args.top)
+    else:
+        run(refresh_universe=args.refresh_universe,limit=args.limit,top_n=args.top,
+            deep_limit=args.deep_limit,prepare_only=args.prepare_only)

@@ -5,6 +5,7 @@ import argparse
 import pandas as pd
 
 from .control_plane import read_dataset, write_dataset
+from .live import select_live_candidates
 
 
 def select_live_universe(frame: pd.DataFrame, limit: int = 420) -> pd.DataFrame:
@@ -31,9 +32,13 @@ def select_live_universe(frame: pd.DataFrame, limit: int = 420) -> pd.DataFrame:
 def main():
     p=argparse.ArgumentParser(description="Build the shared live warehouse/discovery universe")
     p.add_argument("--limit",type=int,default=420)
+    p.add_argument("--include-daily-candidates",action="store_true")
     args=p.parse_args()
     source=read_dataset("tradable_universe")
     out=select_live_universe(source,limit=args.limit)
+    if args.include_daily_candidates:
+        required=select_live_candidates(read_dataset("daily_prepared_candidates"))
+        out=pd.concat([out,required[["ticker"]]],ignore_index=True).drop_duplicates("ticker")
     write_dataset("live_universe",out)
     print(f"LIVE_UNIVERSE_AVAILABLE symbols={len(out)}")
 

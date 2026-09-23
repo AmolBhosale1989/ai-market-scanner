@@ -243,17 +243,24 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
     result.update({"live_status":status,"live_session_date":str(latest_date),"live_bar_at_et":str(latest_session.index[-1]),"live_bar_high":round(float(latest_session["High"].iloc[-1]),2),"live_bar_low":round(float(latest_session["Low"].iloc[-1]),2),"live_price":round(price,2),"session_high":round(session_high,2),"session_low":round(session_low,2),"live_vwap":round(vwap,2) if math.isfinite(vwap) else math.nan,"live_above_vwap":bool(above_vwap),"opening_range_high":round(or_high,2) if math.isfinite(or_high) else math.nan,"opening_range_low":round(or_low,2) if math.isfinite(or_low) else math.nan,"live_above_or_high":bool(above_or),"intraday_rvol":round(rvol,2) if math.isfinite(rvol) else math.nan,"volume_vs_9ma":round(volume_vs_9ma,2) if math.isfinite(volume_vs_9ma) else math.nan,"opening_30m_rvol":round(opening_30m_rvol,2) if math.isfinite(opening_30m_rvol) else math.nan,"opening_volume_spike_2x":bool(opening_volume_spike_2x),"quote_bid":round(bid,4) if math.isfinite(bid) else math.nan,"quote_ask":round(ask,4) if math.isfinite(ask) else math.nan,"bid_ask_spread_pct":round(spread_pct,4) if math.isfinite(spread_pct) else math.nan,"spread_gate_passed":bool(spread_ok),"spread_gate_source":spread_source,"live_trigger_reached":bool(trigger_reached),"live_retest_touched":bool(retest_touched),"live_confirmation_score":int(score),"premarket_price":round(premarket_price,2) if math.isfinite(premarket_price) else math.nan,"premarket_gap_pct":round(premarket_gap,2) if math.isfinite(premarket_gap) else math.nan,"premarket_volume":round(premarket_volume,0) if math.isfinite(premarket_volume) else math.nan,"premarket_status":premarket_status,**order_flow,"live_trade_action":live_action})
     return result
 
-def enrich_live_candidates(df: pd.DataFrame, limit: int = LIVE_ENRICH_LIMIT):
+def select_live_candidates(df: pd.DataFrame, limit: int = LIVE_ENRICH_LIMIT):
+    """One selection contract for ingestion planning and live consumption."""
     if df.empty:
-        return df
-    out=df.copy(); defaults=_empty_live()
-    for col,value in defaults.items(): out[col]=value
-    eligible=out[out["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
+        return df.copy()
+    eligible=df[df["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
     eligible["live_stage_priority"]=eligible["stage"].map({"CONFIRMED":4,"ARMED":3,"FORMING":2,"DISCOVER":1}).fillna(0)
     score_column="market_hunt_score" if "market_hunt_score" in eligible.columns else "final_score"
     if score_column not in eligible.columns:
         raise RuntimeError("V3_INPUT_SCHEMA_FAILED: market_hunt_score or final_score")
     eligible=eligible.sort_values(["live_stage_priority",score_column],ascending=[False,False]).head(limit)
+    return eligible
+
+def enrich_live_candidates(df: pd.DataFrame, limit: int = LIVE_ENRICH_LIMIT):
+    if df.empty:
+        return df
+    out=df.copy(); defaults=_empty_live()
+    for col,value in defaults.items(): out[col]=value
+    eligible=select_live_candidates(df,limit)
     for idx,row in eligible.iterrows():
         live=analyze_live_candidate(ticker=str(row["ticker"]),entry_trigger=float(row.get("entry_trigger",math.nan)),stage=str(row.get("stage","")),catalyst_score=float(pd.to_numeric(pd.Series([row.get("catalyst_score",0)]),errors="coerce").fillna(0).iloc[0]),rr_to_8pct=float(pd.to_numeric(pd.Series([row.get("effective_rr",row.get("rr_to_8pct",math.nan))]),errors="coerce").iloc[0]),runway_pct=float(pd.to_numeric(pd.Series([row.get("runway_to_next_resistance_pct",math.nan)]),errors="coerce").iloc[0]),negative_catalyst_risk=bool(row.get("negative_catalyst_risk",False)),entry_condition=str(row.get("entry_condition","BREAKOUT")),technical_score=float(pd.to_numeric(pd.Series([row.get("technical_score",0)]),errors="coerce").fillna(0).iloc[0]),formation_score=float(pd.to_numeric(pd.Series([row.get("formation_score",0)]),errors="coerce").fillna(0).iloc[0]),avg_dollar_volume=float(pd.to_numeric(pd.Series([row.get("avg_dollar_volume",0)]),errors="coerce").fillna(0).iloc[0]))
         for k,v in live.items(): out.at[idx,k]=v
