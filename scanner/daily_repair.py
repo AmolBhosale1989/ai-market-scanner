@@ -5,7 +5,9 @@ import pandas_market_calendars as mcal
 from .ohlcv_quality import invalid_rows
 
 
-def repair_daily(daily, intraday, now=None):
+def repair_daily(daily, intraday, now=None, interval="5m"):
+    if interval not in {"5m","30m"}:
+        raise ValueError("Unsupported daily reconstruction interval")
     out=daily.copy()
     now=pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC")
     schedule=mcal.get_calendar("NYSE").schedule(
@@ -15,7 +17,7 @@ def repair_daily(daily, intraday, now=None):
         return out
     session=completed.iloc[-1]
     day=pd.Timestamp(completed.index[-1]).date()
-    expected=pd.date_range(session.market_open,session.market_close,freq="5min",inclusive="left")
+    expected=pd.date_range(session.market_open,session.market_close,freq=interval.replace("m","min"),inclusive="left")
     bars=intraday.copy()
     bars.index=pd.to_datetime(bars.index,utc=True)
     bars=bars.loc[(bars.index>=expected[0]) & (bars.index<session.market_close)].sort_index()
@@ -31,7 +33,8 @@ def repair_daily(daily, intraday, now=None):
             continue
         out.loc[idx,["Open","High","Low","Close","Volume"]]=[
             bars.Open.iloc[0],bars.High.max(),bars.Low.min(),bars.Close.iloc[-1],bars.Volume.sum()]
-        out.loc[idx,"daily_bar_source"]="COMPLETE_REGULAR_SESSION_5M"
+        out.loc[idx,"daily_bar_source"]=f"COMPLETE_REGULAR_SESSION_{interval.upper()}"
+        out.loc[idx,"source_timeframe"]=interval
         out.loc[idx,"source_bar_count"]=len(bars)
         out.loc[idx,"source_first_bar_utc"]=expected[0].isoformat()
         out.loc[idx,"source_last_bar_utc"]=expected[-1].isoformat()

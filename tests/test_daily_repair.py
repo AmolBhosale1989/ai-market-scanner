@@ -39,3 +39,14 @@ def test_bad_or_incomplete_intraday_cannot_repair_daily(failure):
 def test_good_daily_prices_are_not_replaced():
     daily,bars=inputs(); daily.iloc[-1]=[10.,12.,9.,10.5,9000.]
     pd.testing.assert_frame_equal(repair_daily(daily,bars,now="2026-09-23T06:00Z"),daily)
+
+
+def test_complete_coarser_session_and_missing_closing_bar():
+    daily,bars=inputs()
+    bars=bars.resample("30min",origin=bars.index[0]).agg({
+        "Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"})
+    result=repair_daily(daily,bars,now="2026-09-23T06:00Z",interval="30m")
+    assert result.iloc[-1].source_bar_count==13
+    assert result.iloc[-1].source_timeframe=="30m"
+    assert result.iloc[-1].Volume==7800
+    assert pd.isna(repair_daily(daily,bars.iloc[:-1],now="2026-09-23T06:00Z",interval="30m").iloc[-1].Close)

@@ -146,17 +146,20 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
                 damaged=[t for t,f in batch.items() if not f.empty and
                          invalid_rows(f.rename(columns={c:c.lower() for c in
                              ("Open","High","Low","Close","Volume")})).any()]
-                if damaged:
-                    recovery=download_batch(damaged,period="5d",interval="5m")
+                for recovery_interval in ("5m","30m"):
+                    if not damaged:
+                        break
+                    recovery=download_batch(damaged,period="5d",interval=recovery_interval)
                     for t,bars in recovery.items():
-                        fixed=repair_daily(batch[t],bars)
+                        fixed=repair_daily(batch[t],bars,interval=recovery_interval)
                         if "daily_bar_source" not in fixed:
                             continue
                         source=_normalize(t,bars,datetime.now(timezone.utc))
                         ingest_observations(source,run_id=run_id,provider="YAHOO_YFINANCE",
-                                            data_type="OHLCV",timeframe="5m")
+                                            data_type="OHLCV",timeframe=recovery_interval)
                         batch[t]=fixed
-                        print(f"WAREHOUSE_DAILY_RECONSTRUCTED ticker={t} source=complete_5m_session",flush=True)
+                        damaged.remove(t)
+                        print(f"WAREHOUSE_DAILY_RECONSTRUCTED ticker={t} source=complete_{recovery_interval}_session",flush=True)
             ingested_at=datetime.now(timezone.utc)
             frames=[]
             for t in chunk:
