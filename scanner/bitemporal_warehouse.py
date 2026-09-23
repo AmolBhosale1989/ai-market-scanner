@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 from .ohlcv_quality import invalid_rows, invalid_sql
+from .market_cutoff import event_cutoff
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,7 @@ def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
     )
     SELECT * FROM ranked WHERE version_rank=1 ORDER BY ticker,event_timestamp"""
     with _connect() as conn:
-        df = pd.read_sql_query(sql, conn, params=(tickers, req.data_type, req.timeframe, as_of, as_of))
+        df = pd.read_sql_query(sql, conn, params=(tickers, req.data_type, req.timeframe, event_cutoff(req.timeframe, as_of), as_of))
     if df.empty:
         raise RuntimeError(f"WAREHOUSE_POINT_IN_TIME_EMPTY: {req.consumer}")
     return df

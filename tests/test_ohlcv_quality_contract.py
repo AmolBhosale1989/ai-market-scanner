@@ -73,7 +73,7 @@ def test_invalid_latest_version_is_refetched_and_corrected_without_losing_histor
     from scanner.warehouse_gate import coverage_frame, CoverageTier
     symbol="QUALITY_"+uuid.uuid4().hex.upper()
     rid=start_run("test","quality_contract",{})
-    original=pd.Timestamp("2026-01-01",tz="UTC")
+    original=pd.Timestamp("2026-01-05",tz="UTC")
     broken=original+pd.Timedelta(days=1)
     corrected=original+pd.Timedelta(days=2)
     frame=pd.DataFrame([dict(row(),ticker=symbol,event_timestamp=original,
