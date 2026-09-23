@@ -96,6 +96,22 @@ def test_atomic_publication_fail_closed_and_event_idempotency():
     assert control_plane.read_state(namespace, "state") == {"value": 2}
 
 
+def test_jsonb_signed_zero_round_trip_keeps_integrity_hash():
+    """JSONB normalizes -0.0; the digest must use the same canonical value."""
+    _require_database()
+    control_plane.migrate()
+    run_id = control_plane.start_run(f"integration-zero-{uuid.uuid4()}")
+    source = pd.DataFrame([
+        {"ticker": "NEGZERO", "move_30m_pct": -0.0, "score": 10.0},
+        {"ticker": "POSZERO", "move_30m_pct": 0.0, "score": 20.0},
+    ])
+    written = control_plane.write_dataset("signed_zero", source, run_id=run_id)
+    read = control_plane.read_dataset("signed_zero", run_id=run_id)
+    assert written["row_count"] == 2
+    assert read["move_30m_pct"].tolist() == [0.0, 0.0]
+    assert control_plane._hash(source.to_dict("records")) == written["content_hash"]
+
+
 def test_migrations_are_versioned_idempotent_and_fail_closed(tmp_path):
     _require_database()
     control_plane.migrate()
