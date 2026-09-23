@@ -12,6 +12,7 @@ from .control_plane import read_dataset
 from .data import download_batch
 from .warehouse import _freshness_failures
 from .ohlcv_quality import invalid_rows
+from .daily_repair import repair_daily
 
 
 def _symbols() -> list[str]:
@@ -139,6 +140,30 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
                 batch.update(download_batch(existing, period=incremental_period, interval=interval))
             if missing:
                 batch.update(download_batch(missing, period=period, interval=interval))
+            if interval == "1d":
+                # Recovery stays in ingestion. Retain the observed 5m inputs in
+                # PostgreSQL before publishing any reconstructed daily candle.
+                damaged=[t for t,f in batch.items() if not f.empty and
+                         invalid_rows(f.rename(columns={c:c.lower() for c in
+                             ("Open","High","Low","Close","Volume")})).any()]
+                for recovery_interval in ("5m","30m","60m"):
+                    if not damaged:
+                        break
+                    recovery=download_batch(damaged,period="5d",interval=recovery_interval)
+                    for t,bars in recovery.items():
+                        fixed=repair_daily(batch[t],bars,interval=recovery_interval)
+                        if "daily_bar_source" not in fixed:
+                            continue
+                        source=_normalize(t,bars,datetime.now(timezone.utc))
+                        evidence=fixed.dropna(subset=["daily_bar_source"]).iloc[-1]
+                        source=source[source.event_timestamp.between(
+                            pd.Timestamp(evidence.source_first_bar_utc),
+                            pd.Timestamp(evidence.source_last_bar_utc))]
+                        ingest_observations(source,run_id=run_id,provider="YAHOO_YFINANCE",
+                                            data_type="OHLCV",timeframe=recovery_interval)
+                        batch[t]=fixed
+                        damaged.remove(t)
+                        print(f"WAREHOUSE_DAILY_RECONSTRUCTED ticker={t} source=complete_{recovery_interval}_session",flush=True)
             ingested_at=datetime.now(timezone.utc)
             frames=[]
             for t in chunk:
@@ -180,10 +205,13 @@ def main():
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--offset", type=int, default=0)
     p.add_argument("--bootstrap", action="store_true")
+    p.add_argument("--critical-only",action="store_true",help="Preflight required benchmarks before broad ingestion")
     p.add_argument("--dataset",default="",help="Current-run PostgreSQL dataset containing symbols")
     p.add_argument("--sample",type=int,default=0,help="Deterministic representative sample before adding critical symbols")
     args = p.parse_args()
-    if args.dataset:
+    if args.critical_only:
+        tickers=list(CRITICAL_MARKET_SYMBOLS)
+    elif args.dataset:
         frame=read_dataset(args.dataset)
         col=next((c for c in ("ticker","symbol","Ticker","Symbol") if c in frame.columns),None)
         if not col:

@@ -1,0 +1,50 @@
+name: Provider price diagnostic
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/provider-diagnostic.yml'
+      - 'scanner/daily_repair.py'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Verify all critical daily repairs without database writes
+        run: |
+          python -u - <<'PY'
+          from scanner.config import CRITICAL_MARKET_SYMBOLS
+          from scanner.data import download_batch
+          from scanner.daily_repair import repair_daily
+          from scanner.ohlcv_quality import invalid_rows
+          from scanner.warehouse_refresh import _normalize
+          from scanner.warehouse import _assert_fresh
+          from datetime import datetime,timezone
+          daily=download_batch(CRITICAL_MARKET_SYMBOLS,period="5d",interval="1d",retries=0)
+          intra=download_batch(CRITICAL_MARKET_SYMBOLS,period="5d",interval="5m",retries=0)
+          failed=[]
+          for t in CRITICAL_MARKET_SYMBOLS:
+              try:
+                  f=repair_daily(daily[t],intra[t])
+                  if "daily_bar_source" not in f:
+                      coarser=download_batch([t],period="5d",interval="30m",retries=0)
+                      f=repair_daily(daily[t],coarser[t],interval="30m")
+                  if "daily_bar_source" not in f:
+                      hourly=download_batch([t],period="5d",interval="60m",retries=0)
+                      print("HOURLY_EVIDENCE",t,hourly[t].tail(8).to_string())
+                      f=repair_daily(daily[t],hourly[t],interval="60m")
+                  n=_normalize(t,f,datetime.now(timezone.utc))
+                  _assert_fresh(n,"1d",20,t)
+                  if invalid_rows(f.rename(columns={c:c.lower() for c in ("Open","High","Low","Close","Volume")})).any():
+                      raise RuntimeError("invalid daily row remains")
+                  print("CRITICAL_REPAIR_PASS",t,f.tail(1).to_string())
+              except Exception as e:
+                  failed.append(t); print("CRITICAL_REPAIR_FAIL",t,str(e))
+          assert not failed, failed
+          PY

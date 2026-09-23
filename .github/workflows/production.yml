@@ -73,6 +73,8 @@ jobs:
             stage seed_snapshot 10 python -m scanner.production_telemetry --seed --mode production
           else
             stage master_universe 10 python -m scanner.universe --refresh
+            stage critical_daily_warehouse 15 timeout 600s python -m scanner.warehouse_refresh --critical-only --period 1y --interval 1d
+            stage critical_daily_gate 16 python -m scanner.warehouse_gate --tier CRITICAL_DAILY
             stage daily_warehouse 20 timeout 4200s python -m scanner.warehouse_refresh --dataset master_universe --period 1y --interval 1d
             stage daily_gate 30 python -m scanner.warehouse_gate --tier MASTER_DAILY --tier CRITICAL_DAILY
             stage daily_prepare 40 timeout 4200s python -m scanner.main --prepare-only
