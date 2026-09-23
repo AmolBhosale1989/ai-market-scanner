@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
+import sys
 
 import pandas as pd
+import pytest
 
 from scanner import warehouse_refresh
 
@@ -39,3 +41,37 @@ def test_daily_refresh_does_not_force_current_critical_symbols(monkeypatch):
     monkeypatch.setattr(pd.Timestamp,"now",classmethod(lambda cls,tz=None: pd.Timestamp("2026-09-20T12:00:00Z")))
     watermarks={"SPY":datetime(2026,9,18,tzinfo=timezone.utc)}
     assert warehouse_refresh._refresh_candidates(watermarks,"1d",["SPY"])==set()
+
+
+@pytest.mark.parametrize("bounded", [True, False])
+def test_preflight_is_bounded_but_broad_refresh_keeps_dependencies(monkeypatch, bounded):
+    requested = []
+    downloaded = []
+    monkeypatch.setattr(warehouse_refresh, "verify_health", lambda: None)
+    monkeypatch.setattr(warehouse_refresh, "start_run",
+                        lambda **kw: requested.extend(kw["payload"]["tickers"]) or "run")
+    monkeypatch.setattr(warehouse_refresh, "finish_run", lambda *a, **kw: None)
+    monkeypatch.setattr(warehouse_refresh, "latest_event_timestamps", lambda *a, **kw: {})
+    monkeypatch.setattr(warehouse_refresh, "download_batch",
+                        lambda tickers, **kw: downloaded.extend(tickers) or {})
+    kwargs = {"include_ingestion_dependencies": False} if bounded else {}
+    result = warehouse_refresh.refresh(list(warehouse_refresh.CRITICAL_MARKET_SYMBOLS),
+                                       benchmark_backfill=False, **kwargs)
+    expected = set(warehouse_refresh.CRITICAL_MARKET_SYMBOLS)
+    if bounded:
+        assert len(expected) == 30
+    else:
+        expected.update(warehouse_refresh.INGESTION_CRITICAL_SYMBOLS)
+        assert len(expected) > 30
+    assert set(requested) == set(downloaded) == expected
+    assert result["requested_symbols"] == len(expected)
+
+
+def test_critical_only_cli_passes_exact_preflight_scope(monkeypatch):
+    def refresh(tickers, **kwargs):
+        assert tickers == list(warehouse_refresh.CRITICAL_MARKET_SYMBOLS)
+        assert kwargs["include_ingestion_dependencies"] is False
+        return {"run_id": "run", "interval": "1d", "ingested_symbols": 0, "observations": 0}
+    monkeypatch.setattr(warehouse_refresh, "refresh", refresh)
+    monkeypatch.setattr(sys, "argv", ["warehouse_refresh", "--critical-only", "--period", "1y"])
+    warehouse_refresh.main()

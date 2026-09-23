@@ -83,13 +83,16 @@ def _refresh_candidates(watermarks: dict[str, datetime], interval: str, tickers:
     return candidates
 
 
-def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootstrap: bool = False, benchmark_backfill: bool = True) -> dict:
+def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootstrap: bool = False, benchmark_backfill: bool = True, include_ingestion_dependencies: bool = True) -> dict:
     """Provider access is confined to ingestion; PostgreSQL is the only warehouse sink."""
     verify_health()
     tickers = list(dict.fromkeys(str(t).upper() for t in tickers if t))
     # V3 market-regime discovery always requires SPY even when the tradable
     # universe catalogue excludes ETFs. Keep the benchmark in PostgreSQL.
-    tickers = list(dict.fromkeys(tickers + list(INGESTION_CRITICAL_SYMBOLS)))
+    # The bounded critical preflight supplies its complete 30-symbol contract.
+    # Broad daily/live ingestion still adds every dependency by default.
+    if include_ingestion_dependencies:
+        tickers = list(dict.fromkeys(tickers + list(INGESTION_CRITICAL_SYMBOLS)))
     # V3 needs >=70 daily benchmark observations for regime/RET20. A benchmark
     # introduced after the universe bootstrap must be backfilled once, not left
     # with only the incremental 5-day window.
@@ -108,7 +111,7 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
                   AND (o.open IS NULL OR o.high IS NULL OR o.low IS NULL OR o.close IS NULL)""", (interval,))
             spy_malformed = int(cur.fetchone()[0])
         if spy_rows < min_benchmark_rows or spy_malformed > 0:
-            benchmark_run = refresh(["SPY"], period=benchmark_period, interval=interval, bootstrap=True, benchmark_backfill=False)
+            benchmark_run = refresh(["SPY"], period=benchmark_period, interval=interval, bootstrap=True, benchmark_backfill=False, include_ingestion_dependencies=False)
             print(f"WAREHOUSE_BENCHMARK_BACKFILLED rows_before={spy_rows} malformed_before={spy_malformed} inserted={benchmark_run['observations']}", flush=True)
     if not tickers:
         raise RuntimeError("WAREHOUSE_REFRESH_FAILED: no tickers requested")
@@ -226,7 +229,8 @@ def main():
         tickers = tickers[args.offset:]
     if args.limit > 0:
         tickers = tickers[:args.limit]
-    result = refresh(tickers, period=args.period, interval=args.interval, bootstrap=args.bootstrap)
+    result = refresh(tickers, period=args.period, interval=args.interval, bootstrap=args.bootstrap,
+                     include_ingestion_dependencies=not args.critical_only)
     print(
         "BITEMPORAL_WAREHOUSE_AVAILABLE "
         f"run_id={result['run_id']} interval={result['interval']} "
