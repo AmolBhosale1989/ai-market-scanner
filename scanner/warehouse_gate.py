@@ -26,6 +26,7 @@ from .config import (
     THEME_INTRADAY_MIN_COVERAGE,
 )
 from .warehouse import _freshness_failures
+from .ohlcv_quality import invalid_sql
 from .control_plane import current_run_id, read_dataset, write_dataset
 
 
@@ -58,7 +59,7 @@ def _catalogue_hash(symbols: Iterable[str]) -> str:
 
 def coverage_frame(tier: CoverageTier, as_of: datetime) -> pd.DataFrame:
     """Aggregate point-in-time quality per symbol with bounded per-instrument sorts."""
-    sql="""WITH wanted AS (
+    sql=f"""WITH wanted AS (
       SELECT DISTINCT ON (i.canonical_symbol) i.instrument_id,i.canonical_symbol AS ticker
       FROM instrument i WHERE i.canonical_symbol = ANY(%s)
       ORDER BY i.canonical_symbol,i.instrument_id
@@ -67,10 +68,7 @@ def coverage_frame(tier: CoverageTier, as_of: datetime) -> pd.DataFrame:
     FROM wanted w CROSS JOIN LATERAL (
       SELECT count(*) AS bars,max(v.event_timestamp) AS event_timestamp,
              max(v.ingested_at) AS ingested_at,
-             count(*) FILTER (WHERE v.open IS NULL OR v.high IS NULL OR v.low IS NULL OR v.close IS NULL
-               OR v.open<=0 OR v.high<=0 OR v.low<=0 OR v.close<=0 OR v.volume IS NULL OR v.volume<0
-               OR v.high<GREATEST(v.open,v.close,v.low)
-               OR v.low>LEAST(v.open,v.close,v.high)) AS invalid_bars,
+             count(*) FILTER (WHERE {invalid_sql("v")}) AS invalid_bars,
              (array_agg(v.warehouse_run_id ORDER BY v.event_timestamp DESC,v.ingested_at DESC))[1] AS warehouse_run_id
       FROM (
         SELECT DISTINCT ON (o.event_timestamp) o.event_timestamp,o.ingested_at,

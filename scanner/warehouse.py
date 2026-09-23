@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
+from .ohlcv_quality import invalid_rows
+
 import pandas as pd
 import pandas_market_calendars as mcal
 
@@ -136,15 +138,7 @@ def _quality_failures(df: pd.DataFrame, min_bars_per_symbol: int = 1) -> tuple[l
     if missing:
         raise RuntimeError(f"WAREHOUSE_QUALITY_FAILED: missing_columns={','.join(missing)}")
     x=df.copy()
-    for c in ("open","high","low","close","volume"):
-        x[c]=pd.to_numeric(x[c],errors="coerce")
-    invalid=(
-        x[["open","high","low","close"]].isna().any(axis=1)
-        | x[["open","high","low","close"]].le(0).any(axis=1)
-        | x["volume"].isna() | x["volume"].lt(0)
-        | x["high"].lt(x[["open","close","low"]].max(axis=1))
-        | x["low"].gt(x[["open","close","high"]].min(axis=1))
-    )
+    invalid=invalid_rows(x)
     invalid_symbols=x.loc[invalid,"ticker"].astype(str).drop_duplicates().tolist()
     duplicate=x.duplicated(["ticker","event_timestamp"],keep=False)
     if duplicate.any():
@@ -157,9 +151,9 @@ def _quality_failures(df: pd.DataFrame, min_bars_per_symbol: int = 1) -> tuple[l
 def _assert_quality(df: pd.DataFrame, consumer: str, min_bars_per_symbol: int = 1) -> None:
     invalid_symbols,short_symbols=_quality_failures(df,min_bars_per_symbol)
     if invalid_symbols:
-        invalid_rows=int(df["ticker"].astype(str).isin(invalid_symbols).sum())
+        bad_count=int((invalid_rows(df) | df.duplicated(["ticker","event_timestamp"],keep=False)).sum())
         raise RuntimeError(
-            f"WAREHOUSE_QUALITY_FAILED: {consumer} invalid_rows={invalid_rows} "
+            f"WAREHOUSE_QUALITY_FAILED: {consumer} invalid_rows={bad_count} "
             f"sample={','.join(invalid_symbols[:10])}"
         )
     if short_symbols:

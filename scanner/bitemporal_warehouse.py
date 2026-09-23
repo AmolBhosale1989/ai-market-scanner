@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import pandas as pd
+from .ohlcv_quality import invalid_rows, invalid_sql
 
 
 @dataclass(frozen=True)
@@ -101,10 +102,16 @@ def latest_event_timestamps(tickers: list[str], data_type: str = "OHLCV", timefr
     wanted = list(dict.fromkeys(str(x).upper() for x in tickers if x))
     if not wanted:
         return {}
-    sql = """SELECT i.canonical_symbol, max(o.event_timestamp)
-      FROM market_observation o JOIN instrument i ON i.instrument_id=o.instrument_id
-      WHERE i.canonical_symbol = ANY(%s) AND o.data_type=%s AND o.timeframe=%s
-      GROUP BY i.canonical_symbol"""
+    # Invalid current versions must trigger a full bounded per-symbol backfill.
+    sql = f"""WITH wanted AS (
+      SELECT instrument_id,canonical_symbol FROM instrument WHERE canonical_symbol = ANY(%s)
+    ) SELECT w.canonical_symbol,s.event_timestamp FROM wanted w CROSS JOIN LATERAL (
+      SELECT max(o.event_timestamp) AS event_timestamp FROM (
+        SELECT DISTINCT ON (event_timestamp) * FROM market_observation
+        WHERE instrument_id=w.instrument_id AND data_type=%s AND timeframe=%s
+        ORDER BY event_timestamp,ingested_at DESC,observation_id DESC
+      ) o HAVING count(*)>0 AND count(*) FILTER (WHERE {invalid_sql("o")})=0
+    ) s"""
     with _connect() as conn, conn.cursor() as cur:
         cur.execute(sql, (wanted, data_type, timeframe))
         return {str(symbol): ts for symbol, ts in cur.fetchall() if ts is not None}
@@ -117,21 +124,11 @@ def ingest_observations(frame: pd.DataFrame, run_id: str, provider: str, data_ty
         raise RuntimeError(f"BITEMPORAL_INGEST_SCHEMA_FAILED: {sorted(missing)}")
     if frame.empty:
         return 0
+    normalized=frame.rename(columns={c:c.lower() for c in ("Open","High","Low","Close","Volume")})
+    if not set(("open","high","low","close","volume")).issubset(normalized.columns) or invalid_rows(normalized).any():
+        raise RuntimeError("BITEMPORAL_INGEST_QUALITY_FAILED: invalid OHLCV")
     tickers = list(dict.fromkeys(frame["ticker"].astype(str).str.upper()))
     with _connect() as conn, conn.cursor() as cur:
-        # Repair malformed legacy versions for bars present in this corrected batch.
-        # These rows were written before provider MultiIndex OHLCV columns were flattened.
-        events = [pd.Timestamp(x).to_pydatetime() for x in frame["event_timestamp"].dropna().unique()]
-        if events:
-            cur.execute(
-                """DELETE FROM market_observation o USING instrument i
-                   WHERE o.instrument_id=i.instrument_id
-                     AND i.canonical_symbol = ANY(%s)
-                     AND o.data_type=%s AND o.timeframe=%s
-                     AND o.event_timestamp = ANY(%s)
-                     AND (o.open IS NULL OR o.high IS NULL OR o.low IS NULL OR o.close IS NULL)""",
-                (tickers, data_type, timeframe, events),
-            )
         cur.executemany("""INSERT INTO instrument(canonical_symbol)
             SELECT %s WHERE NOT EXISTS (
               SELECT 1 FROM instrument WHERE canonical_symbol=%s
@@ -157,8 +154,9 @@ def ingest_observations(frame: pd.DataFrame, run_id: str, provider: str, data_ty
            provider,open,high,low,close,volume,payload)
           SELECT %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
           WHERE NOT EXISTS (
-            SELECT 1 FROM market_observation o WHERE o.instrument_id=%s AND o.data_type=%s
-              AND o.timeframe=%s AND o.event_timestamp=%s AND o.provider=%s
+            SELECT 1 FROM (SELECT * FROM market_observation WHERE instrument_id=%s AND data_type=%s
+              AND timeframe=%s AND event_timestamp=%s ORDER BY ingested_at DESC,observation_id DESC LIMIT 1) o
+              WHERE o.provider=%s
               AND o.open IS NOT DISTINCT FROM %s AND o.high IS NOT DISTINCT FROM %s
               AND o.low IS NOT DISTINCT FROM %s AND o.close IS NOT DISTINCT FROM %s
               AND o.volume IS NOT DISTINCT FROM %s
