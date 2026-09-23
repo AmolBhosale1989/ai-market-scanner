@@ -39,6 +39,11 @@ def _clean(value):
         return value.isoformat()
     if isinstance(value, np.generic):
         return _clean(value.item())
+    # PostgreSQL JSONB stores -0.0 as the mathematically equivalent 0.0.
+    # Canonicalize signed zero before hashing so the integrity digest is stable
+    # across the database round trip.  All other finite values remain exact.
+    if isinstance(value, float) and value == 0.0:
+        return 0.0
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return None
     try:
