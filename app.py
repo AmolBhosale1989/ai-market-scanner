@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from scanner.control_plane import publication_info, read_dataset
+from scanner.dashboard_freshness import publication_expiry_reason
 
 st.set_page_config(page_title="Market Hunt V3", page_icon="⚡", layout="wide", initial_sidebar_state="collapsed")
 
@@ -357,8 +358,9 @@ st.markdown("""<div class="hero"><div class="hero-grid"><div>
 health, monitor = data["health"], data["monitor"]
 scan_stamp = str(production_manifest.get("published_at_utc", "Waiting for first publication"))
 live_stamp = scan_stamp
-production_validated = production_manifest.get("status") == "PUBLISHED"
-source_state = "VALIDATED" if production_validated else "BLOCKED"
+publication_warning = publication_expiry_reason(production_manifest)
+production_validated = not publication_warning
+source_state = "PUBLISHED" if production_validated else "BLOCKED / STALE"
 st.markdown(
     f'<div class="status-row">'
     f'<span class="status"><span class="dot"></span><strong>{source_state}</strong></span>'
@@ -368,7 +370,8 @@ st.markdown(
 )
 st.caption(f"Base scan · {scan_stamp} UTC   |   Live monitor · {live_stamp} UTC")
 if not production_validated:
-    st.error("Production publication is blocked: the complete PostgreSQL → V3 → confirmation → order-flow → risk → publication validation manifest is missing or failed.")
+    st.error(f"SIGNALS BLOCKED — {publication_warning} Previous results must not be treated as current signals.")
+    st.stop()
 else:
     st.caption(
         f"Validated production run {production_manifest.get('production_run_id','')} · "
