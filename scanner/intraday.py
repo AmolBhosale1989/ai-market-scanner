@@ -230,6 +230,15 @@ def _send_telegram(messages):
     except Exception:
         return False
 
+def _write_state_transitions(transitions):
+    prior = read_state("v3", "state_transitions", default=[])
+    frame = pd.DataFrame([*prior, *transitions])
+    if transitions:
+        append_state("v3", "state_transitions", frame.to_dict("records"))
+    # Every successful cycle owns a version, including a valid no-change cycle.
+    write_dataset("state_transitions", frame)
+
+
 def run(input_file=None, input_frame=None, limit=LIVE_ENRICH_LIMIT):
     if input_file:
         raise RuntimeError("INTRADAY_PERSISTED_INPUT_REJECTED: file inputs are disabled")
@@ -246,9 +255,11 @@ def run(input_file=None, input_frame=None, limit=LIVE_ENRICH_LIMIT):
         print("No active candidates to monitor.")
         now=datetime.now(NY).isoformat(timespec="seconds")
         empty=pd.DataFrame()
+        _write_state_transitions([])
         write_dataset("intraday_live",empty)
-        build_performance_reports()
-        build_empirical_calibration()
+        journal=_update_paper_journal(empty,now)
+        build_performance_reports(journal)
+        build_empirical_calibration(journal)
         _write_monitor_health(empty,now,0,bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip()),False)
         _write_recommendations(empty)
         build_product_feed()
@@ -309,13 +320,7 @@ def run(input_file=None, input_frame=None, limit=LIVE_ENRICH_LIMIT):
 
     append_state("v3","market_hunt_state",state_out)
 
-    if transitions:
-        tdf=pd.DataFrame(transitions)
-        prior_transitions=read_state("v3","state_transitions",default=[])
-        if prior_transitions:
-            tdf=pd.concat([pd.DataFrame(prior_transitions),tdf],ignore_index=True)
-        append_state("v3","state_transitions",tdf.to_dict("records"))
-        write_dataset("state_transitions",tdf)
+    _write_state_transitions(transitions)
 
     write_dataset("intraday_live",live)
     recommendations=_write_recommendations(live)
