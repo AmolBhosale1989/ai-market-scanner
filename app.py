@@ -99,7 +99,11 @@ PUBLICATION_MODE=os.getenv("PUBLICATION_MODE","production").strip() or "producti
 try:
     production_manifest=publication_info(PUBLICATION_MODE)
     production_manifest_source="postgresql"
-except Exception:
+except Exception as exc:
+    print(
+        f"DASHBOARD_PUBLICATION_BLOCKED: {type(exc).__name__}: {exc}",
+        flush=True,
+    )
     production_manifest={}
     production_manifest_source="blocked"
 PUBLICATION_RUN_ID=str(production_manifest.get("production_run_id","")).strip()
