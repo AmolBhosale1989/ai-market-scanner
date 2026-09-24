@@ -59,7 +59,8 @@ def test_market_open_lane_is_bounded_and_preserves_final_gates():
 def _execute_live_workflow(fail_at=""):
     workflow=Path(".github/workflows/production.yml").read_text()
     body=textwrap.dedent(workflow.split("      - name: Execute complete dependency chain",1)[1]
-                         .split("        run: |\n",1)[1])
+                         .split("        run: |\n",1)[1]
+                         .split("\n      - name:",1)[0])
     shim='''
 PIPELINE_MODE=live
 python() {
