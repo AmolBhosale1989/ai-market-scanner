@@ -81,7 +81,8 @@ def test_validation_precedes_confirmation(monkeypatch):
 def test_full_workflow_stops_before_consumers_on_intraday_failure(fail_at):
     workflow=Path(".github/workflows/production.yml").read_text()
     body=textwrap.dedent(workflow.split("      - name: Execute complete dependency chain",1)[1]
-                         .split("        run: |\n",1)[1])
+                         .split("        run: |\n",1)[1]
+                         .split("\n      - name:",1)[0])
     shim='''
 PIPELINE_MODE=full
 python() {
