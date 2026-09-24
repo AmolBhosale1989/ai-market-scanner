@@ -19,6 +19,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   publish:
@@ -158,3 +159,12 @@ jobs:
           stage acceptance 290 python -m scanner.production_acceptance
           CURRENT_STAGE=publication
           python -m scanner.production_telemetry --finalize --mode production
+      - name: Evaluate live-session continuation
+        id: live_continuation
+        if: ${{ success() && env.PIPELINE_MODE == 'live' }}
+        run: python -m scanner.workflow_continuation >> "$GITHUB_OUTPUT"
+      - name: Queue next live refresh
+        if: ${{ steps.live_continuation.outputs.dispatch == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run production.yml --ref main -f mode=live
