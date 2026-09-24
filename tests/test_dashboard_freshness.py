@@ -37,4 +37,4 @@ def test_missing_publication_is_blocked():
 def test_dashboard_stops_before_rendering_signals_when_expired():
     from pathlib import Path
     source = (Path(__file__).resolve().parents[1] / "app.py").read_text()
-    assert source.index("publication_expiry_reason(production_manifest)") < source.index("st.stop()") < source.index("st.tabs(")
+    assert source.index("publication_expiry_reason(production_manifest)") < source.index("st.stop()", source.index("publication_expiry_reason(production_manifest)")) < source.index("st.tabs(")
