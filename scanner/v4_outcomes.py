@@ -18,8 +18,13 @@ def resolve_daily():
     ledger = build_ledger()
     records = ledger.load_records()
     tickers = sorted({str(record.get("ticker", "")) for record in records.values()
-                      if record.get("entered_at_utc")})
-    histories = warehouse_frames(tickers, period="3mo", interval="1d", require_complete=False)
+                      if record.get("entered_at_utc") and str(record.get("ticker", "")).strip()})
+    # No market-data requirement exists until a signal has actually entered.
+    # Still run the ledger export so an empty-but-valid outcomes dataset and
+    # summary are published.  Entered signals retain the existing fail-closed
+    # warehouse read below.
+    histories = (warehouse_frames(tickers, period="3mo", interval="1d", require_complete=False)
+                 if tickers else {})
     frame = ledger.resolve_daily_histories(histories)
     print(f"V4.2 daily outcomes resolved: signals={len(frame)}, tickers={len(tickers)}")
     return frame
