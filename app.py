@@ -1370,11 +1370,10 @@ with system:
     status_rows=pd.DataFrame([{"dataset":key,"rows":len(data[key]),"source":sources[key]} for key in files])
     st.dataframe(status_rows,hide_index=True,use_container_width=True)
     st.subheader("V8.1 operational health")
-    o1,o2,o3,o4=st.columns(4)
+    o1,o2,o3=st.columns(3)
     o1.metric("Operational state", str(v81_health.get("status", "COLLECTING")))
-    o2.metric("Remote files", int(number(dashboard_fetch_health.get("remote_files_loaded"))))
-    o3.metric("Remote failures", int(number(dashboard_fetch_health.get("remote_files_failed"))))
-    o4.metric("Load time", f'{number(dashboard_fetch_health.get("elapsed_seconds")):.2f}s')
+    o2.metric("Published datasets loaded", sum(source == "postgresql" for source in sources.values()))
+    o3.metric("Dataset read failures", sum(source == "blocked" for source in sources.values()))
     if v81_health.get("failed_checks"):
         st.error("Operational failures: " + ", ".join(map(str, v81_health["failed_checks"])))
     elif v81_health.get("collecting_checks"):
