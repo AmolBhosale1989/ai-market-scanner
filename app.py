@@ -6,8 +6,10 @@ import streamlit as st
 
 from scanner.control_plane import publication_info, read_dataset
 from scanner.dashboard_freshness import publication_expiry_reason
+from scanner.dashboard_refresh import install_auto_refresh
 
 st.set_page_config(page_title="Market Hunt V3", page_icon="⚡", layout="wide", initial_sidebar_state="collapsed")
+install_auto_refresh(st)
 
 st.markdown("""<style>
 :root{
