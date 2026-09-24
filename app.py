@@ -6,11 +6,14 @@ import streamlit as st
 
 from scanner.control_plane import publication_info, read_dataset
 from scanner.dashboard_freshness import publication_expiry_reason
+from scanner.dashboard_data import read_dashboard_datasets
 from scanner.dashboard_refresh import install_auto_refresh
 from scanner.dashboard_signal_card import signal_card_detail
 
 st.set_page_config(page_title="Market Hunt V3", page_icon="⚡", layout="wide", initial_sidebar_state="collapsed")
 install_auto_refresh(st)
+loading_message = st.empty()
+loading_message.info("Loading verified market data…")
 
 st.markdown("""<style>
 :root{
@@ -112,12 +115,7 @@ except Exception as exc:
 PUBLICATION_RUN_ID=str(production_manifest.get("production_run_id","")).strip()
 
 def load_dataset(name):
-    if not PUBLICATION_RUN_ID:
-        return pd.DataFrame(), "blocked"
-    try:
-        return read_dataset(name,run_id=PUBLICATION_RUN_ID), "postgresql"
-    except Exception:
-        return pd.DataFrame(), "blocked"
+    return dashboard_data.get(name, (pd.DataFrame(), "blocked"))
 
 def load_object(name):
     frame,source=load_dataset(name)
@@ -334,6 +332,20 @@ files = {
     "v4_monitor_shortlist":"v4_monitor_shortlist", "v4_live_snapshot":"v4_live_snapshot", "v4_worker_cycles":"v4_worker_cycles", "v4_options_microstructure":"v4_options_microstructure",
     "quant_shadow_signals":"quant_shadow_signals", "quant_shadow_ledger":"quant_shadow_ledger", "quant_shadow_performance":"quant_shadow_performance",
 }
+
+dashboard_data = {}
+try:
+    if PUBLICATION_RUN_ID:
+        dashboard_data = read_dashboard_datasets(
+            [*files.values(), *['v4_6_cutover_evaluation', 'v4_5_model', 'v5_model', 'v6_model', 'v7_allocation_health', 'v7_1_evidence_health', 'v7_2_criteria_proposal', 'v7_3_challenger_health', 'social_engine_health', 'v8_1_operational_health', 'v8_2_evidence_scorecard', 'v9_readiness', 'v9_1_pilot_health', 'quant_shadow_health']],
+            run_id=PUBLICATION_RUN_ID,
+        )
+except Exception as exc:
+    loading_message.empty()
+    st.error("Dashboard data could not be verified. Signals are blocked; retry shortly.")
+    print(f"DASHBOARD_READ_BLOCKED: {type(exc).__name__}: {exc}", flush=True)
+    st.stop()
+loading_message.empty()
 
 data, sources = {}, {}
 for key, dataset_name in files.items():
