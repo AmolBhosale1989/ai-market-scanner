@@ -5,7 +5,7 @@ import time
 import pandas as pd
 
 from .config import THEME_PROFILE_LIMIT, THEME_BONUS_MAX
-from .warehouse import history as download_history
+from .warehouse import frames as warehouse_frames
 from .control_plane import write_dataset
 from .indicators import add_indicators
 
@@ -46,7 +46,11 @@ def _ret(d: pd.DataFrame, n: int):
 
 def rank_themes():
     rows=[]
-    spy=download_history("SPY","6mo","1d")
+    # One point-in-time read; every selected symbol still passes the warehouse
+    # coverage, OHLCV quality and daily freshness checks before ranking.
+    tickers=list(dict.fromkeys(["SPY"]+[meta["etf"] for meta in THEMES.values()]))
+    histories=warehouse_frames(tickers,period="6mo",interval="1d",max_age_minutes=20,require_complete=True)
+    spy=histories["SPY"]
     spy_d=add_indicators(spy) if len(spy)>=70 else pd.DataFrame()
     spy5=_ret(spy_d,5) if not spy_d.empty else 0.0
     spy20=_ret(spy_d,20) if not spy_d.empty else 0.0
@@ -55,7 +59,7 @@ def rank_themes():
     for theme,meta in THEMES.items():
         etf=meta["etf"]
         try:
-            raw=download_history(etf,"6mo","1d")
+            raw=histories[etf]
             if len(raw)<70:
                 continue
             d=add_indicators(raw)
