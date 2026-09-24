@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal
+from .warehouse import frames as warehouse_frames
 from .warehouse import history as warehouse_history
 
 from .order_flow import bar_order_flow_proxy
@@ -201,12 +202,16 @@ def _quote_spread(ticker: str, reference_price: float = math.nan):
 def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, catalyst_score: float,
                            rr_to_8pct: float, runway_pct: float, negative_catalyst_risk: bool,
                            entry_condition: str = "BREAKOUT", technical_score: float = 0.0,
-                           formation_score: float = 0.0, avg_dollar_volume: float = 0.0):
+                           formation_score: float = 0.0, avg_dollar_volume: float = 0.0,
+                           history_frame: pd.DataFrame | None = None):
     result=_empty_live(); now_et=datetime.now(NY); state=_market_state(now_et)
-    try:
-        raw=warehouse_history(ticker, LIVE_PERIOD, LIVE_INTERVAL, max_age_minutes=10)
-    except Exception as exc:
-        raise RuntimeError(f"LIVE_WAREHOUSE_UNAVAILABLE: {ticker}") from exc
+    if history_frame is None:
+        try:
+            raw=warehouse_history(ticker, LIVE_PERIOD, LIVE_INTERVAL, max_age_minutes=10)
+        except Exception as exc:
+            raise RuntimeError(f"LIVE_WAREHOUSE_UNAVAILABLE: {ticker}") from exc
+    else:
+        raw=history_frame
     d=_normalize_intraday(raw)
     if d.empty:
         result["live_status"]="NO INTRADAY DATA"; return result
@@ -261,7 +266,16 @@ def enrich_live_candidates(df: pd.DataFrame, limit: int = LIVE_ENRICH_LIMIT):
     out=df.copy(); defaults=_empty_live()
     for col,value in defaults.items(): out[col]=value
     eligible=select_live_candidates(df,limit)
+    tickers=eligible["ticker"].astype(str).str.upper().tolist()
+    histories=warehouse_frames(
+        tickers,
+        period=LIVE_PERIOD,
+        interval=LIVE_INTERVAL,
+        max_age_minutes=10,
+        require_complete=True,
+    ) if tickers else {}
     for idx,row in eligible.iterrows():
-        live=analyze_live_candidate(ticker=str(row["ticker"]),entry_trigger=float(row.get("entry_trigger",math.nan)),stage=str(row.get("stage","")),catalyst_score=float(pd.to_numeric(pd.Series([row.get("catalyst_score",0)]),errors="coerce").fillna(0).iloc[0]),rr_to_8pct=float(pd.to_numeric(pd.Series([row.get("effective_rr",row.get("rr_to_8pct",math.nan))]),errors="coerce").iloc[0]),runway_pct=float(pd.to_numeric(pd.Series([row.get("runway_to_next_resistance_pct",math.nan)]),errors="coerce").iloc[0]),negative_catalyst_risk=bool(row.get("negative_catalyst_risk",False)),entry_condition=str(row.get("entry_condition","BREAKOUT")),technical_score=float(pd.to_numeric(pd.Series([row.get("technical_score",0)]),errors="coerce").fillna(0).iloc[0]),formation_score=float(pd.to_numeric(pd.Series([row.get("formation_score",0)]),errors="coerce").fillna(0).iloc[0]),avg_dollar_volume=float(pd.to_numeric(pd.Series([row.get("avg_dollar_volume",0)]),errors="coerce").fillna(0).iloc[0]))
+        ticker=str(row["ticker"]).upper()
+        live=analyze_live_candidate(ticker=ticker,entry_trigger=float(row.get("entry_trigger",math.nan)),stage=str(row.get("stage","")),catalyst_score=float(pd.to_numeric(pd.Series([row.get("catalyst_score",0)]),errors="coerce").fillna(0).iloc[0]),rr_to_8pct=float(pd.to_numeric(pd.Series([row.get("effective_rr",row.get("rr_to_8pct",math.nan))]),errors="coerce").iloc[0]),runway_pct=float(pd.to_numeric(pd.Series([row.get("runway_to_next_resistance_pct",math.nan)]),errors="coerce").iloc[0]),negative_catalyst_risk=bool(row.get("negative_catalyst_risk",False)),entry_condition=str(row.get("entry_condition","BREAKOUT")),technical_score=float(pd.to_numeric(pd.Series([row.get("technical_score",0)]),errors="coerce").fillna(0).iloc[0]),formation_score=float(pd.to_numeric(pd.Series([row.get("formation_score",0)]),errors="coerce").fillna(0).iloc[0]),avg_dollar_volume=float(pd.to_numeric(pd.Series([row.get("avg_dollar_volume",0)]),errors="coerce").fillna(0).iloc[0]),history_frame=histories[ticker])
         for k,v in live.items(): out.at[idx,k]=v
     return out

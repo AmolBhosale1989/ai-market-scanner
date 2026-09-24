@@ -33,6 +33,7 @@ def test_order_flow_validation_uses_warehouse(monkeypatch,tmp_path):
 
 def test_live_enrichment_accepts_preconfirmation_v3_score(monkeypatch):
     import scanner.live as module
+    monkeypatch.setattr(module,"warehouse_frames",lambda tickers,**kwargs: {ticker:pd.DataFrame() for ticker in tickers})
     monkeypatch.setattr(module,"analyze_live_candidate",lambda **kwargs: {"live_status":"MARKET CLOSED"})
     frame=pd.DataFrame([{"ticker":"TEST","stage":"ARMED","final_score":81.0}])
     result=module.enrich_live_candidates(frame,limit=1)
