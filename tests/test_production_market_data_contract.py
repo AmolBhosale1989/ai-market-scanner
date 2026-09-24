@@ -63,7 +63,9 @@ def test_live_core_exposes_postgres_to_every_production_stage():
 
 def test_live_core_triggers_when_warehouse_contract_changes():
     workflow=Path(".github/workflows/production.yml").read_text()
-    assert 'cron: "*/15 13-22 * * 1-5"' in workflow
+    assert 'cron: "7,22,37,52 13-22 * * 1-5"' in workflow
+    assert 'cron: "37 12 * * 1-5"' in workflow
+    assert 'elif [[ "${{ github.event.schedule }}" == "37 12 * * 1-5" ]]' in workflow
     assert "workflow_dispatch:" in workflow
 
 
