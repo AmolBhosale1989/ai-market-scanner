@@ -19,6 +19,7 @@ def candidates():
 
 def test_planned_candidates_match_live_consumers(monkeypatch):
     consumed=[]
+    monkeypatch.setattr(live,"warehouse_frames",lambda tickers,**kwargs: {ticker:pd.DataFrame() for ticker in tickers})
     monkeypatch.setattr(live,"analyze_live_candidate",
                         lambda **kwargs: consumed.append(kwargs["ticker"]) or {})
     selected=live.select_live_candidates(candidates(),limit=1)
