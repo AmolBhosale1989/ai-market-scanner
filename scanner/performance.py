@@ -46,7 +46,14 @@ def build_performance_reports(journal: pd.DataFrame | None=None):
 
     gross_win=float(wins.sum()) if len(wins) else 0.0
     gross_loss=abs(float(losses.sum())) if len(losses) else 0.0
-    profit_factor=(gross_win/gross_loss) if gross_loss>0 else (math.inf if gross_win>0 else math.nan)
+    # Profit factor is mathematically unbounded when the sample has gains but
+    # no losses.  Do not emit IEEE Infinity: JSONB rejects it, and replacing it
+    # with an arbitrary large number would misstate the evidence.  The explicit
+    # marker is JSON-safe and makes the downstream readiness gate fail closed
+    # until a finite profit factor can be measured.
+    profit_factor=(gross_win/gross_loss) if gross_loss>0 else (
+        "NO_LOSSES" if gross_win>0 else math.nan
+    )
 
     row={
         "candidate_signals":len(j),
@@ -68,7 +75,7 @@ def build_performance_reports(journal: pd.DataFrame | None=None):
         "median_return_pct":round(float(ret.median()),2) if ret.notna().any() else math.nan,
         "avg_r_multiple":round(float(r.mean()),2) if r.notna().any() else math.nan,
         "median_r_multiple":round(float(r.median()),2) if r.notna().any() else math.nan,
-        "profit_factor_r":round(float(profit_factor),2) if math.isfinite(profit_factor) else profit_factor,
+        "profit_factor_r":round(float(profit_factor),2) if isinstance(profit_factor, float) and math.isfinite(profit_factor) else profit_factor,
         "expectancy_r":round(float(r.mean()),2) if r.notna().any() else math.nan,
     }
     summary=pd.DataFrame([row])
