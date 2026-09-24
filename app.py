@@ -7,6 +7,7 @@ import streamlit as st
 from scanner.control_plane import publication_info, read_dataset
 from scanner.dashboard_freshness import publication_expiry_reason
 from scanner.dashboard_refresh import install_auto_refresh
+from scanner.dashboard_signal_card import signal_card_detail
 
 st.set_page_config(page_title="Market Hunt V3", page_icon="⚡", layout="wide", initial_sidebar_state="collapsed")
 install_auto_refresh(st)
@@ -459,10 +460,10 @@ with overview:
         for _, row in recommendations_live.head(5).iterrows():
             ticker = str(row.get("ticker","—")); stage = str(row.get("display_state", row.get("stage","WATCH")))
             decision = str(row.get("final_decision", row.get("decision","RESEARCH")))
-            score = number(row.get("market_hunt_score")); rr = number(row.get("effective_rr"))
+            detail = signal_card_detail(row)
             tone = "good" if "BUY" in decision or stage == "CONFIRMED" else "warn"
             st.markdown(f'<div class="signal"><b>{ticker}</b> · <span class="{tone}">{stage}</span>'
-                        f'<br><span class="muted">{decision} · score {score:.1f} · R/R {rr:.2f}×</span></div>', unsafe_allow_html=True)
+                        f'<br><span class="muted">{detail}</span></div>', unsafe_allow_html=True)
     else:
         st.info("No stock currently passes every recommendation gate. Preliminary setups remain in the research watchlist.")
     if not momentum_signals.empty:
