@@ -6,6 +6,7 @@ import streamlit as st
 
 from scanner.control_plane import publication_info, read_dataset
 from scanner.dashboard_freshness import publication_expiry_reason
+from scanner.signal_freshness import signal_expiry_reason
 from scanner.dashboard_data import read_dashboard_datasets
 from scanner.dashboard_refresh import install_auto_refresh
 from scanner.dashboard_signal_card import signal_card_detail
@@ -377,7 +378,7 @@ st.markdown("""<div class="hero"><div class="hero-grid"><div>
 health, monitor = data["health"], data["monitor"]
 publication_stamp = str(production_manifest.get("published_at_utc", "Waiting for first publication"))
 warehouse_stamp = str(production_manifest.get("warehouse_as_of_utc", "Unavailable"))
-publication_warning = publication_expiry_reason(production_manifest)
+publication_warning = publication_expiry_reason(production_manifest) or signal_expiry_reason(data)
 production_validated = not publication_warning
 source_state = "PUBLISHED" if production_validated else "BLOCKED / STALE"
 st.markdown(

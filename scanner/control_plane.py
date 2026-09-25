@@ -476,12 +476,15 @@ def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = No
                    WHERE pipeline_run_id=%s""",
                 (as_of_row[0], rid),
             )
+        signal_records = {}
         for name, (version_id, expected_hash, expected_rows) in versions.items():
             cur.execute(
                 "SELECT payload FROM dataset_row WHERE dataset_version_id=%s ORDER BY row_ordinal",
                 (version_id,),
             )
             records = [record[0] for record in cur.fetchall()]
+            if name in {"momentum_signals", "rotation_leaders", "sector_rotation"}:
+                signal_records[name] = records
             if len(records) != int(expected_rows) or _hash(records) != expected_hash:
                 raise RuntimeError(f"CONTROL_PLANE_PUBLICATION_BLOCKED: corrupt={name}")
         manifest = [{"name": name, "version": versions[name][0], "hash": versions[name][1],
@@ -499,8 +502,14 @@ def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = No
                (publication_snapshot_id,dataset_name,dataset_version_id) VALUES (%s,%s,%s)""",
             [(snapshot_id, name, versions[name][0]) for name in required],
         )
+        if mode == "production":
+            from .signal_freshness import signal_expiry_reason
+            cur.execute("SELECT clock_timestamp()")
+            reason = signal_expiry_reason(signal_records, now_utc=cur.fetchone()[0])
+            if reason:
+                raise RuntimeError("PUBLICATION_SIGNAL_FRESHNESS_BLOCKED: " + reason)
         cur.execute(
-            """UPDATE publication_snapshot SET status='PUBLISHED',published_at=now()
+            """UPDATE publication_snapshot SET status='PUBLISHED',published_at=clock_timestamp()
                WHERE publication_snapshot_id=%s""", (snapshot_id,)
         )
         cur.execute(
