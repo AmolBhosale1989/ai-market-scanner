@@ -131,7 +131,7 @@ def test_theme_live_uses_sparse_theme_freshness_contract(monkeypatch):
     module._load_theme_history(["SPY","FINX"])
     requirement=captured["requirement"]
     assert requirement.tickers==("SPY","FINX")
-    assert requirement.max_age_minutes==module.THEME_INTRADAY_MAX_AGE_MINUTES==20
+    assert requirement.max_age_minutes==module.THEME_INTRADAY_MAX_AGE_MINUTES==10
     assert requirement.minimum_fresh_coverage==module.THEME_INTRADAY_MIN_COVERAGE==0.90
     assert requirement.required_fresh_tickers==("SPY",)
 

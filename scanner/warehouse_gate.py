@@ -14,6 +14,7 @@ import pandas as pd
 from .bitemporal_warehouse import _connect, verify_health
 from .config import (
     CORE_INTRADAY_MARKET_SYMBOLS,
+    ROTATION_REQUIRED_SYMBOLS,
     CRITICAL_DAILY_MIN_COVERAGE,
     CRITICAL_INTRADAY_MIN_COVERAGE,
     CRITICAL_MARKET_SYMBOLS,
@@ -132,7 +133,7 @@ def build_tiers(master: Iterable[str], live: Iterable[str]) -> tuple[CoverageTie
     return (
         CoverageTier("MASTER_DAILY",master_symbols,"1d",MASTER_DAILY_MIN_COVERAGE,40,20),
         CoverageTier("CRITICAL_DAILY",tuple(CRITICAL_MARKET_SYMBOLS),"1d",CRITICAL_DAILY_MIN_COVERAGE,220,20),
-        CoverageTier("CRITICAL_INTRADAY",tuple(CORE_INTRADAY_MARKET_SYMBOLS),"5m",CRITICAL_INTRADAY_MIN_COVERAGE,120,10),
+        CoverageTier("CRITICAL_INTRADAY",tuple(dict.fromkeys(CORE_INTRADAY_MARKET_SYMBOLS + ROTATION_REQUIRED_SYMBOLS)),"5m",CRITICAL_INTRADAY_MIN_COVERAGE,120,10),
         CoverageTier(
             "THEME_INTRADAY",tuple(THEME_INTRADAY_MARKET_SYMBOLS),"5m",
             THEME_INTRADAY_MIN_COVERAGE,120,THEME_INTRADAY_MAX_AGE_MINUTES,
