@@ -118,7 +118,15 @@ def _freshness_failures(
         newest_dates=newest_by_symbol.dt.date
     else:
         newest_dates=newest_by_symbol.dt.tz_convert("America/New_York").dt.date
-    stale=newest_dates[newest_dates < latest_session]
+    stale_mask = newest_dates < latest_session
+    if interval != "1d":
+        # A morning bar from the same date is not a closing-session snapshot.
+        # Preserve each consumer's SLA, measured at the exchange close rather
+        # than letting the clock accumulate overnight/weekend minutes.
+        session_close = pd.Timestamp(completed.iloc[-1]["market_close"])
+        bar_end = newest_by_symbol + pd.Timedelta(interval)
+        stale_mask = stale_mask | ((session_close - bar_end).dt.total_seconds() > max_age_minutes * 60) | (newest_by_symbol > now)
+    stale = newest_dates[stale_mask]
     return stale.index.astype(str).tolist(), ingested, f"expected={latest_session}"
 
 

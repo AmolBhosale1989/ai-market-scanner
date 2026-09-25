@@ -193,3 +193,13 @@ def test_coverage_query_bounds_version_selection_per_instrument(monkeypatch):
     assert "CROSS JOIN LATERAL" in captured["sql"]
     assert "row_number()" not in captured["sql"]
     assert captured["params"][0]==["A","B"]
+
+
+def test_closed_market_does_not_accept_morning_bar_as_close():
+    from scanner.warehouse import _freshness_failures
+    frame=pd.DataFrame([
+        {"ticker":"MORNING","event_timestamp":"2026-09-24T14:00:00Z","ingested_at":"2026-09-24T21:00:00Z"},
+        {"ticker":"CLOSE","event_timestamp":"2026-09-24T19:55:00Z","ingested_at":"2026-09-24T21:00:00Z"},
+    ])
+    stale,_,_=_freshness_failures(frame,"5m",10,"test",now_utc=pd.Timestamp("2026-09-25T02:00:00Z"))
+    assert stale==["MORNING"]

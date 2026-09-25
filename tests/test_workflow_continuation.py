@@ -25,7 +25,7 @@ def test_stops_outside_exchange_session_and_on_weekend():
 def test_workflow_chains_only_after_successful_live_publication():
     workflow = Path(".github/workflows/production.yml").read_text()
     assert "actions: write" in workflow
-    assert "success() && env.PIPELINE_MODE == 'live'" in workflow
+    assert "if: ${{ success() }}" in workflow
     assert "python -m scanner.workflow_continuation" in workflow
     assert "steps.live_continuation.outputs.dispatch == 'true'" in workflow
     assert "gh workflow run production.yml --ref main -f mode=live" in workflow

@@ -60,3 +60,10 @@ def test_semantic_health_accepts_no_trade_when_all_inputs_were_evaluated(monkeyp
     _put(memory_control_plane, "order_flow_strategy_health", {"updated_at_et": timestamp, "session_date": "2026-09-18", "expected_inputs": 33, "evaluated": 33})
     health = system_health.run().set_index("module")
     assert set(health.loc[["Themes", "Sector Rotation", "Momentum", "Order Flow"], "status"]) == {"OK"}
+
+
+def test_missing_production_data_is_not_healthy_outside_market_hours(monkeypatch, memory_control_plane):
+    _freeze(monkeypatch)
+    system_health.run()
+    summary=memory_control_plane["datasets"][(memory_control_plane["run_id"],"live_system_health_summary")]
+    assert summary.iloc[0]["overall_status"]=="DEGRADED"
