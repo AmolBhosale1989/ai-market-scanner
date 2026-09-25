@@ -34,7 +34,7 @@ def test_intraday_refresh_always_refetches_critical_market_symbols(monkeypatch):
     }
     candidates=warehouse_refresh._refresh_candidates(watermarks,"5m",list(watermarks))
     assert {"SPY","FINX"}.issubset(candidates)
-    assert "AAPL" not in candidates
+    assert "AAPL" in candidates
 
 
 def test_daily_refresh_does_not_force_current_critical_symbols(monkeypatch):
@@ -75,3 +75,28 @@ def test_critical_only_cli_passes_exact_preflight_scope(monkeypatch):
     monkeypatch.setattr(warehouse_refresh, "refresh", refresh)
     monkeypatch.setattr(sys, "argv", ["warehouse_refresh", "--critical-only", "--period", "1y"])
     warehouse_refresh.main()
+
+
+def test_only_completed_provider_candles_are_stored(monkeypatch):
+    frame=pd.DataFrame({"event_timestamp":pd.to_datetime([
+        "2026-09-24T18:20:00Z", "2026-09-24T18:25:00Z"])})
+    kept=warehouse_refresh._completed_observations(frame,"5m",pd.Timestamp("2026-09-24T18:27:00Z"))
+    assert len(kept)==1
+    monkeypatch.setattr(warehouse_refresh,"completed_daily_session",lambda:pd.Timestamp("2026-09-23").date())
+    daily=pd.DataFrame({"event_timestamp":pd.to_datetime(["2026-09-23T04:00:00Z","2026-09-24T04:00:00Z"])})
+    assert len(warehouse_refresh._completed_observations(daily,"1d",pd.Timestamp("2026-09-24T18:27:00Z")))==1
+
+
+def test_incremental_refresh_revisits_latest_bar(monkeypatch):
+    event=pd.Timestamp("2026-09-23T18:20:00Z")
+    frame=pd.DataFrame({"Open":[100.],"High":[102.],"Low":[99.],"Close":[101.],"Volume":[500.]},index=pd.DatetimeIndex([event]))
+    captured=[]
+    monkeypatch.setattr(warehouse_refresh,"verify_health",lambda:None)
+    monkeypatch.setattr(warehouse_refresh,"start_run",lambda **kw:"run")
+    monkeypatch.setattr(warehouse_refresh,"finish_run",lambda *a,**kw:None)
+    monkeypatch.setattr(warehouse_refresh,"latest_event_timestamps",lambda *a,**kw:{"AAPL":event})
+    monkeypatch.setattr(warehouse_refresh,"download_batch",lambda *a,**kw:{"AAPL":frame})
+    monkeypatch.setattr(warehouse_refresh,"ingest_observations",lambda f,**kw:captured.append(f) or len(f))
+    warehouse_refresh.refresh(["AAPL"],interval="5m",benchmark_backfill=False,include_ingestion_dependencies=False)
+    assert len(captured)==1
+    assert captured[0].event_timestamp.iloc[0]==event
