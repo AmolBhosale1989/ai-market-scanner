@@ -72,7 +72,11 @@ def finish_run(run_id: str, status: str, metadata: dict | None = None, error: st
 
 def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
     """Return only versions that were known by req.as_of. Never query future ingestion."""
-    as_of = req.as_of or datetime.now(timezone.utc)
+    from .consumer_snapshot import consumer_anchor
+    anchor = consumer_anchor()
+    as_of = req.as_of or anchor or datetime.now(timezone.utc)
+    if anchor is not None and pd.Timestamp(as_of) > anchor:
+        raise RuntimeError('CONSUMER_SNAPSHOT_READ_AFTER_ANCHOR')
     tickers = [str(x).upper() for x in req.tickers if x]
     if not tickers:
         raise RuntimeError(f"WAREHOUSE_REQUIREMENT_INVALID: {req.consumer}")

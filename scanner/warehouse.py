@@ -72,7 +72,8 @@ def _freshness_failures(
     if pd.isna(ingested) or pd.isna(newest_bar):
         raise RuntimeError(f"WAREHOUSE_STALE: {consumer} {interval} has no valid timestamp")
 
-    now = pd.Timestamp(now_utc) if now_utc is not None else (daily_clock() if interval == "1d" else pd.Timestamp.now(tz="UTC"))
+    from .consumer_snapshot import consumer_anchor
+    now = pd.Timestamp(now_utc) if now_utc is not None else (daily_clock() if interval == "1d" else (consumer_anchor() or pd.Timestamp.now(tz="UTC")))
     cal = mcal.get_calendar("NYSE")
     schedule = cal.schedule(
         start_date=(now - pd.Timedelta(days=10)).date(),
