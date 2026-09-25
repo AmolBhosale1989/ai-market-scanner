@@ -13,6 +13,7 @@ from .data import download_batch
 from .warehouse import _freshness_failures
 from .ohlcv_quality import invalid_rows
 from .daily_repair import repair_daily
+from .market_cutoff import completed_daily_session
 
 
 def _symbols() -> list[str]:
@@ -73,14 +74,24 @@ def _stale_watermarks(watermarks: dict[str, datetime], interval: str) -> set[str
 def _refresh_candidates(watermarks: dict[str, datetime], interval: str, tickers: list[str]) -> set[str]:
     """Return existing symbols that must be fetched during this run.
 
-    Intraday benchmark, sector, and theme ETFs are always fetched. A full live
-    refresh spans multiple provider batches, so a critical symbol that is fresh
+    Every selected intraday symbol is always fetched. A full live
+    refresh spans multiple provider batches, so a symbol that is fresh
     at job start can otherwise exceed its consumer SLA before the gate runs.
     """
     candidates=_stale_watermarks(watermarks,interval)
     if interval != "1d":
-        candidates.update(set(tickers).intersection(watermarks).intersection(CRITICAL_MARKET_SYMBOLS))
+        candidates.update(set(tickers).intersection(watermarks))
     return candidates
+
+
+def _completed_observations(frame, interval, now):
+    """Keep observed closed candles; never freeze an unfinished provider bar."""
+    if frame.empty:
+        return frame
+    events = pd.to_datetime(frame.event_timestamp, utc=True)
+    if interval == "1d":
+        return frame.loc[events.dt.date <= completed_daily_session()].copy()
+    return frame.loc[events + pd.Timedelta(interval) <= pd.Timestamp(now)].copy()
 
 
 def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootstrap: bool = False, benchmark_backfill: bool = True, include_ingestion_dependencies: bool = True) -> dict:
@@ -173,11 +184,12 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
                 if t not in batch:
                     continue
                 frame=_normalize(t,batch.get(t),ingested_at)
+                frame=_completed_observations(frame, interval, ingested_at)
                 watermark=watermarks.get(t)
                 if watermark is not None and not frame.empty:
                     wm=pd.Timestamp(watermark)
                     wm=wm.tz_localize("UTC") if wm.tzinfo is None else wm.tz_convert("UTC")
-                    frame=frame[frame["event_timestamp"] > wm]
+                    frame=frame[frame["event_timestamp"] >= wm]
                 if not frame.empty:
                     frames.append(frame)
             if not frames:
