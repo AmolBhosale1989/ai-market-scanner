@@ -79,10 +79,11 @@ def test_source_fallback_marks_degraded():
 
 
 def test_yahoo_adapter_counts_empty_responses_as_provider_errors(monkeypatch):
+    monkeypatch.setattr("scanner.v4.adapters.warehouse_frames",lambda *a,**k: {t:pd.DataFrame() for t in ("AXTI","CRDO")})
     monkeypatch.setattr(
         YahooPollingAdapter,
         "_analyze",
-        staticmethod(lambda _row: {"live_status": "NO INTRADAY DATA"}),
+        staticmethod(lambda _row, _history: {"live_status": "NO INTRADAY DATA"}),
     )
     result = YahooPollingAdapter(max_workers=2).poll(candidates().head(2))
     assert result.requested == 2

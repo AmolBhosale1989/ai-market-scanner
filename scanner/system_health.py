@@ -8,7 +8,8 @@ import pandas as pd
 import pandas_market_calendars as mcal
 
 from .session_contract import expected_market_data_session
-from .control_plane import read_dataset, write_dataset
+from .control_plane import read_dataset, write_dataset, current_run_id
+from .dashboard_data import read_dashboard_datasets as read_health_datasets
 
 NY = ZoneInfo("America/New_York")
 
@@ -31,8 +32,8 @@ SHADOW_CHECKS = [
 ]
 
 
-def _read_timestamp(dataset_name: str, field: str):
-    frame=read_dataset(dataset_name,required=False)
+def _read_timestamp(dataset_name: str, field: str, frames=None):
+    frame=frames[dataset_name] if frames is not None else read_dataset(dataset_name,required=False)
     if frame.empty:
         return None, "MISSING"
     try:
@@ -47,8 +48,8 @@ def _read_timestamp(dataset_name: str, field: str):
         return None, "INVALID"
 
 
-def _last_record(name: str) -> dict:
-    frame=read_dataset(name,required=False)
+def _last_record(name: str, frames=None) -> dict:
+    frame=frames[name] if frames is not None else read_dataset(name,required=False)
     return frame.iloc[-1].to_dict() if not frame.empty else {}
 
 
@@ -57,11 +58,11 @@ def _int(value) -> int:
     return int(parsed) if pd.notna(parsed) else -1
 
 
-def _production_semantics(expected_session: str) -> dict[str, tuple[str,str]]:
-    theme=_last_record("theme_health")
-    sector=_last_record("sector_rotation_health")
-    momentum=_last_record("momentum_health")
-    order_flow=_last_record("order_flow_strategy_health")
+def _production_semantics(expected_session: str, frames=None) -> dict[str, tuple[str,str]]:
+    theme=_last_record("theme_health",frames)
+    sector=_last_record("sector_rotation_health",frames)
+    momentum=_last_record("momentum_health",frames)
+    order_flow=_last_record("order_flow_strategy_health",frames)
     results={}
 
     def session_ok(row):
@@ -100,11 +101,16 @@ def run() -> pd.DataFrame:
         market_open=bool(open_utc <= now_utc < close_utc)
         premarket_open=bool(premarket_start <= now_utc < open_utc)
     expected_session=str(expected_market_data_session(now_utc))
-    semantics=_production_semantics(expected_session)
+    # Read this run's health inputs once, verifying the same row counts/hashes
+    # as the dashboard batch reader. Missing inputs remain empty and fail below.
+    names=[check[1] for check in PRODUCTION_CHECKS+SHADOW_CHECKS]
+    frames={name:frame for name,(frame,_source) in
+            read_health_datasets(names,run_id=current_run_id()).items()}
+    semantics=_production_semantics(expected_session,frames)
 
     rows=[]
     for module, filename, field, max_age, window in PRODUCTION_CHECKS + SHADOW_CHECKS:
-        ts,status=_read_timestamp(filename, field)
+        ts,status=_read_timestamp(filename, field, frames)
         semantic_status,semantic_detail=semantics.get(filename,("OK",""))
         if status=="OK" and semantic_status!="OK":
             status=semantic_status
