@@ -67,3 +67,40 @@ def test_missing_production_data_is_not_healthy_outside_market_hours(monkeypatch
     system_health.run()
     summary=memory_control_plane["datasets"][(memory_control_plane["run_id"],"live_system_health_summary")]
     assert summary.iloc[0]["overall_status"]=="DEGRADED"
+
+
+def _freeze_at(monkeypatch, instant):
+    now=pd.Timestamp(instant)
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.to_pydatetime().astimezone(tz)
+    monkeypatch.setattr(system_health,"datetime",Frozen)
+    monkeypatch.setattr(pd.Timestamp,"now",classmethod(lambda cls,tz=None: now))
+
+
+def test_future_health_timestamp_is_invalid(monkeypatch,memory_control_plane):
+    _freeze_at(monkeypatch,"2026-09-25T02:00:00Z")
+    _put(memory_control_plane,"warehouse_snapshot",{"as_of_utc":"2026-09-25T03:00:00Z"})
+    health=system_health.run().set_index("module")
+    assert health.loc["Warehouse Snapshot","status"]=="INVALID"
+
+
+def test_health_clock_respects_nyse_holiday(monkeypatch,memory_control_plane):
+    _freeze_at(monkeypatch,"2026-07-03T15:00:00Z")
+    health=system_health.run()
+    assert not health["market_open"].any()
+
+
+def test_health_clock_respects_early_close(monkeypatch,memory_control_plane):
+    _freeze_at(monkeypatch,"2026-11-27T18:30:00Z")
+    health=system_health.run()
+    assert not health["market_open"].any()
+
+
+def test_regular_session_expired_health_is_still_blocked(monkeypatch,memory_control_plane):
+    _freeze_at(monkeypatch,"2026-09-24T15:00:00Z")
+    _put(memory_control_plane,"warehouse_snapshot",{"as_of_utc":"2026-09-24T14:00:00Z"})
+    health=system_health.run().set_index("module")
+    assert health.loc["Warehouse Snapshot","market_open"]
+    assert health.loc["Warehouse Snapshot","status"]=="STALE"
