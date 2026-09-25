@@ -5,6 +5,7 @@ import argparse
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+import pandas_market_calendars as mcal
 
 from .session_contract import expected_market_data_session
 from .control_plane import read_dataset, write_dataset
@@ -88,12 +89,16 @@ def _production_semantics(expected_session: str) -> dict[str, tuple[str,str]]:
 def run() -> pd.DataFrame:
     now_et=datetime.now(NY)
     now_utc=pd.Timestamp.now(tz="UTC")
-    open_et=pd.Timestamp(now_et.date(), tz=NY)+pd.Timedelta(hours=9,minutes=30)
-    close_et=pd.Timestamp(now_et.date(), tz=NY)+pd.Timedelta(hours=16)
-    now_et_ts=pd.Timestamp(now_et)
-    market_open=bool(open_et <= now_et_ts <= close_et and now_et.weekday()<5)
-    premarket_start=pd.Timestamp(now_et.date(), tz=NY)+pd.Timedelta(hours=4)
-    premarket_open=bool(premarket_start <= now_et_ts < open_et and now_et.weekday()<5)
+    schedule=mcal.get_calendar("NYSE").schedule(start_date=now_et.date(), end_date=now_et.date())
+    market_open=False
+    premarket_open=False
+    if not schedule.empty:
+        session=schedule.iloc[0]
+        open_utc=pd.Timestamp(session["market_open"])
+        close_utc=pd.Timestamp(session["market_close"])
+        premarket_start=pd.Timestamp(now_et.date(), tz=NY)+pd.Timedelta(hours=4)
+        market_open=bool(open_utc <= now_utc < close_utc)
+        premarket_open=bool(premarket_start <= now_utc < open_utc)
     expected_session=str(expected_market_data_session(now_utc))
     semantics=_production_semantics(expected_session)
 
@@ -105,13 +110,15 @@ def run() -> pd.DataFrame:
             status=semantic_status
         age_min=None
         if ts is not None:
-            age_min=max(0.0,(now_utc-ts).total_seconds()/60)
+            age_min=(now_utc-ts).total_seconds()/60
+            if age_min < 0:
+                status="INVALID"
             should_be_fresh=(
                 (window=="REGULAR" and market_open)
                 or (window=="PREMARKET" and premarket_open)
                 or (window=="SESSION" and (premarket_open or market_open))
             )
-            if should_be_fresh and age_min > max_age:
+            if status=="OK" and should_be_fresh and age_min > max_age:
                 status="STALE"
             elif not should_be_fresh and status=="OK":
                 status="OK"
