@@ -42,7 +42,8 @@ def test_live_enrichment_accepts_preconfirmation_v3_score(monkeypatch):
 
 def test_live_workflows_gate_the_same_frozen_universe_they_refresh():
     workflow=Path(".github/workflows/production.yml").read_text()
-    assert "--dataset live_universe" in workflow
+    assert "-m scanner.live_ingestion" in workflow
+    assert "read_dataset('live_universe')" in Path("scanner/live_ingestion.py").read_text()
     assert "--tier LIVE_INTRADAY" in workflow
     assert "seed_snapshot" in workflow
 
