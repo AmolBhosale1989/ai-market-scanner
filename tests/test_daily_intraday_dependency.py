@@ -84,8 +84,10 @@ def test_full_workflow_stops_before_consumers_on_intraday_failure(fail_at):
                          .split("        run: |\n",1)[1]
                          .split("\n      - name:",1)[0])
     shim='''
+GITHUB_ENV=/dev/null
 PIPELINE_MODE=full
 python() {
+  if [[ "$*" == *scanner.run_policy* ]]; then echo full; return 0; fi
   printf '%s\\n' "$*"
   if [[ "$FAIL_AT" == critical_refresh && "$*" == *scanner.warehouse_refresh* && "$*" == *--critical-only* ]]; then return 124; fi
   if [[ "$FAIL_AT" == critical_gate && "$*" == *scanner.warehouse_gate* && "$*" != *MASTER_DAILY* ]]; then return 9; fi
