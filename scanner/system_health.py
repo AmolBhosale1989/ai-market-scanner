@@ -142,7 +142,7 @@ def run() -> pd.DataFrame:
         "missing_or_invalid_modules":int(production["status"].isin(["MISSING","INVALID"]).sum()),
         "shadow_modules_checked":int((out["role"]=="SHADOW").sum()),
         "shadow_modules_unhealthy":int(((out["role"]=="SHADOW") & out["status"].isin(["STALE","MISSING","INVALID"])).sum()),
-        "overall_status":"DEGRADED" if bad.any() and market_open else "OK",
+        "overall_status":"DEGRADED" if bad.any() else "OK",
     }])
     write_dataset("live_system_health_summary",summary,entity_key=None)
     return out
