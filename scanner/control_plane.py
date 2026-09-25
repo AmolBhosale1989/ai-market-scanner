@@ -239,7 +239,7 @@ def write_dataset(
     return {"dataset_version_id": version_id, "row_count": len(records), "content_hash": digest}
 
 
-def _dataset_version(dataset_name: str, run_id: str | None, mode: str | None):
+def _dataset_version_query(dataset_name: str, run_id: str | None, mode: str | None):
     if bool(run_id) == bool(mode):
         raise ValueError("specify exactly one of run_id or mode")
     if run_id:
@@ -255,9 +255,7 @@ def _dataset_version(dataset_name: str, run_id: str | None, mode: str | None):
                  JOIN dataset_version dv ON dv.dataset_version_id=pdx.dataset_version_id
                  WHERE ph.mode=%s AND pdx.dataset_name=%s AND ps.status='PUBLISHED'"""
         params = (mode, dataset_name)
-    with _connect() as conn, conn.cursor() as cur:
-        cur.execute(sql, params)
-        return cur.fetchone()
+    return sql, params
 
 
 def read_dataset(
@@ -272,18 +270,25 @@ def read_dataset(
         if required:
             raise RuntimeError("CONTROL_PLANE_RUN_REQUIRED: no current run or published mode")
         return pd.DataFrame()
-    version = _dataset_version(dataset_name, rid, published_mode)
-    if version is None:
+    version_sql, params = _dataset_version_query(dataset_name, rid, published_mode)
+    # Metadata and payload must describe the same statement snapshot. This also
+    # avoids a second TLS connection for every consumer dataset read.
+    with _connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""WITH version AS ({version_sql})
+                SELECT v.content_hash,v.row_count,r.payload
+                FROM version v LEFT JOIN dataset_row r
+                  ON r.dataset_version_id=v.dataset_version_id
+                ORDER BY r.row_ordinal""",
+            params,
+        )
+        rows = cur.fetchall()
+    if not rows:
         if required:
             raise RuntimeError(f"CONTROL_PLANE_DATASET_UNAVAILABLE: {dataset_name}")
         return pd.DataFrame()
-    version_id, _, expected_hash, expected_rows = version
-    with _connect() as conn, conn.cursor() as cur:
-        cur.execute(
-            "SELECT payload FROM dataset_row WHERE dataset_version_id=%s ORDER BY row_ordinal",
-            (version_id,),
-        )
-        records = [row[0] for row in cur.fetchall()]
+    expected_hash, expected_rows = rows[0][:2]
+    records = [row[2] for row in rows if row[2] is not None]
     if len(records) != int(expected_rows) or _hash(records) != expected_hash:
         raise RuntimeError(f"CONTROL_PLANE_DATASET_CORRUPT: {dataset_name}")
     return pd.DataFrame(records)
@@ -398,22 +403,24 @@ def seed_from_publication(mode: str, dataset_names: Iterable[str],
         missing = sorted(set(names) - set(source))
         if missing:
             raise RuntimeError("CONTROL_PLANE_SEED_BLOCKED: missing=" + ",".join(missing))
-        for name in names:
-            source_id, schema_version, row_count, digest, metadata = source[name]
-            cur.execute(
-                """INSERT INTO dataset_version
+        # Copy the exact resolved source versions, including empty datasets, in
+        # one statement instead of two network round trips per dataset.
+        cur.execute(
+            """WITH source AS (
+                 SELECT * FROM dataset_version WHERE dataset_version_id=ANY(%s)
+               ), inserted AS (
+                 INSERT INTO dataset_version
                    (pipeline_run_id,dataset_name,schema_version,status,row_count,content_hash,completed_at,metadata)
-                   VALUES (%s,%s,%s,'AVAILABLE',%s,%s,now(),%s::jsonb)
-                   RETURNING dataset_version_id""",
-                (rid, name, schema_version, row_count, digest, _canonical(metadata)),
-            )
-            target_id = int(cur.fetchone()[0])
-            cur.execute(
-                """INSERT INTO dataset_row(dataset_version_id,row_ordinal,entity_key,payload)
-                   SELECT %s,row_ordinal,entity_key,payload FROM dataset_row
-                   WHERE dataset_version_id=%s""",
-                (target_id, source_id),
-            )
+                 SELECT %s,dataset_name,schema_version,'AVAILABLE',row_count,content_hash,now(),metadata
+                 FROM source
+                 RETURNING dataset_version_id,dataset_name
+               )
+               INSERT INTO dataset_row(dataset_version_id,row_ordinal,entity_key,payload)
+               SELECT target.dataset_version_id,r.row_ordinal,r.entity_key,r.payload
+               FROM inserted target JOIN source USING(dataset_name)
+               JOIN dataset_row r ON r.dataset_version_id=source.dataset_version_id""",
+            ([source[name][0] for name in names], rid),
+        )
     return len(names)
 
 
@@ -428,6 +435,21 @@ def record_health(module_name: str, status: str, metrics: Mapping | None = None,
                VALUES (%s,%s,%s,%s,%s::jsonb,%s)""",
             (rid, module_name, status, session_date, _canonical(metrics or {}), detail or None),
         )
+
+
+def _read_version_records(cur, version_ids: Iterable[int]) -> dict[int, list]:
+    """Read immutable dataset payloads in one round trip, retaining row order."""
+    records = {int(version_id): [] for version_id in version_ids}
+    if records:
+        cur.execute(
+            """SELECT dataset_version_id,payload FROM dataset_row
+               WHERE dataset_version_id=ANY(%s)
+               ORDER BY dataset_version_id,row_ordinal""",
+            (list(records),),
+        )
+        for version_id, payload in cur.fetchall():
+            records[int(version_id)].append(payload)
+    return records
 
 
 def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = None) -> dict:
@@ -476,13 +498,10 @@ def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = No
                    WHERE pipeline_run_id=%s""",
                 (as_of_row[0], rid),
             )
+        all_records = _read_version_records(cur, (version[0] for version in versions.values()))
         signal_records = {}
         for name, (version_id, expected_hash, expected_rows) in versions.items():
-            cur.execute(
-                "SELECT payload FROM dataset_row WHERE dataset_version_id=%s ORDER BY row_ordinal",
-                (version_id,),
-            )
-            records = [record[0] for record in cur.fetchall()]
+            records = all_records[version_id]
             if name in {"momentum_signals", "rotation_leaders", "sector_rotation"}:
                 signal_records[name] = records
             if len(records) != int(expected_rows) or _hash(records) != expected_hash:
