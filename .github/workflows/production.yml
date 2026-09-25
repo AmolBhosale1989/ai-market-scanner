@@ -93,7 +93,7 @@ jobs:
             stage live_plan 50 python -m scanner.universe_plan --include-daily-candidates
           fi
 
-          stage intraday_warehouse 60 timeout 3600s python -m scanner.warehouse_refresh --dataset live_universe --period 5d --interval 5m
+          stage intraday_warehouse 60 timeout 3600s python -m scanner.live_ingestion
           stage warehouse_gate 70 python -m scanner.warehouse_gate --tier MASTER_DAILY --tier CRITICAL_DAILY --tier CRITICAL_INTRADAY --tier THEME_INTRADAY --tier LIVE_INTRADAY
           # Consumers read the same validated versions and evaluate arrival age
           # at that snapshot. Publication still rechecks actual-time freshness.
