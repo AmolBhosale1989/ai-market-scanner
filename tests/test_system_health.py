@@ -2,8 +2,16 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from scanner import system_health
+
+
+@pytest.fixture(autouse=True)
+def _health_batch(monkeypatch,memory_control_plane):
+    def read(names,*,run_id):
+        return {name:(memory_control_plane["datasets"].get((run_id,name),pd.DataFrame()).copy(),"postgresql") for name in names}
+    monkeypatch.setattr(system_health,"read_health_datasets",read)
 
 
 class _FrozenSunday(datetime):
@@ -104,3 +112,26 @@ def test_regular_session_expired_health_is_still_blocked(monkeypatch,memory_cont
     health=system_health.run().set_index("module")
     assert health.loc["Warehouse Snapshot","market_open"]
     assert health.loc["Warehouse Snapshot","status"]=="STALE"
+
+
+def test_health_reads_one_verified_batch(monkeypatch,memory_control_plane):
+    _freeze(monkeypatch)
+    calls=[]
+    def read(names,*,run_id):
+        calls.append((names,run_id))
+        return {name:(pd.DataFrame(),"blocked") for name in names}
+    monkeypatch.setattr(system_health,"read_health_datasets",read)
+    monkeypatch.setattr(system_health,"read_dataset",lambda *a,**k:pytest.fail("serial read"))
+    system_health.run()
+    assert len(calls)==1
+    assert calls[0][1]==memory_control_plane["run_id"]
+    assert len(calls[0][0])==12
+
+
+def test_health_corrupt_batch_cannot_be_healthy(monkeypatch):
+    _freeze(monkeypatch)
+    def fail(*a,**k):raise RuntimeError("CONTROL_PLANE_DATASET_CORRUPT")
+    monkeypatch.setattr(system_health,"read_health_datasets",fail)
+    monkeypatch.setattr(system_health,"write_dataset",lambda *a,**k:pytest.fail("health published after corrupt read"))
+    with pytest.raises(RuntimeError,match="CONTROL_PLANE_DATASET_CORRUPT"):
+        system_health.run()
