@@ -10,6 +10,8 @@ from typing import Protocol
 import pandas as pd
 
 from ..live import _empty_live, analyze_live_candidate
+from ..config import LIVE_PERIOD, LIVE_INTERVAL
+from ..warehouse import frames as warehouse_frames
 
 
 @dataclass(frozen=True)
@@ -46,7 +48,7 @@ class YahooPollingAdapter:
         self.max_workers = max(1, min(int(max_workers), 16))
 
     @staticmethod
-    def _analyze(row: pd.Series) -> dict:
+    def _analyze(row: pd.Series, history_frame: pd.DataFrame) -> dict:
         return analyze_live_candidate(
             ticker=str(row["ticker"]),
             entry_trigger=_number(row.get("entry_trigger")),
@@ -56,6 +58,7 @@ class YahooPollingAdapter:
             runway_pct=_number(row.get("runway_to_next_resistance_pct")),
             negative_catalyst_risk=_truthy(row.get("negative_catalyst_risk", False)),
             entry_condition=str(row.get("entry_condition", "BREAKOUT")),
+            history_frame=history_frame,
         )
 
     def poll(self, candidates: pd.DataFrame) -> PollResult:
@@ -68,9 +71,23 @@ class YahooPollingAdapter:
         for column, value in _empty_live().items():
             output[column] = value
 
+        # Preserve the adapter's existing per-symbol quarantine and coverage
+        # accounting. Only independently validated fresh frames reach analysis.
+        histories=warehouse_frames(
+            output["ticker"].astype(str).str.upper().tolist(),
+            period=LIVE_PERIOD, interval=LIVE_INTERVAL,
+            max_age_minutes=10, require_complete=False,
+        )
+        for index,row in output.iterrows():
+            if str(row["ticker"]).upper() not in histories:
+                for key,value in _empty_live("ERROR").items():
+                    output.at[index,key]=value
+
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(output))) as pool:
             future_to_index = {
-                pool.submit(self._analyze, row): index for index, row in output.iterrows()
+                pool.submit(self._analyze, row, histories[str(row["ticker"]).upper()]): index
+                for index, row in output.iterrows()
+                if str(row["ticker"]).upper() in histories
             }
             for future in as_completed(future_to_index):
                 index = future_to_index[future]
