@@ -79,6 +79,8 @@ jobs:
             fi
           }
 
+          PIPELINE_MODE=$(python -m scanner.run_policy --requested "$PIPELINE_MODE")
+          echo "PIPELINE_MODE=$PIPELINE_MODE" >> "$GITHUB_ENV"
           if [[ "$PIPELINE_MODE" == "live" ]]; then
             stage seed_snapshot 10 python -m scanner.production_telemetry --seed --mode production
           else
@@ -161,7 +163,7 @@ jobs:
           python -m scanner.production_telemetry --finalize --mode production
       - name: Evaluate live-session continuation
         id: live_continuation
-        if: ${{ success() && env.PIPELINE_MODE == 'live' }}
+        if: ${{ success() }}
         run: python -m scanner.workflow_continuation >> "$GITHUB_OUTPUT"
       - name: Queue next live refresh
         if: ${{ steps.live_continuation.outputs.dispatch == 'true' }}
