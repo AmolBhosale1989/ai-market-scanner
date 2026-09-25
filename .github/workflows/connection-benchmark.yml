@@ -1,0 +1,28 @@
+name: Read-only connection latency comparison
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/connection-benchmark.yml'
+      - 'scanner/connection_benchmark.py'
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Compare one immutable publication using read-only transactions
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=60000'
+        run: python -u -m scanner.connection_benchmark
