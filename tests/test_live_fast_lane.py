@@ -62,8 +62,10 @@ def _execute_live_workflow(fail_at=""):
                          .split("        run: |\n",1)[1]
                          .split("\n      - name:",1)[0])
     shim='''
+GITHUB_ENV=/dev/null
 PIPELINE_MODE=live
 python() {
+  if [[ "$*" == *scanner.run_policy* ]]; then echo live; return 0; fi
   printf '%s\\n' "$*"
   if [[ "$FAIL_AT" == premarket && "$*" == *scanner.premarket* ]]; then return 7; fi
   return 0
