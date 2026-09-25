@@ -95,6 +95,9 @@ jobs:
 
           stage intraday_warehouse 60 timeout 3600s python -m scanner.warehouse_refresh --dataset live_universe --period 5d --interval 5m
           stage warehouse_gate 70 python -m scanner.warehouse_gate --tier MASTER_DAILY --tier CRITICAL_DAILY --tier CRITICAL_INTRADAY --tier THEME_INTRADAY --tier LIVE_INTRADAY
+          # Consumers read the same validated versions and evaluate arrival age
+          # at that snapshot. Publication still rechecks actual-time freshness.
+          export WAREHOUSE_CONSUMER_SNAPSHOT=1
           if [[ "$PIPELINE_MODE" == "full" ]]; then
             stage daily_scan 75 python -m scanner.main --finalize-prepared
             stage v3_live 80 python -m scanner.v3_live

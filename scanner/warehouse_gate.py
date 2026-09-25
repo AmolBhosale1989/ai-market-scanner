@@ -174,7 +174,7 @@ def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | 
     live=_symbols(live_frame,"live_universe",required="LIVE_INTRADAY" in selected or not selected)
     as_of=as_of or datetime.now(timezone.utc)
     tiers=[x for x in build_tiers(master,live) if not selected or x.name in selected]
-    results=[evaluate_tier(tier,coverage_frame(tier,as_of)) for tier in tiers]
+    results=[evaluate_tier(tier,coverage_frame(tier,as_of),now_utc=as_of) for tier in tiers]
     snapshot={
         "schema_version":1,
         "production_run_id":current_run_id(),

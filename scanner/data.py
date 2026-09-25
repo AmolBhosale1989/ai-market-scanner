@@ -1,9 +1,12 @@
 import time
+import json
+from datetime import datetime, timezone
 from typing import Iterable
 import pandas as pd
 import yfinance as yf
 
 from .config import BATCH_RETRIES, RETRY_CHUNK_SIZE, RETRY_BACKOFF_SECONDS
+from .provider_diagnostics import describe_response
 
 def _normalize_single(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
@@ -116,7 +119,16 @@ def download_batch(
 
         for chunk in chunks:
             try:
+                started = datetime.now(timezone.utc)
+                clock = time.monotonic()
                 got=_download_once(chunk,period,interval)
+                received = datetime.now(timezone.utc)
+                elapsed = time.monotonic() - clock
+                for symbol in chunk:
+                    diagnostic = describe_response(symbol, got.get(symbol), period=period,
+                        interval=interval, started=started, received=received, elapsed=elapsed)
+                    diagnostic['attempt'] = attempt + 1
+                    print('PROVIDER_RESPONSE ' + json.dumps(diagnostic, allow_nan=False), flush=True)
                 out.update(got)
             except Exception as e:
                 print(f"Download retry {attempt+1} failed for {len(chunk)} symbols: {e}")
