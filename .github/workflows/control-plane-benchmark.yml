@@ -1,0 +1,29 @@
+name: Read-only publication latency comparison
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/control-plane-benchmark.yml'
+      - 'scanner/control_plane_benchmark.py'
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Compare exactly the same immutable publication without writes
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=60000'
+        run: |
+          git show a74cf7ee59ee9d11f66432435e3e21e923c4afcc:scanner/control_plane.py > /tmp/baseline_control_plane.py
+          python -u -m scanner.control_plane_benchmark /tmp/baseline_control_plane.py
