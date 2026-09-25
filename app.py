@@ -375,8 +375,8 @@ st.markdown("""<div class="hero"><div class="hero-grid"><div>
 </div><div class="hero-mark">⚡</div></div></div>""", unsafe_allow_html=True)
 
 health, monitor = data["health"], data["monitor"]
-scan_stamp = str(production_manifest.get("published_at_utc", "Waiting for first publication"))
-live_stamp = scan_stamp
+publication_stamp = str(production_manifest.get("published_at_utc", "Waiting for first publication"))
+warehouse_stamp = str(production_manifest.get("warehouse_as_of_utc", "Unavailable"))
 publication_warning = publication_expiry_reason(production_manifest)
 production_validated = not publication_warning
 source_state = "PUBLISHED" if production_validated else "BLOCKED / STALE"
@@ -384,10 +384,10 @@ st.markdown(
     f'<div class="status-row">'
     f'<span class="status"><span class="dot"></span><strong>{source_state}</strong></span>'
     f'<span class="status">Data source: <strong>{sources["picks"]}</strong></span>'
-    f'<span class="status">Auto refresh: <strong>60s</strong></span>'
+    f'<span class="status">Page refresh: <strong>60s</strong></span>'
     f'</div>', unsafe_allow_html=True
 )
-st.caption(f"Base scan · {scan_stamp} UTC   |   Live monitor · {live_stamp} UTC")
+st.caption(f"Published snapshot · {publication_stamp}   |   Market-data validation · {warehouse_stamp}")
 if not production_validated:
     st.error(f"SIGNALS BLOCKED — {publication_warning} Previous results must not be treated as current signals.")
     st.stop()
