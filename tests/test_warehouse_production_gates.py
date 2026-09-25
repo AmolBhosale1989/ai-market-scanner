@@ -85,12 +85,12 @@ def test_critical_intraday_history_floor_accepts_thin_valid_etfs():
     assert "FINX" not in critical.symbols
 
 
-def test_theme_intraday_uses_sparse_etf_freshness_contract():
+def test_theme_intraday_uses_ten_minute_freshness_contract():
     master=[f"M{i}" for i in range(5_341)]
     theme=next(tier for tier in build_tiers(master,["AAPL"]) if tier.name=="THEME_INTRADAY")
     assert theme.minimum_bars==120
     assert theme.minimum_coverage==0.90
-    assert theme.max_age_minutes==20
+    assert theme.max_age_minutes==10
     assert "FINX" in theme.symbols
     assert "SPY" not in theme.symbols
     assert "XLE" not in theme.symbols

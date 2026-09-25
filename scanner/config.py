@@ -46,6 +46,11 @@ THEME_ETFS = (
 # five-minute intervals, so they are enforced separately instead of weakening
 # the core-market contract or blocking V3 because one theme ETF did not print.
 CORE_INTRADAY_MARKET_SYMBOLS = tuple(dict.fromkeys((BENCHMARK,) + SECTOR_ETFS))
+# Every rotation benchmark is mandatory for the cross-sectional consumer.
+ROTATION_REQUIRED_SYMBOLS = (
+    "SPY", "HACK", "SMH", "BOTZ", "SKYY", "XBI", "ITA", "XLE",
+    "URA", "GDX", "ICLN", "WGMI",
+)
 THEME_INTRADAY_MARKET_SYMBOLS = tuple(
     symbol for symbol in dict.fromkeys(THEME_ETFS)
     if symbol not in CORE_INTRADAY_MARKET_SYMBOLS
@@ -72,7 +77,7 @@ MASTER_DAILY_MIN_COVERAGE = 0.75
 CRITICAL_DAILY_MIN_COVERAGE = 1.00
 CRITICAL_INTRADAY_MIN_COVERAGE = 1.00
 THEME_INTRADAY_MIN_COVERAGE = 0.90
-THEME_INTRADAY_MAX_AGE_MINUTES = 20
+THEME_INTRADAY_MAX_AGE_MINUTES = 10
 LIVE_INTRADAY_MIN_COVERAGE = 0.95
 # The breadth universe is fetched in bounded provider batches. Permit one
 # additional five-minute interval so early batches do not become stale solely

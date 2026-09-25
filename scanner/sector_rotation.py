@@ -9,6 +9,7 @@ from .warehouse import DataRequirement, frames as warehouse_frames, provide
 
 from .session_contract import latest_frame_session
 from .control_plane import write_dataset
+from .config import ROTATION_REQUIRED_SYMBOLS
 
 NY = ZoneInfo("America/New_York")
 
@@ -77,7 +78,7 @@ def _stats(d: pd.DataFrame, ticker: str, session_date):
 
 
 def _load_rotation_history() -> tuple[list[str], dict[str, pd.DataFrame]]:
-    core=sorted({"SPY",*THEME_ETFS.values()})
+    core=sorted(ROTATION_REQUIRED_SYMBOLS)
     members=sorted({ticker for values in THEME_CONSTITUENTS.values() for ticker in values}-set(core))
     view=provide(DataRequirement(
         consumer="sector_rotation.core",tickers=tuple(core),interval="5m",period="5d",
