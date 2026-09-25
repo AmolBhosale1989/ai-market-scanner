@@ -23,14 +23,8 @@ class PointInTimeRequirement:
 
 
 def _connect():
-    url = os.getenv("DATABASE_URL", "").strip()
-    if not url:
-        raise RuntimeError("BITEMPORAL_WAREHOUSE_UNAVAILABLE: DATABASE_URL is not configured")
-    try:
-        import psycopg
-    except ImportError as e:
-        raise RuntimeError("BITEMPORAL_WAREHOUSE_UNAVAILABLE: psycopg is not installed") from e
-    return psycopg.connect(url, sslmode=os.getenv("PGSSLMODE", "require"))
+    from .database import connection
+    return connection()
 
 
 def verify_health() -> dict:
