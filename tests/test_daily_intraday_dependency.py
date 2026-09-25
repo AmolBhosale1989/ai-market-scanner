@@ -91,7 +91,7 @@ python() {
   printf '%s\\n' "$*"
   if [[ "$FAIL_AT" == critical_refresh && "$*" == *scanner.warehouse_refresh* && "$*" == *--critical-only* ]]; then return 124; fi
   if [[ "$FAIL_AT" == critical_gate && "$*" == *scanner.warehouse_gate* && "$*" != *MASTER_DAILY* ]]; then return 9; fi
-  if [[ "$FAIL_AT" == refresh && "$*" == *scanner.warehouse_refresh* && "$*" == *5m* ]]; then return 7; fi
+  if [[ "$FAIL_AT" == refresh && "$*" == *scanner.live_ingestion* ]]; then return 7; fi
   if [[ "$FAIL_AT" == gate && "$*" == *scanner.warehouse_gate* && "$*" == *LIVE_INTRADAY* ]]; then return 8; fi
   return 0
 }
@@ -111,6 +111,6 @@ bash() { printf '%s\\n' "$*"; }
     else:
         assert result.returncode==0,result.stderr
         trace=result.stdout
-        assert trace.index("--prepare-only") < trace.index("--dataset live_universe")
+        assert trace.index("--prepare-only") < trace.index("-m scanner.live_ingestion")
         assert trace.index("--tier LIVE_INTRADAY") < trace.index("--finalize-prepared")
         assert trace.index("--finalize-prepared") < trace.index("-m scanner.v3_live")
