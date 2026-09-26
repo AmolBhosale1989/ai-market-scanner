@@ -9,6 +9,7 @@ from .warehouse import DataRequirement, provide
 
 from .order_flow import bar_order_flow_proxy
 from .session_contract import latest_frame_session
+from .intraday_metrics import same_clock_rvol
 from .control_plane import read_dataset, write_dataset
 
 NY = ZoneInfo("America/New_York")
@@ -86,23 +87,7 @@ def _vwap(d: pd.DataFrame) -> float:
 
 
 def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float:
-    if today.empty:
-        return math.nan
-    bars=len(today)
-    cur=float(pd.to_numeric(today["Volume"],errors="coerce").fillna(0).sum())
-    prior_dates=sorted({x for x in d.index.date if x<session_date},reverse=True)[:3]
-    comps=[]
-    for dt in prior_dates:
-        s=d[d.index.date==dt].between_time("09:30","16:00").iloc[:bars]
-        if s.empty:
-            continue
-        v=float(pd.to_numeric(s["Volume"],errors="coerce").fillna(0).sum())
-        if v>0:
-            comps.append(v)
-    if not comps or cur<=0:
-        return math.nan
-    base=sum(comps)/len(comps)
-    return cur/base if base>0 else math.nan
+    return same_clock_rvol(d,today,session_date,sessions=3)
 
 
 def run(limit: int = 40):
