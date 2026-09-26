@@ -194,7 +194,13 @@ def analyze_catalyst(ticker,company_name=""):
     ]}
 
 def enrich_candidates(df: pd.DataFrame,limit: int):
-    if df.empty: return df
+    """Legacy DataFrame boundary backed by the strict multi-provider warehouse contract."""
+    if df.empty:
+        return df
+    from datetime import timedelta
+    from .consumer_snapshot import consumer_anchor
+    from .catalyst_contract import CatalystState,ProviderRequirement,resolve_catalyst_state
+
     out=df.copy()
     defaults={
         "catalyst_score":0,"catalyst_status":"NOT CHECKED","catalyst_type":"NONE",
@@ -203,18 +209,57 @@ def enrich_candidates(df: pd.DataFrame,limit: int):
         "catalyst_fresh":False,"news_freshness_status":"NOT CHECKED",
         "catalyst_materiality":"NONE","rejected_news_count":0,
         "earnings_days":math.nan,"negative_catalyst_risk":False,
+        "catalyst_gate_ok":False,"catalyst_gate_reason":"NOT CHECKED",
     }
-    for col,value in defaults.items(): out[col]=value
+    for col,value in defaults.items():
+        out[col]=value
 
+    anchor=consumer_anchor()
+    if anchor is None:
+        raise RuntimeError("CATALYST_CONTEXT_ANCHOR_REQUIRED")
+    anchor=pd.Timestamp(anchor)
+    requirements=(
+        ProviderRequirement("YAHOO_NEWS",timedelta(minutes=15)),
+        ProviderRequirement("SEC_EDGAR",timedelta(minutes=15)),
+        ProviderRequirement("ALPHA_VANTAGE",timedelta(hours=24)),
+    )
     eligible=out[out["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
     eligible=eligible.sort_values(["stage_rank","rank_score"],ascending=[False,False]).head(limit)
+    start_time=(anchor-pd.Timedelta(hours=CATALYST_CONTEXT_MAX_HOURS)).to_pydatetime()
 
     for idx,row in eligible.iterrows():
-        try:
-            cat=analyze_catalyst(str(row["ticker"]),company_name=str(row.get("company_name","") or ""))
-            for k,v in cat.items(): out.at[idx,k]=v
-        except Exception as e:
-            out.at[idx,"catalyst_status"]="ERROR"
-            out.at[idx,"catalyst_headline"]=f"Catalyst lookup failed: {type(e).__name__}"
-        time.sleep(0.05)
+        ticker=str(row["ticker"])
+        result=resolve_catalyst_state(ticker=ticker,as_of=anchor.to_pydatetime(),
+                                      start_time=start_time,requirements=requirements)
+        out.at[idx,"catalyst_status"]=result.status.value
+        out.at[idx,"catalyst_gate_reason"]=result.reason
+        out.at[idx,"catalyst_gate_ok"]=result.status in {CatalystState.AVAILABLE,CatalystState.NO_EVENT}
+        if result.status in {CatalystState.UNAVAILABLE,CatalystState.STALE}:
+            # Blindness is not neutral market evidence. Preserve legacy columns
+            # for downstream schema compatibility while forcing the trade gate off.
+            out.at[idx,"news_freshness_status"]=result.status.value
+            continue
+        events=result.events
+        if events is None or events.empty:
+            out.at[idx,"catalyst_relevance"]="CONFIRMED NO NEW EVENT"
+            out.at[idx,"news_freshness_status"]="FRESH CHECK"
+            out.at[idx,"catalyst_fresh"]=True
+            continue
+        # Phase-1 cutover preserves event evidence without reintroducing direct
+        # provider scoring. Existing V4 classification fields are carried in payload.
+        payloads=[x if isinstance(x,dict) else {} for x in events.get("payload",pd.Series(dtype=object))]
+        negative=any(bool(x.get("negative_veto",False)) for x in payloads)
+        bonuses=[pd.to_numeric(x.get("catalyst_score_bonus",0),errors="coerce") for x in payloads]
+        bonus=max([float(x) for x in bonuses if pd.notna(x)] or [0.0])
+        latest=payloads[-1] if payloads else {}
+        out.at[idx,"catalyst_score"]=max(0,min(100,20+bonus))
+        out.at[idx,"negative_catalyst_risk"]=negative
+        out.at[idx,"catalyst_type"]=str(latest.get("catalyst_type","CATALYST"))
+        out.at[idx,"catalyst_bias"]="BEARISH" if negative else str(latest.get("catalyst_bias","EVENT"))
+        out.at[idx,"catalyst_headline"]=str(latest.get("headline",""))[:220]
+        out.at[idx,"catalyst_provider"]="MULTI_PROVIDER"
+        out.at[idx,"catalyst_relevance"]="PIT VERIFIED"
+        out.at[idx,"catalyst_fresh"]=True
+        out.at[idx,"news_freshness_status"]="FRESH CHECK"
     return out
+
