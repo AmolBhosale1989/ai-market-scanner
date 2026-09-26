@@ -21,6 +21,12 @@ class CatalystState(str,Enum):
 class ProviderRequirement:
     provider: str
     max_check_age: timedelta
+    lookback: timedelta=timedelta(0)
+    lookforward: timedelta=timedelta(0)
+    allow_future_domain: bool=False
+
+    def window(self,anchor: datetime) -> tuple[datetime,datetime]:
+        return anchor-self.lookback,anchor+self.lookforward
 
 
 @dataclass(frozen=True)
@@ -32,7 +38,7 @@ class CatalystResult:
     provider_states: Mapping[str,str] | None=None
 
 
-def resolve_catalyst_state(*,ticker: str,as_of: datetime,start_time: datetime,
+def resolve_catalyst_state(*,ticker: str,as_of: datetime,
                            requirements: tuple[ProviderRequirement,...]) -> CatalystResult:
     symbol=str(ticker).upper()
     anchor=pd.Timestamp(as_of)
@@ -58,9 +64,11 @@ def resolve_catalyst_state(*,ticker: str,as_of: datetime,start_time: datetime,
         if age>pd.Timedelta(req.max_check_age):
             states[req.provider]="STALE"
             return CatalystResult(CatalystState.STALE,symbol,reason=f"[{req.provider}] CHECK_AGE={age}",provider_states=states)
+        domain_start,domain_end=req.window(anchor.to_pydatetime())
         try:
             events=catalyst_context(tickers=(symbol,),as_of=anchor.to_pydatetime(),
-                                    start_time=start_time,end_time=anchor.to_pydatetime())
+                                    start_time=domain_start,end_time=domain_end,
+                                    allow_future_domain=req.allow_future_domain)
             events=events[events["provider"].astype(str).eq(req.provider)] if not events.empty else events
         except Exception as exc:
             return CatalystResult(CatalystState.UNAVAILABLE,symbol,reason=f"[{req.provider}] EVENT_READ_FAILED:{type(exc).__name__}",provider_states=states)
