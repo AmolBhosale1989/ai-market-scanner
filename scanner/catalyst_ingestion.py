@@ -5,10 +5,10 @@ from .catalyst_warehouse import ingest_catalyst_batch
 from .bitemporal_warehouse import start_run,finish_run
 
 
-def ingest_ticker(adapter: CatalystProviderAdapter,ticker: str) -> dict:
+def ingest_ticker(adapter: CatalystProviderAdapter,ticker: str,*,anchor) -> dict:
     """Fetch outside PostgreSQL transaction; persist one atomic provider/ticker unit of work."""
     provider=adapter.provider_name
-    result=adapter.fetch_catalysts(str(ticker).upper())
+    result=adapter.fetch_catalysts(str(ticker).upper(),anchor=anchor)
     run_id=start_run(provider,"CATALYST_CONTEXT",{"ticker":str(ticker).upper()})
     try:
         events=[{
