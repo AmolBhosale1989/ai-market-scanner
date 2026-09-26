@@ -27,3 +27,21 @@ ON warehouse_catalyst(warehouse_run_id);
 
 CREATE INDEX IF NOT EXISTS ix_warehouse_catalyst_instrument
 ON warehouse_catalyst(instrument_id);
+
+
+-- Successful provider checks are evidence in their own right. Keeping them
+-- separate prevents an empty-result proof from masquerading as a market event.
+CREATE TABLE IF NOT EXISTS catalyst_check (
+    catalyst_check_id BIGSERIAL PRIMARY KEY,
+    provider TEXT NOT NULL,
+    instrument_id BIGINT NOT NULL REFERENCES instrument(instrument_id) ON DELETE RESTRICT,
+    ticker TEXT NOT NULL,
+    checked_at TIMESTAMPTZ NOT NULL,
+    warehouse_run_id UUID NOT NULL REFERENCES warehouse_run_log(warehouse_run_id) ON DELETE RESTRICT,
+    result_status TEXT NOT NULL CHECK (result_status IN ('EVENTS','NO_EVENT')),
+    event_count INTEGER NOT NULL CHECK (event_count >= 0),
+    CHECK ((result_status='NO_EVENT' AND event_count=0) OR
+           (result_status='EVENTS' AND event_count>0))
+);
+CREATE INDEX IF NOT EXISTS ix_catalyst_check_pit
+ON catalyst_check(ticker,provider,checked_at DESC);
