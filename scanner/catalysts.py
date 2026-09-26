@@ -210,6 +210,8 @@ def enrich_candidates(df: pd.DataFrame,limit: int):
         "catalyst_materiality":"NONE","rejected_news_count":0,
         "earnings_days":math.nan,"negative_catalyst_risk":False,
         "catalyst_gate_ok":False,"catalyst_gate_reason":"NOT CHECKED",
+        "sec_status":"NOT CHECKED","yahoo_status":"NOT CHECKED","earnings_status":"NOT CHECKED",
+        "catalyst_provider_states":"",
     }
     for col,value in defaults.items():
         out[col]=value
@@ -233,6 +235,11 @@ def enrich_candidates(df: pd.DataFrame,limit: int):
                                       start_time=start_time,requirements=requirements)
         out.at[idx,"catalyst_status"]=result.status.value
         out.at[idx,"catalyst_gate_reason"]=result.reason
+        states=dict(result.provider_states or {})
+        out.at[idx,"sec_status"]=states.get("SEC_EDGAR","UNAVAILABLE")
+        out.at[idx,"yahoo_status"]=states.get("YAHOO_NEWS","UNAVAILABLE")
+        out.at[idx,"earnings_status"]=states.get("ALPHA_VANTAGE","UNAVAILABLE")
+        out.at[idx,"catalyst_provider_states"]=";".join(f"{k}={v}" for k,v in sorted(states.items()))
         out.at[idx,"catalyst_gate_ok"]=result.status in {CatalystState.AVAILABLE,CatalystState.NO_EVENT}
         if result.status in {CatalystState.UNAVAILABLE,CatalystState.STALE}:
             # Blindness is not neutral market evidence. Preserve legacy columns
