@@ -71,3 +71,24 @@ def test_provider_domain_windows_are_asymmetric():
     assert av.window(anchor)==(anchor,anchor+timedelta(days=14))
     assert sec.allow_future_domain is False and yahoo.allow_future_domain is False
     assert av.allow_future_domain is True
+
+
+def test_existing_yahoo_bridge_uses_injected_anchor_and_quiet_is_clean():
+    from scanner.catalyst_existing_adapters import ExistingYahooNewsAdapter
+    class Delegate:
+        def poll(self,frame,now=None):
+            assert now==datetime(2026,9,26,12,0,tzinfo=timezone.utc)
+            return [],{"errors":0}
+    result=ExistingYahooNewsAdapter(Delegate()).fetch_catalysts(
+        "AAPL",anchor=datetime(2026,9,26,12,0,tzinfo=timezone.utc))
+    assert result.events==() and result.rejected_count==0
+
+
+def test_existing_sec_bridge_fails_on_unresolved_identity():
+    from scanner.catalyst_existing_adapters import ExistingSecEdgarAdapter
+    class Delegate:
+        def poll(self,frame,now=None):
+            return [],{"errors":0,"unresolved":1}
+    with pytest.raises(RuntimeError,match="SEC_EDGAR_PROVIDER_FAILED"):
+        ExistingSecEdgarAdapter(Delegate()).fetch_catalysts(
+            "AAPL",anchor=datetime(2026,9,26,12,0,tzinfo=timezone.utc))
