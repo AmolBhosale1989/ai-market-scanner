@@ -29,3 +29,14 @@ def test_catalyst_dispatch_rejects_future_window(monkeypatch):
 def test_catalyst_states_are_explicit_strings():
     from scanner.catalyst_contract import CatalystState
     assert {x.value for x in CatalystState} == {"AVAILABLE","NO_EVENT","UNAVAILABLE","STALE"}
+
+
+def test_normalized_event_requires_identity_type_and_aware_time():
+    from datetime import datetime,timezone
+    from scanner.catalyst_adapters import NormalizedCatalystEvent,CatalystFetchResult
+    good=NormalizedCatalystEvent("evt","NEWS",datetime(2026,9,25,tzinfo=timezone.utc),{"x":1})
+    assert CatalystFetchResult((good,),rejected_count=2).rejected_count==2
+    with pytest.raises(ValueError):
+        NormalizedCatalystEvent("","NEWS",datetime(2026,9,25,tzinfo=timezone.utc),{})
+    with pytest.raises(ValueError):
+        NormalizedCatalystEvent("evt","NEWS",datetime(2026,9,25),{})
