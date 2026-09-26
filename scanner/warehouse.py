@@ -297,6 +297,23 @@ def update(*args, **kwargs):
     raise RuntimeError("WAREHOUSE_UPDATE_REMOVED: PostgreSQL ingestion runs through scanner.warehouse_refresh")
 
 
-def request_dataset(dataset: str, consumer: str, tickers: Iterable[str] | None = None, max_age_minutes: int = 60) -> pd.DataFrame:
-    """Auxiliary datasets fail closed until an explicit warehouse ingestion lane exists."""
-    raise RuntimeError(f"WAREHOUSE_DATASET_NOT_MIGRATED: {dataset} for {consumer}")
+def request_dataset(dataset: str, consumer: str, tickers: Iterable[str] | None = None,
+                    max_age_minutes: int = 60, *, as_of: datetime | None = None,
+                    start_time: datetime | None = None, end_time: datetime | None = None) -> pd.DataFrame:
+    """Dispatch only explicitly migrated auxiliary datasets; all others fail closed."""
+    if dataset != "catalyst_context":
+        raise RuntimeError(f"WAREHOUSE_DATASET_NOT_MIGRATED: {dataset} for {consumer}")
+    from .consumer_snapshot import consumer_anchor
+    from .catalyst_warehouse import catalyst_context
+    anchor = pd.Timestamp(as_of or consumer_anchor() or datetime.now(timezone.utc))
+    if anchor.tzinfo is None:
+        raise RuntimeError(f"WAREHOUSE_AUXILIARY_ANCHOR_NAIVE: {consumer}")
+    anchor = anchor.tz_convert("UTC")
+    end = pd.Timestamp(end_time) if end_time is not None else anchor
+    start = pd.Timestamp(start_time) if start_time is not None else anchor - pd.Timedelta(minutes=max_age_minutes)
+    if start.tzinfo is None or end.tzinfo is None:
+        raise RuntimeError(f"WAREHOUSE_AUXILIARY_WINDOW_NAIVE: {consumer}")
+    if end.tz_convert("UTC") > anchor:
+        raise RuntimeError(f"WAREHOUSE_AUXILIARY_LOOKAHEAD: {consumer}")
+    return catalyst_context(tickers=_tickers(tickers), as_of=anchor.to_pydatetime(),
+                            start_time=start.to_pydatetime(), end_time=end.to_pydatetime())
