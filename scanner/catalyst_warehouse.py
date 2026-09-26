@@ -84,3 +84,35 @@ def catalyst_context(*, tickers, as_of: datetime, start_time: datetime, end_time
            ORDER BY ticker,event_timestamp,provider,provider_event_id"""
     with connection() as conn:
         return pd.read_sql_query(sql,conn,params=(wanted,start,end,anchor,anchor))
+
+
+def record_catalyst_check(*, provider: str, ticker: str, warehouse_run_id: str,
+                          event_count: int) -> None:
+    symbol=str(ticker).strip().upper()
+    if event_count < 0:
+        raise ValueError("event_count must be nonnegative")
+    with connection() as conn,conn.cursor() as cur:
+        cur.execute("""SELECT instrument_id FROM instrument
+                       WHERE canonical_symbol=%s ORDER BY instrument_id LIMIT 1""",(symbol,))
+        instrument=cur.fetchone()
+        if instrument is None:
+            raise RuntimeError(f"CATALYST_INSTRUMENT_UNKNOWN: {symbol}")
+        status="EVENTS" if event_count else "NO_EVENT"
+        cur.execute("""INSERT INTO catalyst_check
+          (provider,instrument_id,ticker,checked_at,warehouse_run_id,result_status,event_count)
+          VALUES (%s,%s,%s,clock_timestamp(),%s,%s,%s)""",
+          (str(provider),instrument[0],symbol,warehouse_run_id,status,event_count))
+
+
+def latest_catalyst_checks(*, tickers, as_of: datetime) -> pd.DataFrame:
+    anchor=pd.Timestamp(as_of)
+    if anchor.tzinfo is None:
+        raise RuntimeError("CATALYST_CHECK_ANCHOR_NAIVE")
+    wanted=list(dict.fromkeys(str(x).upper() for x in tickers if x))
+    sql="""SELECT DISTINCT ON (ticker,provider)
+                  ticker,provider,checked_at,result_status,event_count
+           FROM catalyst_check
+           WHERE ticker=ANY(%s) AND checked_at<=%s
+           ORDER BY ticker,provider,checked_at DESC,catalyst_check_id DESC"""
+    with connection() as conn:
+        return pd.read_sql_query(sql,conn,params=(wanted,anchor.tz_convert("UTC")))
