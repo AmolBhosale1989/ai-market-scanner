@@ -65,14 +65,15 @@ def ingest_catalyst_revision(*, provider: str, provider_event_id: str, ticker: s
             ticker=ticker,catalyst_type=catalyst_type,event_timestamp=event_timestamp,
             warehouse_run_id=warehouse_run_id,payload=payload)
 
-def catalyst_context(*, tickers, as_of: datetime, start_time: datetime, end_time: datetime) -> pd.DataFrame:
+def catalyst_context(*, tickers, as_of: datetime, start_time: datetime, end_time: datetime,
+                     allow_future_domain: bool = False) -> pd.DataFrame:
     anchor=pd.Timestamp(as_of)
     start=pd.Timestamp(start_time)
     end=pd.Timestamp(end_time)
     if any(x.tzinfo is None for x in (anchor,start,end)):
         raise RuntimeError("CATALYST_PIT_TIME_NAIVE")
     anchor,start,end=(x.tz_convert("UTC") for x in (anchor,start,end))
-    if end > anchor:
+    if end > anchor and not allow_future_domain:
         raise RuntimeError("CATALYST_LOOKAHEAD_BLOCKED")
     wanted=list(dict.fromkeys(str(x).upper() for x in tickers if x))
     if not wanted:
