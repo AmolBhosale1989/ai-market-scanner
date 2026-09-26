@@ -18,7 +18,7 @@ def ingest_ticker(adapter: CatalystProviderAdapter,ticker: str,*,anchor) -> dict
             "payload":dict(e.payload),
         } for e in result.events]
         revisions=ingest_catalyst_batch(provider=provider,ticker=ticker,warehouse_run_id=run_id,
-                                        events=events,rejected_count=result.rejected_count)
+                                        events=events,checked_at=anchor,rejected_count=result.rejected_count)
         finish_run(run_id,"AVAILABLE",{"events":len(events),"rejected":result.rejected_count})
         return {"warehouse_run_id":run_id,"events":len(events),"rejected":result.rejected_count,
                 "revisions":revisions}
@@ -44,7 +44,7 @@ def ingest_alpha_vantage_batch(batch_adapter, tickers, *, anchor, lookforward) -
             rows=[{"provider_event_id":e.provider_event_id,"catalyst_type":e.catalyst_type,
                    "event_timestamp":e.event_timestamp,"payload":dict(e.payload)} for e in events]
             revisions=ingest_catalyst_batch(provider=batch_adapter.provider_name,ticker=ticker,
-                warehouse_run_id=run_id,events=rows,rejected_count=rejected)
+                warehouse_run_id=run_id,events=rows,checked_at=anchor,rejected_count=rejected)
             finish_run(run_id,"AVAILABLE",{"events":len(rows),"rejected":rejected,"global_batch":True})
             results[ticker]={"events":len(rows),"rejected":rejected,"revisions":revisions}
         except Exception as exc:

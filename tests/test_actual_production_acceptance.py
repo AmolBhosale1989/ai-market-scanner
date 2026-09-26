@@ -84,9 +84,25 @@ def real_run():
                         [(rid, r["stage_name"], i, r["status"], r["started_at"], r["completed_at"])
                          for i, r in enumerate(rows)])
     anchor = next(r["started_at"] for r in rows if r["stage_name"] == "warehouse_gate") + timedelta(seconds=1)
+    live_tickers=["AAPL","MSFT"]
     for name in REQUIRED_DATASETS:
-        records = [{"status": "PASS", "production_run_id": rid, "as_of_utc": anchor.isoformat()}] if name == "warehouse_snapshot" else []
-        cp.write_dataset(name, pd.DataFrame(records), entity_key=None, run_id=rid)
+        if name == "warehouse_snapshot":
+            records=[{"status":"PASS","production_run_id":rid,"as_of_utc":anchor.isoformat()}]
+        elif name == "live_universe":
+            records=[{"ticker":ticker} for ticker in live_tickers]
+        else:
+            records=[]
+        cp.write_dataset(name,pd.DataFrame(records),entity_key=None,run_id=rid)
+    from scanner.catalyst_warehouse import ingest_catalyst_batch
+    from scanner.bitemporal_warehouse import start_run,finish_run
+    with cp._connect() as conn,conn.cursor() as cur:
+        for ticker in live_tickers:
+            cur.execute("INSERT INTO instrument(canonical_symbol) VALUES (%s) ON CONFLICT DO NOTHING",(ticker,))
+    for provider in ("YAHOO_NEWS","SEC_EDGAR","ALPHA_VANTAGE"):
+        for ticker in live_tickers:
+            warehouse_run=start_run(provider,"CATALYST_CONTEXT",{"ticker":ticker,"fixture":True})
+            ingest_catalyst_batch(provider=provider,ticker=ticker,warehouse_run_id=warehouse_run,events=[],checked_at=anchor)
+            finish_run(warehouse_run,"AVAILABLE",{"events":0,"fixture":True})
     return rid
 
 

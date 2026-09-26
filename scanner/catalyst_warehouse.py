@@ -88,7 +88,7 @@ def catalyst_context(*, tickers, as_of: datetime, start_time: datetime, end_time
         return pd.read_sql_query(sql,conn,params=(wanted,start,end,anchor,anchor))
 
 
-def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, events, rejected_count: int = 0) -> list[tuple[int,str]]:
+def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, events, checked_at, rejected_count: int = 0) -> list[tuple[int,str]]:
     """Atomically write all event revisions and the proof of a successful provider check."""
     symbol=str(ticker).strip().upper()
     provider=str(provider).strip()
@@ -115,8 +115,8 @@ def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, 
             raise RuntimeError("CATALYST_DUPLICATE_EVENT_ID_IN_FETCH")
         cur.execute("""INSERT INTO catalyst_check
           (provider,instrument_id,ticker,checked_at,warehouse_run_id,result_status,event_count,rejected_count,verified_event_ids)
-          VALUES (%s,%s,%s,clock_timestamp(),%s,%s,%s,%s,%s)""",
-          (provider,instrument[0],symbol,warehouse_run_id,status,len(rows),rejected_count,verified_ids))
+          VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+          (provider,instrument[0],symbol,checked_at,warehouse_run_id,status,len(rows),rejected_count,verified_ids))
     return results
 
 def latest_catalyst_checks(*, tickers, as_of: datetime) -> pd.DataFrame:
