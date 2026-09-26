@@ -87,11 +87,13 @@ def catalyst_context(*, tickers, as_of: datetime, start_time: datetime, end_time
         return pd.read_sql_query(sql,conn,params=(wanted,start,end,anchor,anchor))
 
 
-def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, events) -> list[tuple[int,str]]:
+def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, events, rejected_count: int = 0) -> list[tuple[int,str]]:
     """Atomically write all event revisions and the proof of a successful provider check."""
     symbol=str(ticker).strip().upper()
     provider=str(provider).strip()
     rows=list(events)
+    if rejected_count < 0:
+        raise ValueError("rejected_count must be nonnegative")
     with connection() as conn,conn.cursor() as cur:
         cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
                     (f"catalyst-batch\\x1f{provider}\\x1f{symbol}",))
@@ -108,9 +110,9 @@ def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, 
             raise RuntimeError(f"CATALYST_INSTRUMENT_UNKNOWN: {symbol}")
         status="EVENTS" if rows else "NO_EVENT"
         cur.execute("""INSERT INTO catalyst_check
-          (provider,instrument_id,ticker,checked_at,warehouse_run_id,result_status,event_count)
-          VALUES (%s,%s,%s,clock_timestamp(),%s,%s,%s)""",
-          (provider,instrument[0],symbol,warehouse_run_id,status,len(rows)))
+          (provider,instrument_id,ticker,checked_at,warehouse_run_id,result_status,event_count,rejected_count)
+          VALUES (%s,%s,%s,clock_timestamp(),%s,%s,%s,%s)""",
+          (provider,instrument[0],symbol,warehouse_run_id,status,len(rows),rejected_count))
     return results
 
 def latest_catalyst_checks(*, tickers, as_of: datetime) -> pd.DataFrame:
@@ -119,7 +121,7 @@ def latest_catalyst_checks(*, tickers, as_of: datetime) -> pd.DataFrame:
         raise RuntimeError("CATALYST_CHECK_ANCHOR_NAIVE")
     wanted=list(dict.fromkeys(str(x).upper() for x in tickers if x))
     sql="""SELECT DISTINCT ON (ticker,provider)
-                  ticker,provider,checked_at,result_status,event_count
+                  ticker,provider,checked_at,result_status,event_count,rejected_count
            FROM catalyst_check
            WHERE ticker=ANY(%s) AND checked_at<=%s
            ORDER BY ticker,provider,checked_at DESC,catalyst_check_id DESC"""
