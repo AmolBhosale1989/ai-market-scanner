@@ -57,3 +57,17 @@ def test_future_domain_requires_explicit_opt_in(monkeypatch):
     future=datetime(2026,9,26,15,0,tzinfo=timezone.utc)
     with pytest.raises(RuntimeError,match="CATALYST_LOOKAHEAD_BLOCKED"):
         cw.catalyst_context(tickers=("AAPL",),as_of=anchor,start_time=anchor,end_time=future)
+
+
+def test_provider_domain_windows_are_asymmetric():
+    from datetime import timedelta
+    from scanner.catalyst_contract import ProviderRequirement
+    anchor=datetime(2026,9,26,12,0,tzinfo=timezone.utc)
+    sec=ProviderRequirement("SEC_EDGAR",timedelta(minutes=15),lookback=timedelta(hours=72))
+    yahoo=ProviderRequirement("YAHOO_NEWS",timedelta(minutes=15),lookback=timedelta(hours=48))
+    av=ProviderRequirement("ALPHA_VANTAGE",timedelta(hours=24),lookforward=timedelta(days=14),allow_future_domain=True)
+    assert sec.window(anchor)==(anchor-timedelta(hours=72),anchor)
+    assert yahoo.window(anchor)==(anchor-timedelta(hours=48),anchor)
+    assert av.window(anchor)==(anchor,anchor+timedelta(days=14))
+    assert sec.allow_future_domain is False and yahoo.allow_future_domain is False
+    assert av.allow_future_domain is True
