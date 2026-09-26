@@ -64,12 +64,12 @@ def test_batch_failure_rolls_back_events_and_success_check():
         cur.execute("""INSERT INTO instrument(canonical_symbol)
           VALUES ('ZZROLL') ON CONFLICT DO NOTHING""")
     event=pd.Timestamp("2026-09-25T14:00:00Z").to_pydatetime()
-    checked_at=event,events=[
+    events=[
       {"provider_event_id":"good","catalyst_type":"NEWS","event_timestamp":event,"payload":{"x":1}},
       {"provider_event_id":"","catalyst_type":"NEWS","event_timestamp":event,"payload":{"x":2}},
     ]
     with pytest.raises(RuntimeError,match="CATALYST_IDENTITY_INVALID"):
-        ingest_catalyst_batch(provider="TEST",ticker="ZZROLL",warehouse_run_id=run,events=events)
+        ingest_catalyst_batch(provider="TEST",ticker="ZZROLL",warehouse_run_id=run,events=events,checked_at=event)
     with connection() as conn,conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM warehouse_catalyst WHERE ticker='ZZROLL'")
         assert cur.fetchone()[0]==0
@@ -86,7 +86,8 @@ def test_empty_successful_batch_writes_check_but_no_event():
     with connection() as conn,conn.cursor() as cur:
         cur.execute("""INSERT INTO instrument(canonical_symbol)
           VALUES ('ZZEMPTY') ON CONFLICT DO NOTHING""")
-    ingest_catalyst_batch(provider="TEST",ticker="ZZEMPTY",warehouse_run_id=run,events=[],checked_at=as_of)
+    checked_at=pd.Timestamp("2026-09-25T14:00:00Z").to_pydatetime()
+    ingest_catalyst_batch(provider="TEST",ticker="ZZEMPTY",warehouse_run_id=run,events=[],checked_at=checked_at)
     with connection() as conn,conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM warehouse_catalyst WHERE ticker='ZZEMPTY'")
         assert cur.fetchone()[0]==0
