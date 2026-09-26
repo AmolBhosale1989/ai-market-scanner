@@ -5,7 +5,7 @@ from datetime import datetime
 FULL_STAGES = (
     "master_universe", "critical_daily_warehouse", "critical_daily_gate",
     "daily_warehouse", "daily_gate", "daily_prepare", "live_plan",
-    "intraday_warehouse", "warehouse_gate", "daily_scan", "v3_live",
+    "intraday_warehouse", "warehouse_gate", "catalyst_ingestion", "daily_scan", "v3_live",
     "theme_live", "sector_rotation", "broad_breakout", "momentum", "order_flow",
     "order_flow_validation", "v31_challenger", "paper_performance",
     "discovery_products", "quant_shadow", "v4_live", "v4_outcomes", "v5_model",
@@ -16,7 +16,8 @@ LIVE_DEPENDENCIES = {
     "seed_snapshot": (),
     "intraday_warehouse": ("seed_snapshot",),
     "warehouse_gate": ("intraday_warehouse",),
-    **{name: ("warehouse_gate",) for name in (
+    "catalyst_ingestion": ("warehouse_gate",),
+    **{name: ("catalyst_ingestion",) for name in (
         "broad_breakout", "theme_live", "sector_rotation", "premarket", "v4_live")},
     "v3_live": ("broad_breakout", "premarket"),
     "momentum": ("sector_rotation", "broad_breakout"),
