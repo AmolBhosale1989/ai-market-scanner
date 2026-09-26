@@ -86,7 +86,7 @@ def test_empty_successful_batch_writes_check_but_no_event():
     with connection() as conn,conn.cursor() as cur:
         cur.execute("""INSERT INTO instrument(canonical_symbol)
           VALUES ('ZZEMPTY') ON CONFLICT DO NOTHING""")
-    ingest_catalyst_batch(provider="TEST",ticker="ZZEMPTY",warehouse_run_id=run,checked_at=event,events=[],checked_at=as_of)
+    ingest_catalyst_batch(provider="TEST",ticker="ZZEMPTY",warehouse_run_id=run,events=[],checked_at=as_of)
     with connection() as conn,conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM warehouse_catalyst WHERE ticker='ZZEMPTY'")
         assert cur.fetchone()[0]==0
