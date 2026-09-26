@@ -88,7 +88,7 @@ def catalyst_context(*, tickers, as_of: datetime, start_time: datetime, end_time
         return pd.read_sql_query(sql,conn,params=(wanted,start,end,anchor,anchor))
 
 
-def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, events, rejected_count: int = 0) -> list[tuple[int,str]]:
+def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, events, checked_at, rejected_count: int = 0) -> list[tuple[int,str]]:
     """Atomically write all event revisions and the proof of a successful provider check."""
     symbol=str(ticker).strip().upper()
     provider=str(provider).strip()
