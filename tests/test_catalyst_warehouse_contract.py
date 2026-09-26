@@ -24,3 +24,8 @@ def test_catalyst_dispatch_rejects_future_window(monkeypatch):
         warehouse.request_dataset("catalyst_context","test",tickers=("AAPL",),
             as_of=anchor,start_time=datetime(2026,9,25,14,0,tzinfo=timezone.utc),
             end_time=datetime(2026,9,25,15,1,tzinfo=timezone.utc))
+
+
+def test_catalyst_states_are_explicit_strings():
+    from scanner.catalyst_contract import CatalystState
+    assert {x.value for x in CatalystState} == {"AVAILABLE","NO_EVENT","UNAVAILABLE","STALE"}
