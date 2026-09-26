@@ -104,6 +104,12 @@ def audit_current_run(run_id=None):
         reason = signal_expiry_reason(datasets, now_utc=now)
         if reason:
             raise RuntimeError("ACCEPTANCE_SIGNAL_FRESHNESS: " + reason)
+        from .catalyst_pipeline import verify_coverage
+        live_rows=datasets.get("live_universe",[])
+        live_tickers=[row.get("ticker") for row in live_rows if row.get("ticker")]
+        if not live_tickers:
+            raise RuntimeError("ACCEPTANCE_CATALYST_UNIVERSE_EMPTY")
+        verify_coverage(live_tickers,anchor=anchor.to_pydatetime())
         return {"status": "PASS", "production_run_id": rid, "lane": lane,
                 "stages": len(stages), "datasets": len(versions),
                 "warehouse_as_of_utc": anchor.isoformat()}
