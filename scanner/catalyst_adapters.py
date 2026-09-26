@@ -101,3 +101,62 @@ class AlphaVantageCalendarAdapter(CatalystProviderAdapter):
                     "report_time":row.get("timeOfTheDay"),
                 }))
         return CatalystFetchResult(tuple(events),rejected)
+
+
+class AlphaVantageCalendarBatch:
+    """One fetched calendar, indexed once, then resolved locally per ticker."""
+
+    provider_name="ALPHA_VANTAGE"
+
+    def __init__(self,fetch_calendar):
+        self._fetch_calendar=fetch_calendar
+
+    def fetch_and_index(self,*,anchor: datetime,lookforward) -> dict[str,CatalystFetchResult]:
+        import csv
+        from io import StringIO
+        import pandas as pd
+        body=str(self._fetch_calendar() or "").strip()
+        if not body:
+            raise RuntimeError("ALPHA_VANTAGE_EMPTY_RESPONSE")
+        if body.startswith("{"):
+            raise RuntimeError("ALPHA_VANTAGE_SOFT_ERROR_RESPONSE")
+        try:
+            rows=list(csv.DictReader(StringIO(body)))
+        except Exception as exc:
+            raise RuntimeError("ALPHA_VANTAGE_CALENDAR_PARSE_FAILED") from exc
+        anchor_ts=pd.Timestamp(anchor)
+        if anchor_ts.tzinfo is None:
+            raise RuntimeError("ALPHA_VANTAGE_ANCHOR_NAIVE")
+        end=anchor_ts+pd.Timedelta(lookforward)
+        buckets={}
+        rejected={}
+        seen={}
+        observed=set()
+        for row in rows:
+            ticker=str(row.get("symbol") or row.get("Symbol") or row.get("ticker") or row.get("Ticker") or "").strip().upper().replace(".","-")
+            if not ticker:
+                continue
+            observed.add(ticker)
+            raw_date=row.get("reportDate") or row.get("report_date") or row.get("date") or row.get("Date")
+            fiscal=str(row.get("fiscalDateEnding") or "").strip()
+            try:
+                ts=pd.Timestamp(raw_date)
+                ts=ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+            except Exception:
+                rejected[ticker]=rejected.get(ticker,0)+1
+                continue
+            if not (anchor_ts <= ts <= end):
+                continue
+            identity=f"earnings:{ticker}:{fiscal}" if fiscal else f"earnings:{ticker}:{ts.date().isoformat()}"
+            ids=seen.setdefault(ticker,set())
+            if identity in ids:
+                rejected[ticker]=rejected.get(ticker,0)+1
+                continue
+            ids.add(identity)
+            buckets.setdefault(ticker,[]).append(NormalizedCatalystEvent(
+                identity,"UPCOMING_EARNINGS",ts.to_pydatetime(),{
+                    "scheduled_for_utc":ts.isoformat(),"fiscal_date_ending":fiscal,
+                    "eps_estimate":row.get("estimate"),"currency":row.get("currency"),
+                    "report_time":row.get("timeOfTheDay")}))
+        return {ticker:CatalystFetchResult(tuple(buckets.get(ticker,())),rejected.get(ticker,0))
+                for ticker in observed}
