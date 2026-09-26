@@ -101,7 +101,7 @@ def real_run():
     for provider in ("YAHOO_NEWS","SEC_EDGAR","ALPHA_VANTAGE"):
         for ticker in live_tickers:
             warehouse_run=start_run(provider,"CATALYST_CONTEXT",{"ticker":ticker,"fixture":True})
-            ingest_catalyst_batch(provider=provider,ticker=ticker,warehouse_run_id=warehouse_run,events=[])
+            ingest_catalyst_batch(provider=provider,ticker=ticker,warehouse_run_id=warehouse_run,events=[],checked_at=anchor)
             finish_run(warehouse_run,"AVAILABLE",{"events":0,"fixture":True})
     return rid
 
