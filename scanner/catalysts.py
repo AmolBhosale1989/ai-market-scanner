@@ -228,7 +228,7 @@ def enrich_candidates(df: pd.DataFrame,limit: int):
     )
     eligible=out[out["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
     eligible=eligible.sort_values(["stage_rank","rank_score"],ascending=[False,False]).head(limit)
-     for idx,row in eligible.iterrows():
+    for idx,row in eligible.iterrows():
         ticker=str(row["ticker"])
         result=resolve_catalyst_state(ticker=ticker,as_of=anchor.to_pydatetime(),requirements=requirements)
         out.at[idx,"catalyst_status"]=result.status.value
