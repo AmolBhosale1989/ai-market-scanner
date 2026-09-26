@@ -465,6 +465,9 @@ def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = No
         row = cur.fetchone()
         if row is None or row[0] not in {"STARTED", "VALIDATING"}:
             raise RuntimeError(f"CONTROL_PLANE_RUN_NOT_PUBLISHABLE: {rid}")
+        if mode == "production":
+            from .stage_contract import read_and_validate_stages
+            read_and_validate_stages(cur, rid)
         cur.execute(
             """SELECT dataset_name,dataset_version_id,content_hash,row_count
                FROM dataset_version WHERE pipeline_run_id=%s AND status='AVAILABLE'
@@ -499,10 +502,11 @@ def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = No
                 (as_of_row[0], rid),
             )
         all_records = _read_version_records(cur, (version[0] for version in versions.values()))
+        from .signal_freshness import SIGNAL_BAR_FIELDS
         signal_records = {}
         for name, (version_id, expected_hash, expected_rows) in versions.items():
             records = all_records[version_id]
-            if name in {"momentum_signals", "rotation_leaders", "sector_rotation"}:
+            if name in SIGNAL_BAR_FIELDS:
                 signal_records[name] = records
             if len(records) != int(expected_rows) or _hash(records) != expected_hash:
                 raise RuntimeError(f"CONTROL_PLANE_PUBLICATION_BLOCKED: corrupt={name}")

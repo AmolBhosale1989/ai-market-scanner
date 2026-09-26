@@ -41,7 +41,7 @@ def validate_chain(events: list[ChainEvent]) -> None:
 
 
 def deterministic_friday_session() -> dict:
-    """Network-free, deterministic proof of the complete production dependency contract."""
+    """Synthetic unit-test fixture only; this is not production acceptance."""
     run_id="friday-2026-09-18-acceptance"
     as_of=FRIDAY_AS_OF.isoformat()
     value={"bars":[{"ticker":"SPY","close":662.84,"volume":74_000_000},
@@ -66,9 +66,52 @@ def deterministic_friday_session() -> dict:
             "warehouse_as_of_utc":as_of,"chain":[asdict(x) for x in events],"final_hash":input_hash}
 
 
+def audit_current_run(run_id=None):
+    """Read the actual run, stage DAG, immutable rows and source snapshot in one transaction."""
+    import pandas as pd
+    from . import control_plane as cp
+    from .production_telemetry import REQUIRED_DATASETS
+    from .signal_freshness import signal_expiry_reason
+    from .stage_contract import read_and_validate_stages
+
+    rid = run_id or cp.current_run_id()
+    with cp._connect() as conn, conn.cursor() as cur:
+        # The final pointer swap repeats integrity/freshness checks. This audit
+        # is read-only and cannot make a failed or absent producer publishable.
+        cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        lane, stages, now = read_and_validate_stages(cur, rid, acceptance_running=True)
+        cur.execute("""SELECT dataset_name,dataset_version_id,content_hash,row_count
+                       FROM dataset_version WHERE pipeline_run_id=%s AND status='AVAILABLE'
+                       AND dataset_name=ANY(%s)""", (rid, list(REQUIRED_DATASETS)))
+        versions = {row[0]: row[1:] for row in cur.fetchall()}
+        missing = set(REQUIRED_DATASETS) - set(versions)
+        if missing:
+            raise RuntimeError("ACCEPTANCE_DATASET_MISSING: " + ",".join(sorted(missing)))
+        payloads = cp._read_version_records(cur, (version[0] for version in versions.values()))
+        datasets = {}
+        for name, (version, digest, count) in versions.items():
+            rows = payloads[version]
+            if len(rows) != count or cp._hash(rows) != digest:
+                raise RuntimeError(f"ACCEPTANCE_DATASET_CORRUPT: {name}")
+            datasets[name] = rows
+        snapshots = datasets["warehouse_snapshot"]
+        if len(snapshots) != 1 or snapshots[0].get("status") != "PASS" or snapshots[0].get("production_run_id") != rid:
+            raise RuntimeError("ACCEPTANCE_SNAPSHOT_PROVENANCE")
+        anchor = pd.Timestamp(snapshots[0].get("as_of_utc"))
+        gate = next(row for row in stages if row["stage_name"] == "warehouse_gate")
+        if pd.isna(anchor) or anchor.tzinfo is None or not gate["started_at"] <= anchor <= gate["completed_at"]:
+            raise RuntimeError("ACCEPTANCE_SNAPSHOT_TIME")
+        reason = signal_expiry_reason(datasets, now_utc=now)
+        if reason:
+            raise RuntimeError("ACCEPTANCE_SIGNAL_FRESHNESS: " + reason)
+        return {"status": "PASS", "production_run_id": rid, "lane": lane,
+                "stages": len(stages), "datasets": len(versions),
+                "warehouse_as_of_utc": anchor.isoformat()}
+
+
 def main():
-    result=deterministic_friday_session()
-    print("FRIDAY_E2E_ACCEPTANCE_PASS stages=9 as_of=2026-09-18T20:00:00+00:00")
+    result = audit_current_run()
+    print("PRODUCTION_ACCEPTANCE_PASS " + json.dumps(result, sort_keys=True))
     return result
 
 

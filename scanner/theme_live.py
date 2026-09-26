@@ -83,7 +83,12 @@ def run():
     spy_frame=_extract(raw.get("SPY",pd.DataFrame()),"SPY")
     session_date=latest_frame_session(spy_frame)
     spy_move,spy_bar=_stats(spy_frame,session_date)
-    out=base.copy()
+    # Optional ETFs rejected by the warehouse must not receive a live score
+    # from fillna(0). Rank only the eligible, fresh cross-section and disclose
+    # the excluded ETF names in theme_health for the presentation layer.
+    out=base[base["etf"].astype(str).isin(fresh_etfs)].copy()
+    if out.empty:
+        raise RuntimeError("THEME_LIVE_NO_FRESH_ETFS")
     moves=[]; rels=[]; bars=[]
     for _,row in out.iterrows():
         move,bar=_stats(_extract(raw.get(str(row["etf"]),pd.DataFrame()),str(row["etf"])),session_date)

@@ -104,7 +104,7 @@ def test_sparse_theme_bar_does_not_weaken_strict_core_gate(monkeypatch):
 
     core=tiers["CRITICAL_INTRADAY"]
     core_frame=pd.DataFrame([
-        {"ticker":symbol,"event_timestamp":"2026-09-21T15:05:00Z","ingested_at":"2026-09-21T15:08:00Z",
+        {"ticker":symbol,"event_timestamp":"2026-09-21T15:00:00Z","ingested_at":"2026-09-21T15:08:00Z",
          "bars":410,"invalid_bars":0}
         for symbol in core.symbols
     ])
@@ -112,7 +112,7 @@ def test_sparse_theme_bar_does_not_weaken_strict_core_gate(monkeypatch):
 
     theme=tiers["THEME_INTRADAY"]
     theme_frame=pd.DataFrame([
-        {"ticker":symbol,"event_timestamp":"2026-09-21T14:50:00Z" if symbol=="FINX" else "2026-09-21T15:05:00Z",
+        {"ticker":symbol,"event_timestamp":"2026-09-21T14:50:00Z" if symbol=="FINX" else "2026-09-21T15:00:00Z",
          "ingested_at":"2026-09-21T15:08:00Z","bars":151 if symbol=="FINX" else 410,"invalid_bars":0}
         for symbol in theme.symbols
     ])

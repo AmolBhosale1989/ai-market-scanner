@@ -307,8 +307,40 @@ def test_worker_applies_retained_negative_veto_before_price_state_transition(tmp
         catalyst_adapter=Catalyst(), namespace=str(tmp_path),
         settings=WorkerSettings(hot_limit=1, warm_limit=0, warm_batch_size=0),
     )
+    unrelated = [MarketEvent(event_type=kind, ticker="AXTI", signal_id=f"other-{kind.value}",
+                             observed_at_utc=datetime.now(timezone.utc).isoformat(),
+                             payload={"catalyst_score_bonus": 99})
+                 for kind in (EventType.OPTIONS_FLOW, EventType.MICROSTRUCTURE, EventType.CANDIDATE_SNAPSHOT)]
+    worker.engine.store.append_events(unrelated)
     metric = worker.run_cycle()
     transitions = memory_control_plane["datasets"][(memory_control_plane["run_id"], "v4_transitions")]
     assert metric.success is True
     assert transitions.iloc[0]["current_state"] == "INVALIDATED"
     assert (memory_control_plane["run_id"], "v4_catalyst_events") in memory_control_plane["datasets"]
+    active = memory_control_plane["datasets"][(memory_control_plane["run_id"], "v4_catalyst_events")]
+    assert len(active) == 1
+    assert active.iloc[0]["classification_reason"] == "PROSPECTUS_OFFERING"
+    retained_ids = {item["event_id"] for item in worker.engine.store.load_events()}
+    assert all(event.event_id in retained_ids for event in unrelated)  # history stays immutable
+
+
+def test_catalyst_frame_excludes_other_events_future_and_expired_evidence():
+    valid = MarketEvent(event_type=EventType.CATALYST, ticker="AXTI", signal_id="valid",
+                        observed_at_utc=NOW.isoformat(), payload={"ticker": "WRONG", "negative_veto": True})
+    others = [MarketEvent(event_type=kind, ticker="AXTI", signal_id=kind.value,
+                          observed_at_utc=NOW.isoformat(), payload={})
+              for kind in EventType if kind is not EventType.CATALYST]
+    wrong_times = [MarketEvent(event_type=EventType.CATALYST, ticker="AXTI", signal_id=str(hours),
+                               observed_at_utc=(NOW + timedelta(hours=hours)).isoformat(), payload={})
+                   for hours in (1, -73)]
+    events = [valid, *others, *wrong_times]
+    assert [e.event_id for e in load_recent_catalyst_events([e.to_dict() for e in events], now=NOW)] == [valid.event_id]
+    frame = events_frame(events, now=NOW)
+    assert frame["event_id"].tolist() == [valid.event_id]
+    assert frame["ticker"].tolist() == ["AXTI"]
+
+
+def test_future_filing_is_not_made_fresh_by_clamping_age():
+    payload = sec_payload(["424B5"], [""])
+    payload["filings"]["recent"]["acceptanceDateTime"] = [(NOW + timedelta(hours=1)).isoformat()]
+    assert parse_sec_submissions("AXTI", "0001051627", payload, now=NOW) == []

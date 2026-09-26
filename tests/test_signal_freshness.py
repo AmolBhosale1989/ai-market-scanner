@@ -24,3 +24,23 @@ def test_empty_signals_valid_but_missing_dataset_not_valid():
 
 def test_market_closed_uses_latest_session_close():
     assert not signal_expiry_reason(rows('2026-09-25T19:55:00Z'),'2026-09-26T05:00Z')
+
+
+@pytest.mark.parametrize('name', list(SIGNAL_BAR_FIELDS))
+def test_one_expired_family_blocks_otherwise_fresh_publication(name):
+    data = rows('2026-09-25T18:55:00Z')
+    data[name][0][SIGNAL_BAR_FIELDS[name]] = '2026-09-25T18:50:00Z'
+    assert name in signal_expiry_reason(data, '2026-09-25T19:09:33Z')
+
+
+def test_dashboard_passes_canonical_names_for_every_checked_family():
+    import ast
+    from pathlib import Path
+    tree = ast.parse(Path('app.py').read_text())
+    files = next(ast.literal_eval(node.value) for node in ast.walk(tree)
+                 if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'files' for t in node.targets))
+    assert set(SIGNAL_BAR_FIELDS) <= set(files.values())
+    call = next(node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name) and node.func.id == 'signal_expiry_reason')
+    # The dashboard aliases (live/themes) must not look like absent datasets.
+    assert isinstance(call.args[0], ast.DictComp)
