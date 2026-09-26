@@ -5,6 +5,19 @@ import pandas_market_calendars as mcal
 from .config import LIVE_INTRADAY_MAX_AGE_MINUTES
 
 
+def regular_market_open(now_utc=None) -> bool:
+    """A valid closing snapshot is research, not a currently executable signal."""
+    try:
+        now = pd.Timestamp(now_utc) if now_utc is not None else pd.Timestamp.now(tz="UTC")
+        if pd.isna(now) or now.tzinfo is None:
+            return False
+        day = now.tz_convert("America/New_York").date()
+        schedule = mcal.get_calendar("NYSE").schedule(start_date=day, end_date=day)
+        return bool(not schedule.empty and schedule.iloc[0].market_open <= now < schedule.iloc[0].market_close)
+    except (ValueError, TypeError, AttributeError, KeyError):
+        return False
+
+
 def publication_expiry_reason(manifest: dict, now_utc=None) -> str:
     if manifest.get("status") != "PUBLISHED":
         return "No validated PostgreSQL publication is available."

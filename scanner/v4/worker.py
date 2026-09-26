@@ -19,6 +19,7 @@ from .catalysts import (
     CatalystAdapter,
     apply_catalyst_evidence,
     events_frame,
+    load_recent_catalyst_events,
 )
 from .contracts import MarketEvent
 from .engine import MomentumEngine
@@ -148,7 +149,7 @@ class ContinuousMomentumWorker:
             if self.catalyst_adapter is not None:
                 catalyst_result = self.catalyst_adapter.poll(batch)
                 new_catalysts = self.engine.store.append_events(catalyst_result.events)
-                retained_events = [MarketEvent.from_dict(item) for item in self.engine.store.load_events()]
+                retained_events = load_recent_catalyst_events(self.engine.store.load_events())
                 active_catalysts = events_frame(retained_events)
                 batch = apply_catalyst_evidence(batch, active_catalysts)
                 write_dataset("v4_catalyst_events", active_catalysts, entity_key="event_id")

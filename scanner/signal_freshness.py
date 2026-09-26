@@ -6,6 +6,10 @@ SIGNAL_BAR_FIELDS = {
     'momentum_signals': 'last_bar_et',
     'rotation_leaders': 'last_bar_et',
     'sector_rotation': 'updated_at_et',  # producer records the source bar start
+    'intraday_live': 'live_bar_at_et',
+    'v3_live_snapshot': 'last_bar_et',
+    'v4_live_snapshot': 'live_bar_at_et',
+    'trending_themes': 'live_bar_at_et',
 }
 
 

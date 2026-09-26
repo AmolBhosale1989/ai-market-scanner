@@ -102,7 +102,7 @@ def _freshness_failures(
             bar_duration=pd.Timedelta(interval)
         except (TypeError,ValueError):
             bar_duration=pd.Timedelta(0)
-        future_event=newest_by_symbol > now
+        future_event=(newest_by_symbol + bar_duration) > now
         ages=((now-(newest_by_symbol+bar_duration)).dt.total_seconds()/60).clip(lower=0)
         stale=ages[future_event | (ages > max_age_minutes)]
         if not stale.empty:
@@ -126,7 +126,7 @@ def _freshness_failures(
         # than letting the clock accumulate overnight/weekend minutes.
         session_close = pd.Timestamp(completed.iloc[-1]["market_close"])
         bar_end = newest_by_symbol + pd.Timedelta(interval)
-        stale_mask = stale_mask | ((session_close - bar_end).dt.total_seconds() > max_age_minutes * 60) | (newest_by_symbol > now)
+        stale_mask = stale_mask | ((session_close - bar_end).dt.total_seconds() > max_age_minutes * 60) | (bar_end > now)
     stale = newest_dates[stale_mask]
     return stale.index.astype(str).tolist(), ingested, f"expected={latest_session}"
 

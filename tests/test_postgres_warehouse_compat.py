@@ -87,3 +87,14 @@ def test_update_cannot_recreate_csv_warehouse():
 def test_auxiliary_csv_fallback_is_disabled():
     with pytest.raises(RuntimeError, match="WAREHOUSE_DATASET_NOT_MIGRATED"):
         warehouse.request_dataset("event_news", "test", ["AAPL"])
+
+
+@pytest.mark.parametrize("now,expected", [
+    ("2026-09-25T19:59:59Z", ["SPY"]),
+    ("2026-09-25T20:00:00Z", []),
+    ("2026-09-25T20:01:00Z", []),
+])
+def test_bar_start_in_past_does_not_make_unfinished_bar_fresh(now, expected):
+    rows = pd.DataFrame([{"ticker": "SPY", "event_timestamp": "2026-09-25T19:55:00Z",
+                          "ingested_at": "2026-09-25T19:59:00Z"}])
+    assert warehouse._freshness_failures(rows, "5m", 10, "audit", now_utc=now)[0] == expected

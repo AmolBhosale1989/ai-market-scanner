@@ -65,9 +65,9 @@ def _utc(value: Any) -> datetime | None:
 
 def _age_hours(value: Any, now: datetime) -> float | None:
     timestamp = _utc(value)
-    if timestamp is None:
+    if timestamp is None or timestamp > now:
         return None
-    return max(0.0, (now - timestamp).total_seconds() / 3600)
+    return (now - timestamp).total_seconds() / 3600
 
 
 def _stable_event_id(namespace: str, value: str) -> str:
@@ -207,7 +207,8 @@ def parse_sec_submissions(
             continue
         accepted = column("acceptanceDateTime") or column("filingDate")
         accepted_at = _utc(accepted)
-        if accepted_at is None or _age_hours(accepted_at.isoformat(), now) > lookback_hours:
+        age = _age_hours(accepted, now)
+        if accepted_at is None or age is None or age > lookback_hours:
             continue
         classification = classify_sec_filing(form, str(column("items")))
         accession_clean = str(accession).replace("-", "")
@@ -268,6 +269,7 @@ def parse_sec_search(
             or not accession
             or accession in seen_accessions
             or filed_at is None
+            or _age_hours(filed_at.isoformat(), now) is None
             or _age_hours(filed_at.isoformat(), now) > lookback_hours
         ):
             continue
@@ -324,7 +326,8 @@ def parse_nasdaq_filings(
             filed_at = datetime.strptime(str(row.get("filed") or ""), "%m/%d/%Y").replace(tzinfo=timezone.utc)
         except ValueError:
             continue
-        if form not in MATERIAL_FORMS or _age_hours(filed_at.isoformat(), now) > lookback_hours:
+        age = _age_hours(filed_at.isoformat(), now)
+        if form not in MATERIAL_FORMS or age is None or age > lookback_hours:
             continue
         view = row.get("view", {})
         source_url = str(view.get("htmlLink") or "") if isinstance(view, Mapping) else ""
@@ -703,16 +706,18 @@ def events_frame(events: Iterable[MarketEvent], now: datetime | None = None, loo
     now = now or datetime.now(timezone.utc)
     rows = []
     for event in events:
+        if event.event_type is not EventType.CATALYST:
+            continue
         age = _age_hours(event.observed_at_utc, now)
         if age is None or age > lookback_hours:
             continue
         rows.append({
+            **dict(event.payload),
             "event_id": event.event_id,
             "ticker": event.ticker,
             "observed_at_utc": event.observed_at_utc,
             "source": event.source,
             "age_hours": round(age, 2),
-            **dict(event.payload),
         })
     if not rows:
         return pd.DataFrame(columns=CATALYST_COLUMNS)
@@ -754,7 +759,7 @@ def apply_catalyst_evidence(candidates: pd.DataFrame, active: pd.DataFrame) -> p
         ordered = group.sort_values("observed_at_utc", ascending=False)
         latest = ordered.iloc[0]
         veto = ordered.get("negative_veto", pd.Series(False, index=ordered.index)).fillna(False).astype(bool).any()
-        bonus = pd.to_numeric(ordered.get("catalyst_score_bonus", 0), errors="coerce").fillna(0).max()
+        bonus = pd.to_numeric(ordered.get("catalyst_score_bonus", pd.Series(0, index=ordered.index)), errors="coerce").fillna(0).max()
         existing_risk = output.loc[mask, "negative_catalyst_risk"].fillna(False).astype(bool) if "negative_catalyst_risk" in output else False
         output.loc[mask, "negative_catalyst_risk"] = existing_risk | veto
         if "catalyst_score" in output:
@@ -762,8 +767,8 @@ def apply_catalyst_evidence(candidates: pd.DataFrame, active: pd.DataFrame) -> p
             output.loc[mask, "catalyst_score"] = (current + max(0.0, float(bonus))).clip(upper=100)
         output.loc[mask, "v4_catalyst_event_count"] = len(ordered)
         output.loc[mask, "v4_catalyst_latest_at_utc"] = str(latest.get("observed_at_utc", ""))
-        output.loc[mask, "v4_catalyst_bias"] = "BEARISH" if veto else str(latest.get("catalyst_bias", ""))
-        output.loc[mask, "v4_catalyst_reason"] = str(latest.get("classification_reason", ""))
+        output.loc[mask, "v4_catalyst_bias"] = "BEARISH" if veto else str(latest.fillna("").get("catalyst_bias", ""))
+        output.loc[mask, "v4_catalyst_reason"] = str(latest.fillna("").get("classification_reason", ""))
     return output
 
 

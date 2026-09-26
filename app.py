@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from scanner.control_plane import publication_info, read_dataset
-from scanner.dashboard_freshness import publication_expiry_reason
+from scanner.dashboard_freshness import publication_expiry_reason, regular_market_open
 from scanner.signal_freshness import signal_expiry_reason
 from scanner.dashboard_data import read_dashboard_datasets
 from scanner.dashboard_refresh import install_auto_refresh
@@ -210,8 +210,10 @@ def add_live_table_context(frame, live_frame, momentum_frame, rotation_frame):
             & pd.to_numeric(out["rel_vs_spy_live"], errors="coerce").fillna(0).ge(1.0)
         )
     )
-    out.loc[strong_buy, "display_state"]="STRONG BUY"
-    out.loc[~strong_buy & out["live_state"].eq("TRIGGERED"), "display_state"]="TRIGGERED"
+    out.loc[strong_buy & MARKET_OPEN, "display_state"]="STRONG BUY"
+    out.loc[~strong_buy & out["live_state"].eq("TRIGGERED") & MARKET_OPEN, "display_state"]="TRIGGERED"
+    if not MARKET_OPEN:
+        out["display_state"] = "LAST SESSION / " + out["display_state"].astype(str)
     return out
 
 def add_live_legendary_context(frame, live_frame, momentum_frame, rotation_frame):
@@ -312,6 +314,7 @@ def add_opportunity_context(frame):
     return out
 
 files = {
+    "v3_live_snapshot": "v3_live_snapshot",
     "health":"scan_health",
     "live_system_health":"live_system_health", "live_system_health_summary":"live_system_health_summary",
     "live":"intraday_live", "premarket":"premarket_discovery", "theme_health":"theme_health", "sector_rotation":"sector_rotation", "rotation_leaders":"rotation_leaders", "momentum_signals":"momentum_signals", "order_flow_strategy":"order_flow_strategy", "order_flow_strategy_health":"order_flow_strategy_health", "transitions":"state_transitions", "themes":"trending_themes",
@@ -378,9 +381,12 @@ st.markdown("""<div class="hero"><div class="hero-grid"><div>
 health, monitor = data["health"], data["monitor"]
 publication_stamp = str(production_manifest.get("published_at_utc", "Waiting for first publication"))
 warehouse_stamp = str(production_manifest.get("warehouse_as_of_utc", "Unavailable"))
-publication_warning = publication_expiry_reason(production_manifest) or signal_expiry_reason(data)
+publication_warning = publication_expiry_reason(production_manifest) or signal_expiry_reason(
+    {dataset_name: data[key] for key, dataset_name in files.items()}
+)
 production_validated = not publication_warning
-source_state = "PUBLISHED" if production_validated else "BLOCKED / STALE"
+MARKET_OPEN = regular_market_open()
+source_state = ("PUBLISHED" if MARKET_OPEN else "MARKET CLOSED / PUBLISHED") if production_validated else "BLOCKED / STALE"
 st.markdown(
     f'<div class="status-row">'
     f'<span class="status"><span class="dot"></span><strong>{source_state}</strong></span>'
@@ -393,6 +399,13 @@ if not production_validated:
     st.error(f"SIGNALS BLOCKED — {publication_warning} Previous results must not be treated as current signals.")
     st.stop()
 else:
+    if not MARKET_OPEN:
+        st.info("Market closed. Showing the latest completed session for research; there are no current actionable live signals.")
+    if not data["theme_health"].empty:
+        theme_status = data["theme_health"].iloc[-1]
+        if int(theme_status.get("live_etfs_quarantined", 0) or 0) > 0:
+            st.warning("Theme coverage is reduced. Missing, stale or invalid ETFs are excluded from live rankings: "
+                       + str(theme_status.get("quarantined_etf_sample", "See theme health")))
     st.caption(
         f"Validated production run {production_manifest.get('production_run_id','')} · "
         f"warehouse as-of {to_ist(production_manifest.get('warehouse_as_of_utc',''))} · "
@@ -457,8 +470,8 @@ with overview:
         momentum_signals.loc[momentum_signals["signal"].astype(str).eq("MOMENTUM BUY"), "ticker"].astype(str)
     ) if not momentum_signals.empty and {"signal","ticker"}.issubset(momentum_signals.columns) else set()
 
-    confirmed_tickers = base_confirmed_tickers | momentum_buy_tickers
-    actionable_tickers = strict_rec_tickers | confirmed_tickers
+    confirmed_tickers = (base_confirmed_tickers | momentum_buy_tickers) if MARKET_OPEN else set()
+    actionable_tickers = (strict_rec_tickers | confirmed_tickers) if MARKET_OPEN else set()
 
     a,b,c,d,e = st.columns(5)
     a.metric("Current actionable", len(actionable_tickers), help="Unique tickers currently actionable across strict swing recommendations and fast momentum BUY signals.")
@@ -466,8 +479,8 @@ with overview:
     c.metric("Research watchlist", len(watchlist))
     d.metric("Leading themes", len(themes))
     e.metric("Confirmed now", len(confirmed_tickers), help="Unique tickers currently LIVE_CONFIRMED or MOMENTUM BUY. This is a current state, not an alert-event count.")
-    recommendations_live = add_live_table_context(recommendations, live, momentum_signals, rotation_leaders)
-    if recommendations_live.empty and not momentum_signals.empty:
+    recommendations_live = add_live_table_context(recommendations, live, momentum_signals, rotation_leaders) if MARKET_OPEN else pd.DataFrame()
+    if MARKET_OPEN and recommendations_live.empty and not momentum_signals.empty:
         recommendations_live = add_live_table_context(momentum_signals[momentum_signals["signal"].astype(str).eq("MOMENTUM BUY")].copy(), live, momentum_signals, rotation_leaders)
     if not recommendations_live.empty:
         for _, row in recommendations_live.head(5).iterrows():
@@ -478,9 +491,9 @@ with overview:
             st.markdown(f'<div class="signal"><b>{ticker}</b> · <span class="{tone}">{stage}</span>'
                         f'<br><span class="muted">{detail}</span></div>', unsafe_allow_html=True)
     else:
-        st.info("No stock currently passes every recommendation gate. Preliminary setups remain in the research watchlist.")
+        st.info("No current live recommendations while the market is closed." if not MARKET_OPEN else "No stock currently passes every recommendation gate. Preliminary setups remain in the research watchlist.")
     if not momentum_signals.empty:
-        st.subheader("Fast momentum signals")
+        st.subheader("Fast momentum signals" if MARKET_OPEN else "Last-session momentum results")
         ms_cols=["ticker","theme","signal","price","day_change_pct","move_30m_pct","rel_vs_spy_pct","theme_rotation_score","intraday_rvol","vwap","opening_range_high","entry","stop","risk_pct","target_5pct","target_8pct","last_bar_et"]
         st.dataframe(momentum_signals[columns(momentum_signals,ms_cols)].head(30),hide_index=True,use_container_width=True)
     if not sector_rotation.empty:
@@ -495,7 +508,7 @@ with overview:
             st.dataframe(hot[columns(hot,lead_cols)].head(25),hide_index=True,use_container_width=True)
     if not themes.empty:
         st.subheader("Leading themes")
-        st.dataframe(themes.head(10)[columns(themes,["theme_rank","theme","etf","theme_score","theme_state","ret5_pct","ret20_pct","rel5_vs_spy","rel20_vs_spy"])],
+        st.dataframe(themes.head(10)[columns(themes,["theme_rank","theme","etf","live_theme_score","theme_state_live","live_change_pct","live_rel_vs_spy_pct","live_bar_at_et","theme_score","ret5_pct","ret20_pct"])],
                      hide_index=True,use_container_width=True)
 
 with opportunities:
@@ -504,7 +517,7 @@ with opportunities:
     momentum_signals = data["momentum_signals"]
     rotation_leaders = data["rotation_leaders"]
 
-    st.subheader("Current Live Opportunities")
+    st.subheader("Current Live Opportunities" if MARKET_OPEN else "Last-session opportunity research")
     st.markdown('<div class="section-note">This section updates from the live 15-minute engines. It prioritizes current momentum BUYs, near-entry setups, rotation leaders and live-confirmed base-scan names before the slower full-scan list below.</div>', unsafe_allow_html=True)
 
     live_parts = []
@@ -597,7 +610,7 @@ with opportunities:
                 updated_ts = updated_ts.tz_convert("America/New_York")
             regular_open = now_et.normalize() + pd.Timedelta(hours=9, minutes=30)
             regular_close = now_et.normalize() + pd.Timedelta(hours=16)
-            if regular_open <= now_et <= regular_close:
+            if MARKET_OPEN:
                 age_min = (now_et - updated_ts).total_seconds() / 60
                 if updated_ts < regular_open:
                     stale = True
@@ -840,13 +853,15 @@ with opportunities:
     if not recommendations.empty and "ticker" in recommendations.columns:
         recommendations = recommendations.drop_duplicates("ticker", keep="first")
     st.subheader("Live-confirmed recommendations / Strong Buy")
-    st.markdown('<div class="section-note">Only stocks passing liquidity, volatility, catalyst, spread, runway, R/R and live VWAP/ORB/RVOL gates appear here.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-note">Strict swing recommendations and momentum setups use different entry rules. Check the source, risk and confirmation fields for each strategy.</div>', unsafe_allow_html=True)
     recommendation_cols=["ticker","company_name","current_price","live_price","display_state","stage","momentum_signal","live_state","day_change_pct_live","rel_vs_spy_live","theme","market_hunt_score",
                          "rsi14","rsi_state","volume_vs_20ma","swing_volume_state",
                          "live_above_vwap","volume_vs_9ma","opening_30m_rvol","opening_volume_spike_2x",
                          "catalyst_status","catalyst_score","intraday_rvol","bid_ask_spread_pct","entry_trigger","stop",
                          "effective_target","effective_rr","live_trade_action"]
-    if recommendations.empty:
+    if not MARKET_OPEN:
+        st.info("Market closed. Current live recommendations are unavailable; last-session results remain in the research tables.")
+    elif recommendations.empty:
         st.info("No actionable recommendation currently passes every gate.")
     else:
         st.dataframe(recommendations[columns(recommendations,recommendation_cols)],hide_index=True,use_container_width=True)
