@@ -115,8 +115,8 @@ def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, 
             raise RuntimeError("CATALYST_DUPLICATE_EVENT_ID_IN_FETCH")
         cur.execute("""INSERT INTO catalyst_check
           (provider,instrument_id,ticker,checked_at,warehouse_run_id,result_status,event_count,rejected_count,verified_event_ids)
-          VALUES (%s,%s,%s,clock_timestamp(),%s,%s,%s,%s,%s)""",
-          (provider,instrument[0],symbol,warehouse_run_id,status,len(rows),rejected_count,verified_ids))
+          VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+          (provider,instrument[0],symbol,checked_at,warehouse_run_id,status,len(rows),rejected_count,verified_ids))
     return results
 
 def latest_catalyst_checks(*, tickers, as_of: datetime) -> pd.DataFrame:
