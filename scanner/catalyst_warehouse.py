@@ -109,10 +109,13 @@ def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, 
         if instrument is None:
             raise RuntimeError(f"CATALYST_INSTRUMENT_UNKNOWN: {symbol}")
         status="PROVIDER_PAYLOAD_REJECTED" if rejected_count else ("EVENTS" if rows else "NO_EVENT")
+        verified_ids=[str(row["provider_event_id"]) for row in rows]
+        if len(verified_ids) != len(set(verified_ids)):
+            raise RuntimeError("CATALYST_DUPLICATE_EVENT_ID_IN_FETCH")
         cur.execute("""INSERT INTO catalyst_check
-          (provider,instrument_id,ticker,checked_at,warehouse_run_id,result_status,event_count,rejected_count)
-          VALUES (%s,%s,%s,clock_timestamp(),%s,%s,%s,%s)""",
-          (provider,instrument[0],symbol,warehouse_run_id,status,len(rows),rejected_count))
+          (provider,instrument_id,ticker,checked_at,warehouse_run_id,result_status,event_count,rejected_count,verified_event_ids)
+          VALUES (%s,%s,%s,clock_timestamp(),%s,%s,%s,%s,%s)""",
+          (provider,instrument[0],symbol,warehouse_run_id,status,len(rows),rejected_count,verified_ids))
     return results
 
 def latest_catalyst_checks(*, tickers, as_of: datetime) -> pd.DataFrame:
@@ -121,7 +124,7 @@ def latest_catalyst_checks(*, tickers, as_of: datetime) -> pd.DataFrame:
         raise RuntimeError("CATALYST_CHECK_ANCHOR_NAIVE")
     wanted=list(dict.fromkeys(str(x).upper() for x in tickers if x))
     sql="""SELECT DISTINCT ON (ticker,provider)
-                  ticker,provider,checked_at,result_status,event_count,rejected_count
+                  ticker,provider,checked_at,result_status,event_count,rejected_count,verified_event_ids
            FROM catalyst_check
            WHERE ticker=ANY(%s) AND checked_at<=%s
            ORDER BY ticker,provider,checked_at DESC,catalyst_check_id DESC"""
