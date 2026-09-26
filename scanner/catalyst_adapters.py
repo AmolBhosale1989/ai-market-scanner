@@ -38,8 +38,8 @@ class CatalystProviderAdapter(ABC):
     def provider_name(self) -> str: ...
 
     @abstractmethod
-    def fetch_catalysts(self,ticker: str) -> CatalystFetchResult:
-        """Raise on transport/provider failure; return an explicit successful result otherwise."""
+    def fetch_catalysts(self,ticker: str,*,anchor: datetime) -> CatalystFetchResult:
+        """Raise on provider failure; use only the injected immutable knowledge anchor."""
         ...
 
 
@@ -52,7 +52,7 @@ class AlphaVantageCalendarAdapter(CatalystProviderAdapter):
         # Injection keeps HTTP/auth/quota behavior independently testable.
         self._fetch_calendar=fetch_calendar
 
-    def fetch_catalysts(self,ticker: str) -> CatalystFetchResult:
+    def fetch_catalysts(self,ticker: str,*,anchor: datetime) -> CatalystFetchResult:
         import csv
         from io import StringIO
         import pandas as pd
