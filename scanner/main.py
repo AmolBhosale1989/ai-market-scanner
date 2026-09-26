@@ -49,6 +49,8 @@ def _write_health(**kwargs):
     write_dataset("scan_health",pd.DataFrame([kwargs]),entity_key=None)
 
 def _final_decision(row):
+    if not bool(row.get("catalyst_gate_ok",False)):
+        return "NO TRADE / CATALYST DATA BLIND"
     technical=row["decision"]
     score=pd.to_numeric(pd.Series([row.get("catalyst_score",0)]),errors="coerce").fillna(0).iloc[0]
     negative=bool(row.get("negative_catalyst_risk",False))
