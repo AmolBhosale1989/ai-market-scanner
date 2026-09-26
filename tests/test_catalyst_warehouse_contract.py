@@ -49,3 +49,11 @@ def test_provider_requirements_support_different_freshness_slas():
           ProviderRequirement("SEC_EDGAR",timedelta(minutes=15)),
           ProviderRequirement("EVENT_CALENDAR",timedelta(hours=12)))
     assert reqs[0].max_check_age < reqs[1].max_check_age < reqs[2].max_check_age
+
+
+def test_future_domain_requires_explicit_opt_in(monkeypatch):
+    from scanner import catalyst_warehouse as cw
+    anchor=datetime(2026,9,25,15,0,tzinfo=timezone.utc)
+    future=datetime(2026,9,26,15,0,tzinfo=timezone.utc)
+    with pytest.raises(RuntimeError,match="CATALYST_LOOKAHEAD_BLOCKED"):
+        cw.catalyst_context(tickers=("AAPL",),as_of=anchor,start_time=anchor,end_time=future)
