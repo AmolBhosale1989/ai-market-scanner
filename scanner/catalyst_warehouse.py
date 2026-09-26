@@ -108,7 +108,7 @@ def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, 
         instrument=cur.fetchone()
         if instrument is None:
             raise RuntimeError(f"CATALYST_INSTRUMENT_UNKNOWN: {symbol}")
-        status="EVENTS" if rows else "NO_EVENT"
+        status="PROVIDER_PAYLOAD_REJECTED" if rejected_count else ("EVENTS" if rows else "NO_EVENT")
         cur.execute("""INSERT INTO catalyst_check
           (provider,instrument_id,ticker,checked_at,warehouse_run_id,result_status,event_count,rejected_count)
           VALUES (%s,%s,%s,clock_timestamp(),%s,%s,%s,%s)""",
