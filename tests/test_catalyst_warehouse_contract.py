@@ -92,3 +92,27 @@ def test_existing_sec_bridge_fails_on_unresolved_identity():
     with pytest.raises(RuntimeError,match="SEC_EDGAR_PROVIDER_FAILED"):
         ExistingSecEdgarAdapter(Delegate()).fetch_catalysts(
             "AAPL",anchor=datetime(2026,9,26,12,0,tzinfo=timezone.utc))
+
+
+def test_alpha_vantage_batch_fetches_once_and_indexes_future_window():
+    from datetime import timedelta
+    from scanner.catalyst_adapters import AlphaVantageCalendarBatch
+    calls={"n":0}
+    def fetch():
+        calls["n"]+=1
+        return "symbol,reportDate,fiscalDateEnding,estimate,currency\nAAPL,2026-09-30,2026-09-30,1.25,USD\n"
+    batch=AlphaVantageCalendarBatch(fetch)
+    anchor=datetime(2026,9,26,12,0,tzinfo=timezone.utc)
+    indexed=batch.fetch_and_index(anchor=anchor,lookforward=timedelta(days=14))
+    assert calls["n"]==1
+    assert len(indexed["AAPL"].events)==1
+    assert indexed["AAPL"].events[0].event_timestamp > anchor
+
+
+def test_alpha_vantage_soft_error_never_becomes_quiet_market():
+    from datetime import timedelta
+    from scanner.catalyst_adapters import AlphaVantageCalendarBatch
+    batch=AlphaVantageCalendarBatch(lambda:'{"Information":"rate limit"}')
+    with pytest.raises(RuntimeError,match="SOFT_ERROR"):
+        batch.fetch_and_index(anchor=datetime(2026,9,26,12,0,tzinfo=timezone.utc),
+                              lookforward=timedelta(days=14))
