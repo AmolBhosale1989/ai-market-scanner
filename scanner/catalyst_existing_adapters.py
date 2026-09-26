@@ -52,5 +52,5 @@ class ExistingSecEdgarAdapter:
         frame=pd.DataFrame([{"ticker":str(ticker).upper()}])
         events,health=self.delegate.poll(frame,now=anchor)
         if int(health.get("unresolved",0) or 0)>0 or int(health.get("errors",0) or 0)>0:
-            raise RuntimeError("SEC_EDGAR_PROVIDER_FAILED")
+            raise RuntimeError(f"SEC_EDGAR_PROVIDER_FAILED ticker={str(ticker).upper()} health={health!r}")
         return _normalized(events,self.provider_name)
