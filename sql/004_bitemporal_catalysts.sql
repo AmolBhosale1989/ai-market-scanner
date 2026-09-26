@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS catalyst_check (
     warehouse_run_id UUID NOT NULL REFERENCES warehouse_run_log(warehouse_run_id) ON DELETE RESTRICT,
     result_status TEXT NOT NULL CHECK (result_status IN ('EVENTS','NO_EVENT')),
     event_count INTEGER NOT NULL CHECK (event_count >= 0),
+    rejected_count INTEGER NOT NULL DEFAULT 0 CHECK (rejected_count >= 0),
     CHECK ((result_status='NO_EVENT' AND event_count=0) OR
            (result_status='EVENTS' AND event_count>0))
 );
