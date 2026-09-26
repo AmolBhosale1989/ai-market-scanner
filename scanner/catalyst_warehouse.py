@@ -15,9 +15,10 @@ def _canonical_payload(payload: Mapping) -> tuple[str, str]:
     return encoded,hashlib.sha256(encoded.encode()).hexdigest()
 
 
-def ingest_catalyst_revision(*, provider: str, provider_event_id: str, ticker: str,
-                             catalyst_type: str, event_timestamp: datetime,
-                             warehouse_run_id: str, payload: Mapping) -> tuple[int,str]:
+
+def _ingest_revision_cursor(cur, *, provider: str, provider_event_id: str, ticker: str,
+                            catalyst_type: str, event_timestamp: datetime,
+                            warehouse_run_id: str, payload: Mapping) -> tuple[int,str]:
     provider=str(provider).strip()
     event_id=str(provider_event_id).strip()
     symbol=str(ticker).strip().upper()
@@ -28,41 +29,41 @@ def ingest_catalyst_revision(*, provider: str, provider_event_id: str, ticker: s
         raise RuntimeError("CATALYST_EVENT_TIME_NAIVE")
     event=event.tz_convert("UTC").to_pydatetime()
     payload_json,payload_hash=_canonical_payload(payload)
-    with connection() as conn, conn.cursor() as cur:
-        # Advisory locking also serializes the first-revision/absent-row case,
-        # which SELECT ... FOR UPDATE alone cannot lock.
-        logical=f"{provider}\x1f{event_id}\x1f{symbol}"
-        cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",(logical,))
-        cur.execute("""SELECT catalyst_revision_id,payload_hash FROM warehouse_catalyst
-                       WHERE provider=%s AND provider_event_id=%s AND ticker=%s
-                         AND known_to IS NULL FOR UPDATE""",(provider,event_id,symbol))
-        active=cur.fetchone()
-        if active and active[1]==payload_hash:
-            return int(active[0]),"UNCHANGED"
-        cur.execute("""SELECT instrument_id FROM instrument
-                       WHERE canonical_symbol=%s ORDER BY instrument_id LIMIT 1""",(symbol,))
-        instrument=cur.fetchone()
-        if instrument is None:
-            raise RuntimeError(f"CATALYST_INSTRUMENT_UNKNOWN: {symbol}")
-        # Use one database timestamp for both sides of the supersession boundary.
-        cur.execute("SELECT clock_timestamp()")
-        knowledge_time=cur.fetchone()[0]
-        if active:
-            cur.execute("""UPDATE warehouse_catalyst SET known_to=%s
-                           WHERE catalyst_revision_id=%s AND known_to IS NULL""",
-                        (knowledge_time,active[0]))
-            if cur.rowcount != 1:
-                raise RuntimeError("CATALYST_SUPERSESSION_RACE")
-        cur.execute("""INSERT INTO warehouse_catalyst
-          (provider,provider_event_id,instrument_id,ticker,catalyst_type,event_timestamp,
-           known_from,warehouse_run_id,payload_hash,payload)
-          VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
-          RETURNING catalyst_revision_id""",
-          (provider,event_id,instrument[0],symbol,str(catalyst_type),event,knowledge_time,
-           warehouse_run_id,payload_hash,payload_json))
-        revision=int(cur.fetchone()[0])
-    return revision,"SUPERSEDED" if active else "INSERTED"
+    logical=f"{provider}\\x1f{event_id}\\x1f{symbol}"
+    cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",(logical,))
+    cur.execute("""SELECT catalyst_revision_id,payload_hash FROM warehouse_catalyst
+                   WHERE provider=%s AND provider_event_id=%s AND ticker=%s
+                     AND known_to IS NULL FOR UPDATE""",(provider,event_id,symbol))
+    active=cur.fetchone()
+    if active and active[1]==payload_hash:
+        return int(active[0]),"UNCHANGED"
+    cur.execute("""SELECT instrument_id FROM instrument
+                   WHERE canonical_symbol=%s ORDER BY instrument_id LIMIT 1""",(symbol,))
+    instrument=cur.fetchone()
+    if instrument is None:
+        raise RuntimeError(f"CATALYST_INSTRUMENT_UNKNOWN: {symbol}")
+    cur.execute("SELECT clock_timestamp()")
+    knowledge_time=cur.fetchone()[0]
+    if active:
+        cur.execute("""UPDATE warehouse_catalyst SET known_to=%s
+                       WHERE catalyst_revision_id=%s AND known_to IS NULL""",(knowledge_time,active[0]))
+        if cur.rowcount != 1:
+            raise RuntimeError("CATALYST_SUPERSESSION_RACE")
+    cur.execute("""INSERT INTO warehouse_catalyst
+      (provider,provider_event_id,instrument_id,ticker,catalyst_type,event_timestamp,
+       known_from,warehouse_run_id,payload_hash,payload)
+      VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb) RETURNING catalyst_revision_id""",
+      (provider,event_id,instrument[0],symbol,str(catalyst_type),event,knowledge_time,
+       warehouse_run_id,payload_hash,payload_json))
+    return int(cur.fetchone()[0]),"SUPERSEDED" if active else "INSERTED"
 
+def ingest_catalyst_revision(*, provider: str, provider_event_id: str, ticker: str,
+                             catalyst_type: str, event_timestamp: datetime,
+                             warehouse_run_id: str, payload: Mapping) -> tuple[int,str]:
+    with connection() as conn,conn.cursor() as cur:
+        return _ingest_revision_cursor(cur,provider=provider,provider_event_id=provider_event_id,
+            ticker=ticker,catalyst_type=catalyst_type,event_timestamp=event_timestamp,
+            warehouse_run_id=warehouse_run_id,payload=payload)
 
 def catalyst_context(*, tickers, as_of: datetime, start_time: datetime, end_time: datetime) -> pd.DataFrame:
     anchor=pd.Timestamp(as_of)
@@ -86,23 +87,31 @@ def catalyst_context(*, tickers, as_of: datetime, start_time: datetime, end_time
         return pd.read_sql_query(sql,conn,params=(wanted,start,end,anchor,anchor))
 
 
-def record_catalyst_check(*, provider: str, ticker: str, warehouse_run_id: str,
-                          event_count: int) -> None:
+def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, events) -> list[tuple[int,str]]:
+    """Atomically write all event revisions and the proof of a successful provider check."""
     symbol=str(ticker).strip().upper()
-    if event_count < 0:
-        raise ValueError("event_count must be nonnegative")
+    provider=str(provider).strip()
+    rows=list(events)
     with connection() as conn,conn.cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                    (f"catalyst-batch\\x1f{provider}\\x1f{symbol}",))
+        results=[]
+        for event in rows:
+            results.append(_ingest_revision_cursor(cur,provider=provider,
+                provider_event_id=event["provider_event_id"],ticker=symbol,
+                catalyst_type=event["catalyst_type"],event_timestamp=event["event_timestamp"],
+                warehouse_run_id=warehouse_run_id,payload=event["payload"]))
         cur.execute("""SELECT instrument_id FROM instrument
                        WHERE canonical_symbol=%s ORDER BY instrument_id LIMIT 1""",(symbol,))
         instrument=cur.fetchone()
         if instrument is None:
             raise RuntimeError(f"CATALYST_INSTRUMENT_UNKNOWN: {symbol}")
-        status="EVENTS" if event_count else "NO_EVENT"
+        status="EVENTS" if rows else "NO_EVENT"
         cur.execute("""INSERT INTO catalyst_check
           (provider,instrument_id,ticker,checked_at,warehouse_run_id,result_status,event_count)
           VALUES (%s,%s,%s,clock_timestamp(),%s,%s,%s)""",
-          (str(provider),instrument[0],symbol,warehouse_run_id,status,event_count))
-
+          (provider,instrument[0],symbol,warehouse_run_id,status,len(rows)))
+    return results
 
 def latest_catalyst_checks(*, tickers, as_of: datetime) -> pd.DataFrame:
     anchor=pd.Timestamp(as_of)
