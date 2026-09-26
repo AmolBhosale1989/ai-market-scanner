@@ -41,8 +41,9 @@ CREATE TABLE IF NOT EXISTS catalyst_check (
     result_status TEXT NOT NULL CHECK (result_status IN ('EVENTS','NO_EVENT','PROVIDER_PAYLOAD_REJECTED')),
     event_count INTEGER NOT NULL CHECK (event_count >= 0),
     rejected_count INTEGER NOT NULL DEFAULT 0 CHECK (rejected_count >= 0),
-    CHECK ((result_status='NO_EVENT' AND event_count=0 AND rejected_count=0) OR
-           (result_status='EVENTS' AND event_count>0 AND rejected_count=0) OR
+    verified_event_ids TEXT[] NOT NULL DEFAULT '{}'::text[],
+    CHECK ((result_status='NO_EVENT' AND event_count=0 AND rejected_count=0 AND cardinality(verified_event_ids)=0) OR
+           (result_status='EVENTS' AND event_count>0 AND rejected_count=0 AND event_count=cardinality(verified_event_ids)) OR
            (result_status='PROVIDER_PAYLOAD_REJECTED' AND rejected_count>0))
 );
 CREATE INDEX IF NOT EXISTS ix_catalyst_check_pit
