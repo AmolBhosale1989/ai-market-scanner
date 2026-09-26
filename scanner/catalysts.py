@@ -221,18 +221,16 @@ def enrich_candidates(df: pd.DataFrame,limit: int):
         raise RuntimeError("CATALYST_CONTEXT_ANCHOR_REQUIRED")
     anchor=pd.Timestamp(anchor)
     requirements=(
-        ProviderRequirement("YAHOO_NEWS",timedelta(minutes=15)),
-        ProviderRequirement("SEC_EDGAR",timedelta(minutes=15)),
-        ProviderRequirement("ALPHA_VANTAGE",timedelta(hours=24)),
+        ProviderRequirement("YAHOO_NEWS",timedelta(minutes=15),lookback=timedelta(hours=48)),
+        ProviderRequirement("SEC_EDGAR",timedelta(minutes=15),lookback=timedelta(hours=72)),
+        ProviderRequirement("ALPHA_VANTAGE",timedelta(hours=24),
+                            lookforward=timedelta(days=14),allow_future_domain=True),
     )
     eligible=out[out["stage"].isin(["CONFIRMED","ARMED","FORMING","DISCOVER"])].copy()
     eligible=eligible.sort_values(["stage_rank","rank_score"],ascending=[False,False]).head(limit)
-    start_time=(anchor-pd.Timedelta(hours=CATALYST_CONTEXT_MAX_HOURS)).to_pydatetime()
-
-    for idx,row in eligible.iterrows():
+     for idx,row in eligible.iterrows():
         ticker=str(row["ticker"])
-        result=resolve_catalyst_state(ticker=ticker,as_of=anchor.to_pydatetime(),
-                                      start_time=start_time,requirements=requirements)
+        result=resolve_catalyst_state(ticker=ticker,as_of=anchor.to_pydatetime(),requirements=requirements)
         out.at[idx,"catalyst_status"]=result.status.value
         out.at[idx,"catalyst_gate_reason"]=result.reason
         states=dict(result.provider_states or {})
