@@ -38,13 +38,30 @@ def run() -> dict:
 
     yahoo=ExistingYahooNewsAdapter()
     sec=ExistingSecEdgarAdapter()
+    failures=[]
     for ticker in tickers:
-        ingest_ticker(yahoo,ticker,anchor=anchor)
-        ingest_ticker(sec,ticker,anchor=anchor)
+        for adapter in (yahoo,sec):
+            try:
+                ingest_ticker(adapter,ticker,anchor=anchor)
+            except Exception as exc:
+                detail=f"{adapter.provider_name}:{ticker}:{type(exc).__name__}:{exc}"
+                failures.append(detail)
+                print("CATALYST_PROVIDER_FAILURE "+detail,flush=True)
 
-    ingest_alpha_vantage_batch(AlphaVantageCalendarBatch(_alpha_calendar_fetch),tickers,
-                               anchor=anchor,lookforward=timedelta(days=14))
-    verify_coverage(tickers,anchor=anchor)
+    try:
+        ingest_alpha_vantage_batch(AlphaVantageCalendarBatch(_alpha_calendar_fetch),tickers,
+                                   anchor=anchor,lookforward=timedelta(days=14))
+    except Exception as exc:
+        detail=f"ALPHA_VANTAGE:BATCH:{type(exc).__name__}:{exc}"
+        failures.append(detail)
+        print("CATALYST_PROVIDER_FAILURE "+detail,flush=True)
+
+    try:
+        verify_coverage(tickers,anchor=anchor)
+    except RuntimeError as exc:
+        if failures:
+            print(f"CATALYST_PROVIDER_FAILURES count={len(failures)} sample={failures[:10]!r}",flush=True)
+        raise
     result={"tickers":len(tickers),"providers":len(REQUIRED_PROVIDERS),
             "required_checks":len(tickers)*len(REQUIRED_PROVIDERS)}
     print("CATALYST_INGESTION_PASS "+str(result))
