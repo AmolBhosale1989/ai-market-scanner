@@ -13,6 +13,8 @@ from .control_plane import read_dataset
 
 
 REQUIRED_PROVIDERS=("YAHOO_NEWS","SEC_EDGAR","ALPHA_VANTAGE")
+PROVIDER_MAX_AGE={"YAHOO_NEWS":timedelta(minutes=15),"SEC_EDGAR":timedelta(minutes=15),
+                  "ALPHA_VANTAGE":timedelta(hours=24)}
 
 
 def _alpha_calendar_fetch():
@@ -59,7 +61,9 @@ def verify_coverage(tickers,*,anchor):
                          AND result_status IN ('EVENTS','NO_EVENT')
                          AND rejected_count=0
                        GROUP BY ticker,provider""",(wanted,anchor))
-        present={(r[0],r[1]) for r in cur.fetchall()}
+        rows=cur.fetchall()
+        present={(ticker,provider) for ticker,provider,checked_at in rows
+                 if anchor-checked_at <= PROVIDER_MAX_AGE[provider]}
     required={(ticker,provider) for ticker in wanted for provider in REQUIRED_PROVIDERS}
     missing=required-present
     if missing:
