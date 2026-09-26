@@ -65,12 +65,27 @@ def resolve_catalyst_state(*,ticker: str,as_of: datetime,start_time: datetime,
         except Exception as exc:
             return CatalystResult(CatalystState.UNAVAILABLE,symbol,reason=f"[{req.provider}] EVENT_READ_FAILED:{type(exc).__name__}",provider_states=states)
         outcome=str(row["result_status"])
-        if (outcome=="NO_EVENT" and not events.empty) or (outcome=="EVENTS" and events.empty):
+        verified={str(x) for x in (row.get("verified_event_ids") or [])}
+        if outcome=="NO_EVENT":
+            if int(row.get("event_count",0) or 0)!=0 or verified:
+                states[req.provider]="UNAVAILABLE"
+                return CatalystResult(CatalystState.UNAVAILABLE,symbol,
+                    reason=f"[{req.provider}] CHECK_EVENT_MISMATCH:NO_EVENT_MANIFEST",provider_states=states)
+            # Historical PIT events may legitimately remain strategy-relevant
+            # even though this particular successful fetch returned no new event.
+            states[req.provider]="NO_EVENT"
+            if not events.empty:
+                frames.append(events)
+            continue
+        pit_ids=set(events["provider_event_id"].astype(str)) if not events.empty else set()
+        missing=verified-pit_ids
+        if outcome!="EVENTS" or not verified or int(row.get("event_count",0) or 0)!=len(verified) or missing:
             states[req.provider]="UNAVAILABLE"
-            return CatalystResult(CatalystState.UNAVAILABLE,symbol,reason=f"[{req.provider}] CHECK_EVENT_MISMATCH",provider_states=states)
-        states[req.provider]="AVAILABLE" if not events.empty else "NO_EVENT"
-        if not events.empty:
-            frames.append(events)
+            detail=",".join(sorted(missing)[:5]) if missing else "MANIFEST_INVALID"
+            return CatalystResult(CatalystState.UNAVAILABLE,symbol,
+                reason=f"[{req.provider}] CHECK_EVENT_MISMATCH:{detail}",provider_states=states)
+        states[req.provider]="AVAILABLE"
+        frames.append(events)
     if frames:
         return CatalystResult(CatalystState.AVAILABLE,symbol,events=pd.concat(frames,ignore_index=True),
                               provider_states=states)
