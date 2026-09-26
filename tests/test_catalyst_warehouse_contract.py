@@ -40,3 +40,12 @@ def test_normalized_event_requires_identity_type_and_aware_time():
         NormalizedCatalystEvent("","NEWS",datetime(2026,9,25,tzinfo=timezone.utc),{})
     with pytest.raises(ValueError):
         NormalizedCatalystEvent("evt","NEWS",datetime(2026,9,25),{})
+
+
+def test_provider_requirements_support_different_freshness_slas():
+    from datetime import timedelta
+    from scanner.catalyst_contract import ProviderRequirement
+    reqs=(ProviderRequirement("YAHOO_NEWS",timedelta(minutes=5)),
+          ProviderRequirement("SEC_EDGAR",timedelta(minutes=15)),
+          ProviderRequirement("EVENT_CALENDAR",timedelta(hours=12)))
+    assert reqs[0].max_check_age < reqs[1].max_check_age < reqs[2].max_check_age
