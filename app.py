@@ -497,7 +497,11 @@ with overview:
         ms_cols=["ticker","theme","signal","price","day_change_pct","move_30m_pct","rel_vs_spy_pct","theme_rotation_score","intraday_rvol","vwap","opening_range_high","entry","stop","risk_pct","target_5pct","target_8pct","last_bar_et"]
         st.dataframe(momentum_signals[columns(momentum_signals,ms_cols)].head(30),hide_index=True,use_container_width=True)
     if not sector_rotation.empty:
-        st.subheader("Live sector rotation")
+        st.subheader("Live sector rotation" if MARKET_OPEN else "Last-session sector rotation")
+        pending=sector_rotation[sector_rotation["rotation_state"].eq("NOT_READY_30M")]
+        if not pending.empty:
+            st.warning("30-minute rotation is not ready for " + ", ".join(pending["etf"].astype(str))
+                       + ". Exact observed price endpoints are required; these rows have no score or rank.")
         rot_cols=["rotation_rank","theme","etf","etf_change_pct","rel_vs_spy_pct","breadth_pct","rotation_score","rotation_state","updated_at_et"]
         st.dataframe(sector_rotation[columns(sector_rotation,rot_cols)].head(10),hide_index=True,use_container_width=True)
     if not rotation_leaders.empty:

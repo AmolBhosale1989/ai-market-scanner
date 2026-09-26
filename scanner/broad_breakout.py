@@ -8,6 +8,7 @@ import pandas as pd
 from .warehouse import frames as warehouse_frames, history as warehouse_history
 
 from .session_contract import latest_frame_session
+from .intraday_metrics import close_return_30m, same_clock_rvol
 from .control_plane import read_dataset, write_dataset
 
 NY = ZoneInfo("America/New_York")
@@ -41,23 +42,7 @@ def _latest_session_date(frame: pd.DataFrame, fallback):
 
 
 def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float:
-    if today.empty:
-        return math.nan
-    bars=len(today)
-    cur=float(pd.to_numeric(today["Volume"],errors="coerce").fillna(0).sum())
-    prior_dates=sorted({x for x in d.index.date if x<session_date},reverse=True)[:2]
-    comps=[]
-    for dt in prior_dates:
-        s=d[d.index.date==dt].between_time("09:30","16:00").iloc[:bars]
-        if s.empty:
-            continue
-        v=float(pd.to_numeric(s["Volume"],errors="coerce").fillna(0).sum())
-        if v>0:
-            comps.append(v)
-    if not comps or cur<=0:
-        return math.nan
-    base=sum(comps)/len(comps)
-    return cur/base if base>0 else math.nan
+    return same_clock_rvol(d,today,session_date,sessions=2)
 
 
 def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.DataFrame:
@@ -125,9 +110,7 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
             rvol=_same_time_rvol(d,today,session_date)
             vol=float(pd.to_numeric(today["Volume"],errors="coerce").fillna(0).sum())
             dollar=vol*price
-            recent=today.tail(6)
-            move30=((float(recent["Close"].iloc[-1])/float(recent["Close"].iloc[0])-1)*100
-                    if len(recent)>=2 and float(recent["Close"].iloc[0]) else math.nan)
+            move30=close_return_30m(today)
             session_high=float(today["High"].max())
             near_high=price>=session_high*0.985 if session_high>0 else False
 

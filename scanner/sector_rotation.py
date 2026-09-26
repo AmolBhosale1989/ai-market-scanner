@@ -8,6 +8,7 @@ import pandas as pd
 from .warehouse import DataRequirement, frames as warehouse_frames, provide
 
 from .session_contract import latest_frame_session
+from .intraday_metrics import close_return_30m
 from .control_plane import write_dataset
 from .config import ROTATION_REQUIRED_SYMBOLS
 
@@ -68,9 +69,7 @@ def _stats(d: pd.DataFrame, ticker: str, session_date):
     prior_close=float(prior["Close"].iloc[-1])
     last=float(today["Close"].iloc[-1])
     day=(last/prior_close-1)*100 if prior_close>0 else math.nan
-    recent=today.tail(6)
-    move30=((float(recent["Close"].iloc[-1])/float(recent["Close"].iloc[0])-1)*100
-            if len(recent)>=2 and float(recent["Close"].iloc[0]) else math.nan)
+    move30=close_return_30m(today)
     vol=float(pd.to_numeric(today.get("Volume",0),errors="coerce").fillna(0).sum())
     return {"ticker":ticker,"last":round(last,2),"day_change_pct":round(day,2),
             "move_30m_pct":round(move30,2) if math.isfinite(move30) else math.nan,
@@ -114,9 +113,12 @@ def run():
         member_stats=[cache.get(t) for t in THEME_CONSTITUENTS.get(theme,[]) if cache.get(t)]
         positive=sum(1 for s in member_stats if float(s["day_change_pct"])>spy_chg)
         breadth=(positive/len(member_stats)*100) if member_stats else 0.0
-        move30=float(es.get("move_30m_pct") or 0)
-        rotation_score=max(0,min(100,50+rel*12+move30*4+breadth*0.25))
-        state=("ROTATION_LEADER" if rotation_score>=70 and rel>0.5
+        move30=float(es["move_30m_pct"])
+        ready=math.isfinite(move30)
+        # min(100, NaN) evaluates to 100 in Python. Missing history must never
+        # turn into a maximum score, a rank or a qualifying rotation signal.
+        rotation_score=max(0,min(100,50+rel*12+move30*4+breadth*0.25)) if ready else math.nan
+        state=("NOT_READY_30M" if not ready else "ROTATION_LEADER" if rotation_score>=70 and rel>0.5
                else "STRONG_ROTATION" if rotation_score>=60 and rel>0
                else "NEUTRAL")
         theme_rows.append({
@@ -127,23 +129,30 @@ def run():
         })
         for s in member_stats:
             stock_rel=float(s["day_change_pct"])-spy_chg
-            score=max(0,min(100,50+stock_rel*10+float(s.get("move_30m_pct") or 0)*4))
+            stock_move30=float(s["move_30m_pct"])
+            stock_ready=ready and math.isfinite(stock_move30)
+            score=max(0,min(100,50+stock_rel*10+stock_move30*4)) if stock_ready else math.nan
             leader_rows.append({
                 **s,"theme":theme,"theme_rotation_score":round(rotation_score,1),
                 "theme_rotation_state":state,"rel_vs_spy_pct":round(stock_rel,2),
                 "rotation_leader_score":round(score,1),
-                "rotation_leader":bool(state in {"ROTATION_LEADER","STRONG_ROTATION"} and stock_rel>0.75),
+                "rotation_metric_state":"READY" if stock_ready else "NOT_READY_30M",
+                "rotation_leader":bool(stock_ready and state in {"ROTATION_LEADER","STRONG_ROTATION"} and stock_rel>0.75),
             })
 
     themes=pd.DataFrame(theme_rows)
     leaders=pd.DataFrame(leader_rows)
     if not themes.empty:
         themes=themes.sort_values(["rotation_score","rel_vs_spy_pct"],ascending=[False,False]).reset_index(drop=True)
-        themes["rotation_rank"]=range(1,len(themes)+1)
+        themes["rotation_rank"]=pd.Series(pd.NA,index=themes.index,dtype="Int64")
+        ranked=themes["rotation_score"].notna()
+        themes.loc[ranked,"rotation_rank"]=range(1,int(ranked.sum())+1)
     if not leaders.empty:
         leaders=leaders.sort_values(["rotation_leader","rotation_leader_score","day_change_pct"],
                                     ascending=[False,False,False]).reset_index(drop=True)
-        leaders["rotation_rank"]=range(1,len(leaders)+1)
+        leaders["rotation_rank"]=pd.Series(pd.NA,index=leaders.index,dtype="Int64")
+        ranked=leaders["rotation_leader_score"].notna()
+        leaders.loc[ranked,"rotation_rank"]=range(1,int(ranked.sum())+1)
 
     write_dataset("sector_rotation",themes,entity_key="theme")
     write_dataset("rotation_leaders",leaders)
@@ -152,6 +161,8 @@ def run():
         "session_date":str(session_date),
         "spy_change_pct":spy_chg,"themes_scanned":len(themes),"stocks_scanned":len(leaders),
         "rotation_leaders":int(leaders["rotation_leader"].sum()) if not leaders.empty else 0,
+        "themes_pending_30m":int(themes["rotation_score"].isna().sum()) if not themes.empty else 0,
+        "stocks_pending_30m":int(leaders["rotation_leader_score"].isna().sum()) if not leaders.empty else 0,
         "mode":"BATCHED_INTRADAY_ROTATION",
     }])
     write_dataset("sector_rotation_health",health,entity_key=None)
