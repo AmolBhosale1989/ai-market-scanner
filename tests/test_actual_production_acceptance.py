@@ -95,6 +95,9 @@ def real_run():
         cp.write_dataset(name,pd.DataFrame(records),entity_key=None,run_id=rid)
     from scanner.catalyst_warehouse import ingest_catalyst_batch
     from scanner.bitemporal_warehouse import start_run,finish_run
+    with cp._connect() as conn,conn.cursor() as cur:
+        for ticker in live_tickers:
+            cur.execute("INSERT INTO instrument(canonical_symbol) VALUES (%s) ON CONFLICT DO NOTHING",(ticker,))
     for provider in ("YAHOO_NEWS","SEC_EDGAR","ALPHA_VANTAGE"):
         for ticker in live_tickers:
             warehouse_run=start_run(provider,"CATALYST_CONTEXT",{"ticker":ticker,"fixture":True})
