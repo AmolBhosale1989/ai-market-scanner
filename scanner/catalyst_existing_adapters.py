@@ -35,9 +35,9 @@ class ExistingYahooNewsAdapter:
     def __init__(self,delegate=None):
         self.delegate=delegate or YahooNewsCatalystAdapter(max_workers=1,max_tickers=1)
 
-    def fetch_catalysts(self,ticker: str) -> CatalystFetchResult:
+    def fetch_catalysts(self,ticker: str,*,anchor: datetime) -> CatalystFetchResult:
         frame=pd.DataFrame([{"ticker":str(ticker).upper(),"company_name":""}])
-        events,health=self.delegate.poll(frame,now=datetime.now(timezone.utc))
+        events,health=self.delegate.poll(frame,now=anchor)
         if int(health.get("errors",0) or 0)>0:
             raise RuntimeError("YAHOO_NEWS_PROVIDER_FAILED")
         return _normalized(events,self.provider_name)
@@ -48,9 +48,9 @@ class ExistingSecEdgarAdapter:
     def __init__(self,delegate=None):
         self.delegate=delegate or SecFilingAdapter(max_workers=1)
 
-    def fetch_catalysts(self,ticker: str) -> CatalystFetchResult:
+    def fetch_catalysts(self,ticker: str,*,anchor: datetime) -> CatalystFetchResult:
         frame=pd.DataFrame([{"ticker":str(ticker).upper()}])
-        events,health=self.delegate.poll(frame,now=datetime.now(timezone.utc))
+        events,health=self.delegate.poll(frame,now=anchor)
         if int(health.get("unresolved",0) or 0)>0 or int(health.get("errors",0) or 0)>0:
             raise RuntimeError("SEC_EDGAR_PROVIDER_FAILED")
         return _normalized(events,self.provider_name)
