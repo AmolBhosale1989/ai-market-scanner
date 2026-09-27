@@ -3,7 +3,7 @@ from unittest.mock import Mock
 import pandas as pd
 import pytest
 
-from scanner import catalyst_pipeline as cp
+from scanner import catalyst_data_plane as cp
 
 
 def test_batch_polling_keeps_unresolved_sec_fail_closed_and_reaches_alpha(monkeypatch):
