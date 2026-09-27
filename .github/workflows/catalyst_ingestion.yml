@@ -18,15 +18,8 @@ jobs:
       fail-fast: false
       matrix:
         provider: [alpha_vantage, yahoo, sec]
-        include:
-          - provider: alpha_vantage
-            timeout: 5
-          - provider: yahoo
-            timeout: 10
-          - provider: sec
-            timeout: 30
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ matrix.timeout }}
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
