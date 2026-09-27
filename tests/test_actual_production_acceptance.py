@@ -84,9 +84,12 @@ def real_run(monkeypatch):
                         [(rid, r["stage_name"], i, r["status"], r["started_at"], r["completed_at"])
                          for i, r in enumerate(rows)])
     anchor = next(r["started_at"] for r in rows if r["stage_name"] == "warehouse_gate") + timedelta(seconds=1)
+    from scanner.consumer_snapshot import capture_boundary
+    _, visibility = capture_boundary()
     # Production establishes the validated snapshot before any V3 output write.
     cp.write_dataset("warehouse_snapshot", pd.DataFrame([{
         "status": "PASS", "production_run_id": rid, "as_of_utc": anchor.isoformat(),
+        "pg_snapshot": visibility,
     }]), entity_key=None, run_id=rid)
     monkeypatch.setenv("PRODUCTION_RUN_ID", rid)
     monkeypatch.setenv("WAREHOUSE_CONSUMER_SNAPSHOT", "1")

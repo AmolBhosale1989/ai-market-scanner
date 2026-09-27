@@ -51,13 +51,14 @@ def test_publication_uses_original_asof_and_current_freshness(monkeypatch):
     as_of = pd.Timestamp("2026-09-23T19:40Z")
     now = pd.Timestamp("2026-09-23T19:45Z")
     control_plane.write_dataset("warehouse_snapshot", pd.DataFrame([{
-        "status": "PASS", "daily_session": "2026-09-22", "as_of_utc": as_of.isoformat()}]))
+        "status": "PASS", "pg_snapshot": "10:10:", "daily_session": "2026-09-22", "as_of_utc": as_of.isoformat()}]))
     for name in ("master_universe", "live_universe"):
         control_plane.write_dataset(name, pd.DataFrame([{"ticker": "SPY"}]))
     tier = warehouse_gate.CoverageTier("CRITICAL_INTRADAY", ("SPY",), "5m", 1.0, 1, 10)
     monkeypatch.setattr(warehouse_gate, "build_tiers", lambda *_: [tier])
     captured = []
-    def coverage(tier, at):
+    def coverage(tier, at, pg_snapshot):
+        assert pg_snapshot == "10:10:"
         captured.append(at)
         return rows("2026-09-23T19:35Z").assign(bars=1, invalid_bars=0)
     monkeypatch.setattr(warehouse_gate, "coverage_frame", coverage)

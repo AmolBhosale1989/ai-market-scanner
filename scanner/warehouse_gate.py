@@ -59,8 +59,11 @@ def _catalogue_hash(symbols: Iterable[str]) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def coverage_frame(tier: CoverageTier, as_of: datetime) -> pd.DataFrame:
+def coverage_frame(tier: CoverageTier, as_of: datetime, pg_snapshot: str | None = None) -> pd.DataFrame:
     """Aggregate point-in-time quality per symbol with bounded per-instrument sorts."""
+    from .consumer_snapshot import resolve_pg_snapshot
+    visibility = resolve_pg_snapshot(pg_snapshot)
+    clause = "AND pg_visible_in_snapshot(o.writer_xid, %s::pg_snapshot)" if visibility else ""
     sql=f"""WITH wanted AS (
       SELECT DISTINCT ON (i.canonical_symbol) i.instrument_id,i.canonical_symbol AS ticker
       FROM instrument i WHERE i.canonical_symbol = ANY(%s)
@@ -78,11 +81,15 @@ def coverage_frame(tier: CoverageTier, as_of: datetime) -> pd.DataFrame:
         FROM market_observation o
         WHERE o.instrument_id=w.instrument_id AND o.data_type='OHLCV' AND o.timeframe=%s
           AND o.event_timestamp <= %s AND o.ingested_at <= %s
+          {clause}
         ORDER BY o.event_timestamp,o.ingested_at DESC,o.observation_id DESC
       ) v
     ) s WHERE s.bars>0 ORDER BY w.ticker"""
+    params = (list(tier.symbols),tier.timeframe,event_cutoff(tier.timeframe,as_of),as_of)
+    if visibility:
+        params += (visibility,)
     with _connect() as conn:
-        return pd.read_sql_query(sql,conn,params=(list(tier.symbols),tier.timeframe,event_cutoff(tier.timeframe,as_of),as_of))
+        return pd.read_sql_query(sql,conn,params=params)
 
 
 def evaluate_tier(tier: CoverageTier, frame: pd.DataFrame, *, now_utc=None) -> dict:
@@ -159,24 +166,34 @@ def validate_publication_freshness(run_id: str, *, now_utc=None) -> None:
     as_of = pd.Timestamp(record["as_of_utc"])
     if pd.isna(as_of) or as_of.tzinfo is None or as_of > now:
         raise RuntimeError("PUBLICATION_FRESHNESS_BLOCKED: invalid snapshot timestamp")
+    from .consumer_snapshot import validate_pg_snapshot
+    visibility = validate_pg_snapshot(record.get("pg_snapshot"))
     master = _symbols(read_dataset("master_universe", run_id=run_id), "master_universe")
     live = _symbols(read_dataset("live_universe", run_id=run_id), "live_universe")
     for tier in build_tiers(master, live):
-        result = evaluate_tier(tier, coverage_frame(tier, as_of), now_utc=now)
+        result = evaluate_tier(tier, coverage_frame(tier, as_of, visibility), now_utc=now)
         if result["status"] != "PASS":
             raise RuntimeError(f"PUBLICATION_FRESHNESS_BLOCKED: {tier.name}: {result}")
 
 
-def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | None = None, selected: set[str] | None = None) -> dict:
+def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | None = None, selected: set[str] | None = None, pg_snapshot: str | None = None) -> dict:
     verify_health()
     selected=selected or set()
     master=_symbols(master_frame,"master_universe")
     live=_symbols(live_frame,"live_universe",required="LIVE_INTRADAY" in selected or not selected)
-    as_of=as_of or datetime.now(timezone.utc)
+    from .consumer_snapshot import capture_boundary, validate_pg_snapshot
+    if as_of is None:
+        if pg_snapshot is not None:
+            raise RuntimeError("WAREHOUSE_REPLAY_ANCHOR_REQUIRED")
+        as_of, pg_snapshot = capture_boundary()
+    else:
+        # Never manufacture today's visibility for an old timestamp.
+        pg_snapshot = validate_pg_snapshot(pg_snapshot)
     tiers=[x for x in build_tiers(master,live) if not selected or x.name in selected]
-    results=[evaluate_tier(tier,coverage_frame(tier,as_of),now_utc=as_of) for tier in tiers]
+    results=[evaluate_tier(tier,coverage_frame(tier,as_of,pg_snapshot),now_utc=as_of) for tier in tiers]
     snapshot={
-        "schema_version":1,
+        "schema_version":2,
+        "pg_snapshot":pg_snapshot,
         "production_run_id":current_run_id(),
         "as_of_utc":as_of.isoformat(),
         "daily_session":completed_daily_session().isoformat(),
@@ -218,6 +235,7 @@ def main():
         choices=["MASTER_DAILY","CRITICAL_DAILY","CRITICAL_INTRADAY","THEME_INTRADAY","LIVE_INTRADAY"],
     )
     p.add_argument("--as-of",default="now")
+    p.add_argument("--pg-snapshot", help="Saved visibility boundary required with historical --as-of")
     args=p.parse_args()
     as_of=None if args.as_of=="now" else pd.Timestamp(args.as_of).to_pydatetime()
     master=read_dataset("master_universe")
@@ -225,7 +243,7 @@ def main():
     selected=set(args.tier or ())
     if live.empty and "LIVE_INTRADAY" not in selected:
         live=master.iloc[0:0].copy()
-    snapshot=run(master,live,as_of=as_of,selected=selected)
+    snapshot=run(master,live,as_of=as_of,selected=selected,pg_snapshot=args.pg_snapshot)
     print(f"WAREHOUSE_SNAPSHOT_AVAILABLE run_id={snapshot['production_run_id']} as_of={snapshot['as_of_utc']}")
 
 
