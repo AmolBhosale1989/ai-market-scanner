@@ -5,7 +5,6 @@ import argparse
 import pandas as pd
 
 from .control_plane import read_dataset, write_dataset
-from .live import select_live_candidates
 
 
 def select_live_universe(frame: pd.DataFrame, limit: int = 420) -> pd.DataFrame:
@@ -29,16 +28,31 @@ def select_live_universe(frame: pd.DataFrame, limit: int = 420) -> pd.DataFrame:
     return out
 
 
+def build_live_plan(source: pd.DataFrame, *, limit: int = 420, required=None) -> pd.DataFrame:
+    """Rank for ingestion, retaining every structural candidate before T0 exists."""
+    if "tradable" in source:
+        source=source[source["tradable"].fillna(False).astype(bool)].copy()
+    out=select_live_universe(source,limit=limit)
+    if required is not None:
+        if required.empty or "ticker" not in required or required["ticker"].isna().any():
+            raise RuntimeError("LIVE_UNIVERSE_STRUCTURAL_PLAN_INVALID")
+        wanted=set(required["ticker"].astype(str))
+        if not wanted.issubset(set(source["ticker"].astype(str))):
+            raise RuntimeError("LIVE_UNIVERSE_STRUCTURAL_PLAN_OUTSIDE_TRADABLE")
+        # Keep catalogue/liquidity fields for broad discovery, not just symbols.
+        out=pd.concat([out,source[source["ticker"].astype(str).isin(wanted)]],ignore_index=True)
+        out=out.drop_duplicates("ticker").reset_index(drop=True)
+    return out
+
+
 def main():
     p=argparse.ArgumentParser(description="Build the shared live warehouse/discovery universe")
     p.add_argument("--limit",type=int,default=420)
     p.add_argument("--include-daily-candidates",action="store_true")
     args=p.parse_args()
     source=read_dataset("tradable_universe")
-    out=select_live_universe(source,limit=args.limit)
-    if args.include_daily_candidates:
-        required=select_live_candidates(read_dataset("daily_prepared_candidates"))
-        out=pd.concat([out,required[["ticker"]]],ignore_index=True).drop_duplicates("ticker")
+    required=read_dataset("daily_structural_universe") if args.include_daily_candidates else None
+    out=build_live_plan(source,limit=args.limit,required=required)
     write_dataset("live_universe",out)
     print(f"LIVE_UNIVERSE_AVAILABLE symbols={len(out)}")
 

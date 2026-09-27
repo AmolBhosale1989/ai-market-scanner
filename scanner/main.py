@@ -27,7 +27,9 @@ from .regime import evaluate_regime
 from .stocks import analyze_dataframe
 from .themes import rank_themes, enrich_candidate_themes
 from .universe import load_or_build_universe
-from .control_plane import write_dataset, read_dataset
+from .control_plane import write_dataset, read_dataset, current_run_id
+from .consumer_snapshot import consumer_anchor, consumer_pg_snapshot
+from .universe_plan import build_live_plan
 
 def _benchmark_context():
     df=warehouse_history(BENCHMARK,"6mo","1d",max_age_minutes=20)
@@ -69,7 +71,7 @@ def _final_decision(row):
         return "WATCHLIST + CATALYST"
     return technical
 
-def _prefilter_universe(universe: pd.DataFrame):
+def _prefilter_universe(universe: pd.DataFrame, *, persist_catalogue=True):
     tickers=universe["ticker"].dropna().astype(str).tolist()
     expected=len(tickers)
     rows=[]
@@ -100,11 +102,30 @@ def _prefilter_universe(universe: pd.DataFrame):
     pfdf=pfdf.sort_values(
         ["tradable","avg_dollar_volume20"],ascending=[False,False]
     ).reset_index(drop=True)
-    write_dataset("tradable_universe",pfdf)
+    if persist_catalogue:
+        write_dataset("tradable_universe",pfdf)
     return pfdf,coverage,len(fetched)
 
-def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, deep_limit: int|None=None, prepare_only: bool=False):
-    universe=load_or_build_universe(force_refresh=refresh_universe).sort_values("ticker").reset_index(drop=True)
+def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, deep_limit: int|None=None, prepare_only: bool=False, *, snapshot_finalize=False, defer_publication=False):
+    if prepare_only and snapshot_finalize:
+        raise ValueError("DAILY_PHASE_CONFLICT")
+    if snapshot_finalize:
+        # Validate before any reads or output writes, including empty plans.
+        if consumer_anchor() is None or consumer_pg_snapshot() is None:
+            raise RuntimeError("DAILY_FINALIZATION_ANCHOR_REQUIRED")
+        if refresh_universe or limit or deep_limit:
+            raise ValueError("DAILY_FINALIZATION_PLAN_OVERRIDE_REJECTED")
+        plan=read_dataset("live_universe")
+        universe=read_dataset("master_universe")
+        if plan.empty or "ticker" not in plan or plan["ticker"].isna().any():
+            raise RuntimeError("DAILY_FINALIZATION_PLAN_INVALID")
+        wanted=set(plan["ticker"].astype(str))
+        if not wanted.issubset(set(universe["ticker"].astype(str))):
+            raise RuntimeError("DAILY_FINALIZATION_PLAN_OUTSIDE_MASTER")
+        universe=universe[universe["ticker"].astype(str).isin(wanted)].copy()
+    else:
+        universe=load_or_build_universe(force_refresh=refresh_universe)
+    universe=universe.sort_values("ticker").reset_index(drop=True)
     full_count=len(universe)
     if limit:
         universe=_representative_sample(universe,limit)
@@ -114,14 +135,8 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     if master_expected==0:
         raise RuntimeError("Universe is empty.")
 
-    print("Ranking market themes...")
-    theme_table=rank_themes()
-    if not theme_table.empty:
-        print("\nTOP TRENDING THEMES")
-        print(theme_table.head(10)[["theme_rank","theme","etf","theme_score","theme_state","rel5_vs_spy","rel20_vs_spy"]].to_string(index=False))
-
     # PASS 1: cheap liquidity/price gate across the broad master universe.
-    pfdf,prefilter_coverage,prefilter_fetched=_prefilter_universe(universe)
+    pfdf,prefilter_coverage,prefilter_fetched=_prefilter_universe(universe,persist_catalogue=not snapshot_finalize)
     if prefilter_coverage < MIN_DATA_COVERAGE:
         _write_health(
             status="FAIL",
@@ -144,6 +159,24 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
         f"TRADABLE UNIVERSE: {tradable_count:,}/{master_expected:,} "
         f"({tradable_count/master_expected:.1%}) passed price/liquidity gate"
     )
+
+    if tradable_count==0:
+        raise RuntimeError("SCAN ABORTED: no symbols passed the tradability gate.")
+    if prepare_only:
+        # Structural identities only. No theme, event, catalyst, technical or
+        # recommendation evaluation is carried across the final T0 boundary.
+        identities=tradable_df[["ticker"]].drop_duplicates().reset_index(drop=True)
+        write_dataset("daily_structural_universe",identities)
+        plan=build_live_plan(tradable_df,required=identities)
+        write_dataset("live_universe",plan)
+        print(f"DAILY_STRUCTURAL_PLAN_AVAILABLE symbols={len(plan)}")
+        return plan
+
+    print("Ranking market themes...")
+    theme_table=rank_themes(persist=False) if snapshot_finalize else rank_themes()
+    if not theme_table.empty:
+        print("\nTOP TRENDING THEMES")
+        print(theme_table.head(10)[["theme_rank","theme","etf","theme_score","theme_state","rel5_vs_spy","rel20_vs_spy"]].to_string(index=False))
 
     print("Building event-first earnings watchlist for the most liquid stocks...")
     event_watchlist=build_event_watchlist(tradable_df)
@@ -195,7 +228,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     analyzable=set()
     total_batches=math.ceil(deep_expected/BATCH_SIZE)
 
-    for bi,start in enumerate(range(0,tradable_count,BATCH_SIZE),1):
+    for bi,start in enumerate(range(0,deep_expected,BATCH_SIZE),1):
         batch=tradable_tickers[start:start+BATCH_SIZE]
         print(f"Deep scan {bi}/{total_batches}: {batch[0]} ... {batch[-1]}")
         histories=warehouse_frames(batch,period="1y",interval="1d",max_age_minutes=20,require_complete=False)
@@ -308,12 +341,14 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     df["final_score"]=(df["rank_score"].fillna(-100)+theme_bonus+catalyst*0.20-neg*15).round(1)
     df["final_decision"]=df.apply(_final_decision,axis=1)
 
-    write_dataset("daily_prepared_candidates",df)
-    write_dataset("daily_prepared_health",pd.DataFrame([health]),entity_key=None)
-    if prepare_only:
-        print("DAILY_PREPARED: awaiting intraday ingestion and validation")
-        return df
-    return finalize_daily(df,pfdf,health,top_n)
+    metadata={}
+    if snapshot_finalize:
+        metadata={"production_run_id":current_run_id(),
+                  "as_of_utc":consumer_anchor().tz_convert("UTC").isoformat(),
+                  "pg_snapshot":consumer_pg_snapshot()}
+    write_dataset("daily_prepared_candidates",df,metadata=metadata)
+    write_dataset("daily_prepared_health",pd.DataFrame([health]),entity_key=None,metadata=metadata)
+    return finalize_daily(df,pfdf,health,top_n,defer_publication=defer_publication)
 
 def finalize_daily(df, pfdf, health, top_n=TOP_N, *, defer_publication=False):
     # Validate the exact consumers, even if an aggregate tier tolerates gaps.
@@ -446,9 +481,7 @@ if __name__=="__main__":
                    help="Leave recommendations and product feed to the production join stage")
     args=p.parse_args()
     if args.finalize_prepared:
-        finalize_daily(read_dataset("daily_prepared_candidates"),read_dataset("tradable_universe"),
-                       read_dataset("daily_prepared_health").iloc[0].to_dict(),args.top,
-                       defer_publication=args.defer_publication)
+        run(top_n=args.top,snapshot_finalize=True,defer_publication=args.defer_publication)
     else:
         run(refresh_universe=args.refresh_universe,limit=args.limit,top_n=args.top,
             deep_limit=args.deep_limit,prepare_only=args.prepare_only)
