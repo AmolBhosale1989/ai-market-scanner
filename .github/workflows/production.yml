@@ -90,6 +90,7 @@ jobs:
             stage critical_daily_gate 16 python -m scanner.warehouse_gate --tier CRITICAL_DAILY
             stage daily_warehouse 20 timeout 4200s python -m scanner.warehouse_refresh --dataset master_universe --period 1y --interval 1d
             stage daily_gate 30 python -m scanner.warehouse_gate --tier MASTER_DAILY --tier CRITICAL_DAILY
+            # Structural ticker plan only; no enrichment or signals before T0.
             stage daily_prepare 40 timeout 4200s python -m scanner.main --prepare-only
             stage live_plan 50 python -m scanner.universe_plan --include-daily-candidates
           fi
@@ -114,7 +115,8 @@ jobs:
             stage order_flow 130 python -m scanner.order_flow_strategy
             wait_stage "$v3_pid" v3_live
             wait_stage "$theme_pid" theme_live
-            # Daily/legendary products cannot overwrite the primary V3 signals.
+            # Rebuild daily technical inputs from the frozen live plan at T0,
+            # then enrich and score. Keep primary V3 recommendation ownership.
             stage daily_scan 135 python -m scanner.main --finalize-prepared --defer-publication
             stage strategy_finalize 138 python -m scanner.strategy_finalize --full
             stage order_flow_validation 140 python -m scanner.order_flow_validation

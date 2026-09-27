@@ -44,7 +44,7 @@ def _ret(d: pd.DataFrame, n: int):
         return math.nan
     return float((d["Close"].iloc[-1] / d["Close"].iloc[-1-n] - 1) * 100)
 
-def rank_themes():
+def rank_themes(*, persist=True):
     rows=[]
     # One point-in-time read; every selected symbol still passes the warehouse
     # coverage, OHLCV quality and daily freshness checks before ranking.
@@ -89,7 +89,8 @@ def rank_themes():
     if not out.empty:
         out=out.sort_values(["theme_score","rel20_vs_spy"],ascending=[False,False]).reset_index(drop=True)
         out["theme_rank"]=range(1,len(out)+1)
-        write_dataset("trending_themes",out,entity_key="theme")
+        if persist:
+            write_dataset("trending_themes",out,entity_key="theme")
     return out
 
 def _theme_row(theme, theme_table):

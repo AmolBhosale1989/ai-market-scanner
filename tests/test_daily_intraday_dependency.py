@@ -32,8 +32,9 @@ def test_plan_includes_confirmation_candidate_outside_ranked_limit(monkeypatch,m
     write_dataset("tradable_universe",pd.DataFrame([
         {"ticker":"LIQUID","avg_dollar_volume20":1e9},
         {"ticker":"TDS","avg_dollar_volume20":1e7},
+        {"ticker":"OTHER","avg_dollar_volume20":1e6},
     ]))
-    write_dataset("daily_prepared_candidates",candidates())
+    write_dataset("daily_structural_universe",pd.DataFrame({"ticker":["TDS","OTHER"]}))
     monkeypatch.setattr(sys,"argv",["universe_plan","--limit","1","--include-daily-candidates"])
     universe_plan.main()
     assert set(read_dataset("live_universe")["ticker"])=={"LIQUID","TDS","OTHER"}
