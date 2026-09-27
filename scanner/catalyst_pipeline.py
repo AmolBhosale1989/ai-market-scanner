@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+import os
 from datetime import timedelta
 
 from .consumer_snapshot import consumer_anchor
@@ -11,15 +13,45 @@ PROVIDER_MAX_AGE={"YAHOO_NEWS":timedelta(minutes=15),"SEC_EDGAR":timedelta(minut
                   "ALPHA_VANTAGE":timedelta(hours=24)}
 
 
-def run() -> dict:
-    """Live control-plane gate: database-only, no provider/network access."""
-    universe=read_dataset("live_universe")
+def ingest_only() -> dict:
+    """Pre-snapshot handoff to isolated provider workers for this run's plan."""
+    if os.getenv("WAREHOUSE_CONSUMER_SNAPSHOT") == "1":
+        raise RuntimeError("CATALYST_INGEST_AFTER_SNAPSHOT_FORBIDDEN")
+    from .control_plane import current_run_id
+    if not current_run_id():
+        raise RuntimeError("CATALYST_INGEST_RUN_REQUIRED")
+    tickers = _current_tickers()
+    # Import provider code only in the explicitly selected ingestion mode.
+    from concurrent.futures import ThreadPoolExecutor
+    from .catalyst_data_plane import run as collect
+    providers = ("alpha_vantage", "yahoo", "sec")
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [pool.submit(collect, provider, tickers=tickers) for provider in providers]
+        results = [future.result() for future in futures]
+    # Provider failures remain explicit. Stage 72 alone decides whether fresh,
+    # valid evidence (including prior checks) satisfies every required pair.
+    result = {"tickers": len(tickers), "providers": len(results),
+              "failures": sum(row["failures"] for row in results)}
+    print("CATALYST_INGEST_ATTEMPTS_COMPLETE " + str(result), flush=True)
+    return result
+
+
+def _current_tickers():
+    universe = read_dataset("live_universe")
     if universe.empty or "ticker" not in universe.columns:
         raise RuntimeError("CATALYST_LIVE_UNIVERSE_EMPTY")
-    tickers=list(dict.fromkeys(universe["ticker"].dropna().astype(str).str.upper()))
+    tickers = list(dict.fromkeys(universe["ticker"].dropna().astype(str).str.strip().str.upper()))
+    if not tickers or any(not ticker for ticker in tickers):
+        raise RuntimeError("CATALYST_LIVE_UNIVERSE_EMPTY")
+    return tickers
+
+
+def run() -> dict:
+    """Live control-plane gate: database-only, no provider/network access."""
     anchor=consumer_anchor()
     if anchor is None:
         raise RuntimeError("CATALYST_CONTEXT_ANCHOR_REQUIRED")
+    tickers=_current_tickers()
     verify_coverage(tickers,anchor=anchor)
     result={"tickers":len(tickers),"providers":len(REQUIRED_PROVIDERS),
             "required_checks":len(tickers)*len(REQUIRED_PROVIDERS)}
@@ -55,8 +87,13 @@ def verify_coverage(tickers,*,anchor,pg_snapshot=None):
     return True
 
 
-def main():
-    return run()
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Catalyst ingestion and snapshot-bound verification")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--ingest-only", action="store_true")
+    mode.add_argument("--verify-only", action="store_true")
+    args = parser.parse_args(argv)
+    return ingest_only() if args.ingest_only else run()
 
 
 if __name__=="__main__":

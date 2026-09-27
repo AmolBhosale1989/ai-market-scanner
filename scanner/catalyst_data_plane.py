@@ -29,13 +29,15 @@ def _universe():
     return list(dict.fromkeys(frame["ticker"].dropna().astype(str).str.upper()))
 
 
-def run(provider: str = "all") -> dict:
+def run(provider: str = "all", *, tickers=None) -> dict:
     """Independent data-plane worker. Provider selection is orchestration-only."""
     provider = provider.lower()
     if provider not in {"all", "yahoo", "sec", "alpha_vantage"}:
         raise ValueError(f"CATALYST_PROVIDER_UNKNOWN: {provider}")
 
-    tickers = _universe()
+    tickers = _universe() if tickers is None else list(tickers)
+    if not tickers:
+        raise RuntimeError("CATALYST_INGEST_UNIVERSE_EMPTY")
     checked_at = datetime.now(timezone.utc)
     failures = []
 

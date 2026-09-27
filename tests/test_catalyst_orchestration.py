@@ -14,10 +14,12 @@ def test_required_provider_policy_is_complete():
 def test_production_workflow_orders_catalysts_before_consumers():
     from pathlib import Path
     text=Path(".github/workflows/production.yml").read_text()
-    assert "stage warehouse_gate 70" in text
-    assert "stage catalyst_ingestion 72 python -m scanner.catalyst_pipeline" in text
-    assert text.index("stage warehouse_gate 70") < text.index("stage catalyst_ingestion 72")
-    assert text.index("stage catalyst_ingestion 72") < text.index("stage v3_live 80")
+    assert text.index("stage intraday_warehouse 60") < text.index("stage catalyst_ingest 65")
+    assert text.index("stage catalyst_ingest 65") < text.index("stage warehouse_gate 70")
+    assert "--ingest-only" in text
+    assert "stage catalyst_gate 72 python -m scanner.catalyst_pipeline --verify-only" in text
+    assert text.index("stage warehouse_gate 70") < text.index("stage catalyst_gate 72")
+    assert text.index("stage catalyst_gate 72") < text.index("stage v3_live 80")
 
 
 def test_acceptance_calls_catalyst_coverage():

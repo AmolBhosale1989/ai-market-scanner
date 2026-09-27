@@ -103,8 +103,10 @@ def real_run(monkeypatch):
         if name not in CATALOGUE_DATASETS and name != "warehouse_snapshot":
             cp.write_dataset(name, pd.DataFrame(), entity_key=None, run_id=rid)
     # Compress fixture stage durations to microseconds around the captured gate.
-    start = anchor.to_pydatetime() - timedelta(microseconds=5)
     rows = stage_rows(START, accepting=True)
+    gate = next(row for row in rows if row["stage_name"] == "warehouse_gate")
+    midpoint = gate["started_at"] + (gate["completed_at"] - gate["started_at"]) / 2
+    start = anchor.to_pydatetime() - (midpoint - START) / 1_000_000
     for row in rows:
         for key in ("started_at", "completed_at"):
             if row[key] is not None:

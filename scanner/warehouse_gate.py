@@ -250,7 +250,7 @@ def main():
     if live.empty and "LIVE_INTRADAY" not in selected:
         live=master.iloc[0:0].copy()
     snapshot=run(master,live,as_of=as_of,selected=selected,pg_snapshot=args.pg_snapshot)
-    print(f"WAREHOUSE_SNAPSHOT_AVAILABLE run_id={snapshot['production_run_id']} as_of={snapshot['as_of_utc']}")
+    print(f"WAREHOUSE_SNAPSHOT_AVAILABLE run_id={snapshot['production_run_id']} as_of={snapshot['as_of_utc']} pg_snapshot={snapshot['pg_snapshot']}")
 
 
 if __name__ == "__main__":
