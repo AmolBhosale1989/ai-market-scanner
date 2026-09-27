@@ -16,7 +16,7 @@ def _normalized(events,provider: str) -> CatalystFetchResult:
     for event in events:
         try:
             event_id=str(event.event_id).strip()
-            payload=dict(event.payload)
+            payload={**dict(event.payload),"_canonical_ticker":str(event.ticker).upper()}
             ts=pd.Timestamp(payload.get("source_timestamp_utc") or event.observed_at_utc)
             if not event_id or ts.tzinfo is None:
                 raise ValueError("identity/time missing")
