@@ -1,13 +1,7 @@
 from __future__ import annotations
 
-import os
 from datetime import timedelta
 
-import requests
-
-from .catalyst_adapters import AlphaVantageCalendarBatch
-from .catalyst_existing_adapters import ExistingSecEdgarAdapter,ExistingYahooNewsAdapter
-from .catalyst_ingestion import ingest_alpha_vantage_batch,persist_batch_result
 from .consumer_snapshot import consumer_anchor
 from .control_plane import read_dataset
 
@@ -17,17 +11,8 @@ PROVIDER_MAX_AGE={"YAHOO_NEWS":timedelta(minutes=15),"SEC_EDGAR":timedelta(minut
                   "ALPHA_VANTAGE":timedelta(hours=24)}
 
 
-def _alpha_calendar_fetch():
-    key=os.getenv("ALPHA_VANTAGE_API_KEY","").strip()
-    if not key:
-        raise RuntimeError("ALPHA_VANTAGE_API_KEY_MISSING")
-    response=requests.get("https://www.alphavantage.co/query",params={
-        "function":"EARNINGS_CALENDAR","horizon":"3month","apikey":key},timeout=20)
-    response.raise_for_status()
-    return response.text
-
-
 def run() -> dict:
+    """Live control-plane gate: database-only, no provider/network access."""
     universe=read_dataset("live_universe")
     if universe.empty or "ticker" not in universe.columns:
         raise RuntimeError("CATALYST_LIVE_UNIVERSE_EMPTY")
@@ -35,54 +20,10 @@ def run() -> dict:
     anchor=consumer_anchor()
     if anchor is None:
         raise RuntimeError("CATALYST_CONTEXT_ANCHOR_REQUIRED")
-
-    yahoo=ExistingYahooNewsAdapter(max_workers=8,max_tickers=len(tickers))
-    sec=ExistingSecEdgarAdapter(max_workers=5)
-    failures=[]
-
-    try:
-        result,health=yahoo.fetch_batch(tickers,anchor=anchor)
-        if int(health.get("errors",0) or 0):
-            raise RuntimeError(f"YAHOO_NEWS_PROVIDER_FAILED health={health!r}")
-        persist_batch_result(yahoo,tickers,result,anchor=anchor)
-    except Exception as exc:
-        detail=f"YAHOO_NEWS:BATCH:{type(exc).__name__}:{exc}"
-        failures.append(detail)
-        print("CATALYST_PROVIDER_FAILURE "+detail,flush=True)
-
-    try:
-        result,health=sec.fetch_batch(tickers,anchor=anchor)
-        unresolved=set(health.get("unresolved_tickers") or [])
-        resolved=[ticker for ticker in tickers if ticker not in unresolved]
-        if int(health.get("errors",0) or 0):
-            raise RuntimeError(f"SEC_EDGAR_PROVIDER_FAILED health={health!r}")
-        persist_batch_result(sec,resolved,result,anchor=anchor)
-        if unresolved:
-            detail=f"SEC_EDGAR:UNRESOLVED:count={len(unresolved)} sample={sorted(unresolved)[:20]!r}"
-            failures.append(detail)
-            print("CATALYST_PROVIDER_FAILURE "+detail,flush=True)
-    except Exception as exc:
-        detail=f"SEC_EDGAR:BATCH:{type(exc).__name__}:{exc}"
-        failures.append(detail)
-        print("CATALYST_PROVIDER_FAILURE "+detail,flush=True)
-
-    try:
-        ingest_alpha_vantage_batch(AlphaVantageCalendarBatch(_alpha_calendar_fetch),tickers,
-                                   anchor=anchor,lookforward=timedelta(days=14))
-    except Exception as exc:
-        detail=f"ALPHA_VANTAGE:BATCH:{type(exc).__name__}:{exc}"
-        failures.append(detail)
-        print("CATALYST_PROVIDER_FAILURE "+detail,flush=True)
-
-    try:
-        verify_coverage(tickers,anchor=anchor)
-    except RuntimeError as exc:
-        if failures:
-            print(f"CATALYST_PROVIDER_FAILURES count={len(failures)} sample={failures[:10]!r}",flush=True)
-        raise
+    verify_coverage(tickers,anchor=anchor)
     result={"tickers":len(tickers),"providers":len(REQUIRED_PROVIDERS),
             "required_checks":len(tickers)*len(REQUIRED_PROVIDERS)}
-    print("CATALYST_INGESTION_PASS "+str(result))
+    print("CATALYST_COVERAGE_PASS "+str(result),flush=True)
     return result
 
 
