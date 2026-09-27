@@ -5,9 +5,10 @@ from datetime import datetime
 LIVE_DEPENDENCIES = {
     "seed_snapshot": (),
     "intraday_warehouse": ("seed_snapshot",),
-    "warehouse_gate": ("intraday_warehouse",),
-    "catalyst_ingestion": ("warehouse_gate",),
-    **{name: ("catalyst_ingestion",) for name in (
+    "catalyst_ingest": ("intraday_warehouse",),
+    "warehouse_gate": ("catalyst_ingest",),
+    "catalyst_gate": ("warehouse_gate",),
+    **{name: ("catalyst_gate",) for name in (
         "broad_breakout", "theme_live", "sector_rotation", "premarket", "v4_live")},
     "v3_live": ("broad_breakout", "premarket"),
     "momentum": ("sector_rotation", "broad_breakout"),
@@ -28,7 +29,7 @@ LIVE_DEPENDENCIES = {
 _FULL_PREFIX = (
     "master_universe", "critical_daily_warehouse", "critical_daily_gate",
     "daily_warehouse", "daily_gate", "daily_prepare", "live_plan",
-    "intraday_warehouse", "warehouse_gate", "catalyst_ingestion",
+    "intraday_warehouse", "catalyst_ingest", "warehouse_gate", "catalyst_gate",
 )
 FULL_DEPENDENCIES = {
     name: (() if index == 0 else (_FULL_PREFIX[index-1],))
