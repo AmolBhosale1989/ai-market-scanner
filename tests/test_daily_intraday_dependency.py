@@ -113,4 +113,4 @@ bash() { printf '%s\\n' "$*"; }
         trace=result.stdout
         assert trace.index("--prepare-only") < trace.index("-m scanner.live_ingestion")
         assert trace.index("--tier LIVE_INTRADAY") < trace.index("--finalize-prepared")
-        assert trace.index("--finalize-prepared") < trace.index("-m scanner.v3_live")
+        assert trace.index("-m scanner.v3_live") < trace.index("--finalize-prepared") < trace.index("-m scanner.strategy_finalize")

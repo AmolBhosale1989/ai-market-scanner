@@ -35,7 +35,7 @@ def _fresh_discovery(reuse_current_broad_discovery: bool = False) -> pd.DataFram
     return out
 
 
-def run(input_file=None, limit=LIVE_ENRICH_LIMIT, reuse_current_broad_discovery: bool = False):
+def run(input_file=None, limit=LIVE_ENRICH_LIMIT, reuse_current_broad_discovery: bool = False, *, defer_finalization: bool = False):
     """Production V3: PostgreSQL discovery -> warehouse refresh -> V3 decision.
 
     Persisted candidate artifacts are deliberately absent from the production path.
@@ -50,7 +50,8 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT, reuse_current_broad_discovery:
     base = _fresh_discovery(reuse_current_broad_discovery=reuse_current_broad_discovery)
     refreshed = refresh_v3_candidates(base)
     write_dataset("v3_live_snapshot",refreshed)
-    return run_intraday(input_frame=refreshed, limit=limit)
+    kwargs = {"defer_finalization": True} if defer_finalization else {}
+    return run_intraday(input_frame=refreshed, limit=limit, **kwargs)
 
 
 def main():
@@ -61,8 +62,11 @@ def main():
         action="store_true",
         help="Reuse the broad-breakout dataset produced earlier in this pipeline run.",
     )
+    parser.add_argument("--defer-finalization", action="store_true",
+                        help="Write V3 candidates; leave recommendations to the production join")
     args = parser.parse_args()
-    run(limit=args.limit, reuse_current_broad_discovery=args.reuse_current_broad_discovery)
+    run(limit=args.limit, reuse_current_broad_discovery=args.reuse_current_broad_discovery,
+        defer_finalization=args.defer_finalization)
 
 
 if __name__ == "__main__":

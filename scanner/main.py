@@ -315,7 +315,7 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
         return df
     return finalize_daily(df,pfdf,health,top_n)
 
-def finalize_daily(df, pfdf, health, top_n=TOP_N):
+def finalize_daily(df, pfdf, health, top_n=TOP_N, *, defer_publication=False):
     # Validate the exact consumers, even if an aggregate tier tolerates gaps.
     selected=select_live_candidates(df,LIVE_ENRICH_LIMIT)
     if not selected.empty:
@@ -355,7 +355,8 @@ def finalize_daily(df, pfdf, health, top_n=TOP_N):
     recommended=recommended.sort_values(
         ["market_hunt_score","avg_dollar_volume"],ascending=[False,False]
     ).head(top_n)
-    write_dataset("recommended_trades",recommended)
+    if not defer_publication:
+        write_dataset("recommended_trades",recommended)
 
     # Keep widely followed liquid leaders visible even when they do not have an
     # actionable setup. Failing names remain research-only with the exact gate
@@ -427,8 +428,9 @@ def finalize_daily(df, pfdf, health, top_n=TOP_N):
     ]
     print(shortlist[cols].to_string(index=False))
     print("\nSaved daily scan datasets to PostgreSQL control plane")
-    build_product_feed()
-    print("Saved product feed to PostgreSQL control plane")
+    if not defer_publication:
+        build_product_feed()
+        print("Saved product feed to PostgreSQL control plane")
     return shortlist
 
 if __name__=="__main__":
@@ -440,10 +442,13 @@ if __name__=="__main__":
     phases=p.add_mutually_exclusive_group()
     phases.add_argument("--prepare-only",action="store_true")
     phases.add_argument("--finalize-prepared",action="store_true")
+    p.add_argument("--defer-publication", action="store_true",
+                   help="Leave recommendations and product feed to the production join stage")
     args=p.parse_args()
     if args.finalize_prepared:
         finalize_daily(read_dataset("daily_prepared_candidates"),read_dataset("tradable_universe"),
-                       read_dataset("daily_prepared_health").iloc[0].to_dict(),args.top)
+                       read_dataset("daily_prepared_health").iloc[0].to_dict(),args.top,
+                       defer_publication=args.defer_publication)
     else:
         run(refresh_universe=args.refresh_universe,limit=args.limit,top_n=args.top,
             deep_limit=args.deep_limit,prepare_only=args.prepare_only)

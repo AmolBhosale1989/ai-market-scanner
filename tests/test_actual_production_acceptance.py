@@ -9,15 +9,14 @@ import pytest
 from scanner import control_plane as cp
 from scanner.production_acceptance import audit_current_run
 from scanner.production_telemetry import REQUIRED_DATASETS
-from scanner.stage_contract import FULL_STAGES, LIVE_DEPENDENCIES, validate_stages
+from scanner.stage_contract import FULL_STAGES, FULL_DEPENDENCIES, LIVE_DEPENDENCIES, validate_stages
 
 
 START = datetime(2026, 9, 25, 19, 0, tzinfo=timezone.utc)
 
 
 def stage_rows(start=START, lane="live", accepting=False):
-    deps = LIVE_DEPENDENCIES if lane == "live" else {
-        name: (() if i == 0 else (FULL_STAGES[i-1],)) for i, name in enumerate(FULL_STAGES)}
+    deps = LIVE_DEPENDENCIES if lane == "live" else FULL_DEPENDENCIES
     rows = {}
     for name, parents in deps.items():
         begin = max((rows[p]["completed_at"] for p in parents), default=start)
