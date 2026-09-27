@@ -37,9 +37,11 @@ def run() -> dict:
     yahoo=ExistingYahooNewsAdapter(max_workers=8,max_tickers=len(tickers))
     try:
         result,health=yahoo.fetch_batch(tickers,anchor=checked_at)
-        if int(health.get("errors",0) or 0):
-            raise RuntimeError(f"YAHOO_NEWS_PROVIDER_FAILED health={health!r}")
-        persist_batch_result(yahoo,tickers,result,anchor=checked_at)
+        successful=list(dict.fromkeys(str(x).upper() for x in health.get("successful_tickers",[])))
+        persist_batch_result(yahoo,successful,result,anchor=checked_at)
+        failed=list(dict.fromkeys(str(x).upper() for x in health.get("failed_tickers",[])))
+        if failed:
+            failures.append(f"YAHOO_NEWS_FAILED count={len(failed)} sample={failed[:20]!r}")
     except Exception as exc:
         failures.append(f"YAHOO_NEWS:{type(exc).__name__}:{exc}")
 
@@ -47,10 +49,11 @@ def run() -> dict:
     try:
         result,health=sec.fetch_batch(tickers,anchor=checked_at)
         unresolved=set(health.get("unresolved_tickers") or [])
-        resolved=[ticker for ticker in tickers if ticker not in unresolved]
-        if int(health.get("errors",0) or 0):
-            raise RuntimeError(f"SEC_EDGAR_PROVIDER_FAILED health={health!r}")
-        persist_batch_result(sec,resolved,result,anchor=checked_at)
+        successful=list(dict.fromkeys(str(x).upper() for x in health.get("successful_tickers",[])))
+        persist_batch_result(sec,successful,result,anchor=checked_at)
+        failed=list(dict.fromkeys(str(x).upper() for x in health.get("failed_tickers",[])))
+        if failed:
+            failures.append(f"SEC_EDGAR_FAILED count={len(failed)} sample={failed[:20]!r}")
         if unresolved:
             failures.append(f"SEC_EDGAR_UNRESOLVED count={len(unresolved)} sample={sorted(unresolved)[:20]!r}")
     except Exception as exc:
