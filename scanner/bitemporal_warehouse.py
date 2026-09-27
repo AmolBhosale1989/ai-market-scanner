@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ class PointInTimeRequirement:
     as_of: datetime | None = None
     max_age_minutes: int = 20
     columns: tuple[str, ...] = ()
+    period: str | None = None
 
 
 def _connect():
@@ -64,6 +66,19 @@ def finish_run(run_id: str, status: str, metadata: dict | None = None, error: st
           (status, __import__("json").dumps(metadata or {}), error, run_id))
 
 
+def period_start(period: str, as_of) -> pd.Timestamp:
+    """Inclusive UTC calendar-date window; months/years use calendar offsets."""
+    match = re.fullmatch(r"([1-9][0-9]*)(d|wk|mo|y)", str(period))
+    if not match:
+        raise ValueError(f"WAREHOUSE_PERIOD_INVALID: {period}")
+    anchor = pd.Timestamp(as_of)
+    if pd.isna(anchor) or anchor.tzinfo is None:
+        raise ValueError("WAREHOUSE_PERIOD_ANCHOR_INVALID")
+    count, unit = int(match[1]), match[2]
+    field = {"d": "days", "wk": "weeks", "mo": "months", "y": "years"}[unit]
+    return anchor.tz_convert("UTC").normalize() - pd.DateOffset(**{field: count})
+
+
 def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
     """Return only versions that were known by req.as_of. Never query future ingestion."""
     from .consumer_snapshot import consumer_anchor
@@ -74,7 +89,9 @@ def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
     tickers = [str(x).upper() for x in req.tickers if x]
     if not tickers:
         raise RuntimeError(f"WAREHOUSE_REQUIREMENT_INVALID: {req.consumer}")
-    sql = """WITH ranked AS (
+    lower = period_start(req.period, as_of) if req.period is not None else None
+    lower_clause = "AND o.event_timestamp >= %s" if lower is not None else ""
+    sql = f"""WITH ranked AS (
       SELECT i.canonical_symbol AS ticker, o.*,
              row_number() OVER (
                PARTITION BY o.instrument_id,o.data_type,o.timeframe,o.event_timestamp
@@ -86,10 +103,14 @@ def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
         AND o.data_type=%s AND o.timeframe=%s
         AND o.event_timestamp <= %s
         AND o.ingested_at <= %s
+        {lower_clause}
     )
     SELECT * FROM ranked WHERE version_rank=1 ORDER BY ticker,event_timestamp"""
+    params = (tickers, req.data_type, req.timeframe, event_cutoff(req.timeframe, as_of), as_of)
+    if lower is not None:
+        params += (lower,)
     with _connect() as conn:
-        df = pd.read_sql_query(sql, conn, params=(tickers, req.data_type, req.timeframe, event_cutoff(req.timeframe, as_of), as_of))
+        df = pd.read_sql_query(sql, conn, params=params)
     if df.empty:
         raise RuntimeError(f"WAREHOUSE_POINT_IN_TIME_EMPTY: {req.consumer}")
     return df
