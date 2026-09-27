@@ -81,3 +81,15 @@ def test_control_plane_accepts_fresh_prior_knowledge_and_rejects_stale_or_missin
     monkeypatch.setattr("scanner.database.connection",lambda: Conn(missing))
     with pytest.raises(RuntimeError,match="CATALYST_COVERAGE_INCOMPLETE"):
         gate.verify_coverage(["AAA"],anchor=t0)
+
+
+def test_data_plane_reads_last_published_production_universe(monkeypatch):
+    from scanner import catalyst_data_plane as data_plane
+    calls=[]
+    def fake_read(name,**kwargs):
+        calls.append((name,kwargs))
+        import pandas as pd
+        return pd.DataFrame({"ticker":["AAA","BBB"]})
+    monkeypatch.setattr(data_plane,"read_dataset",fake_read)
+    assert data_plane._universe()==["AAA","BBB"]
+    assert calls==[("live_universe",{"published_mode":"production","required":False})]
