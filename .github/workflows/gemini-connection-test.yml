@@ -41,7 +41,7 @@ jobs:
           models = call("models?pageSize=1000")
           available = {m["name"] for m in models.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])}
           print("GEMINI_AUTH_PASS")
-          preferred = ["models/gemini-2.5-flash-lite", "models/gemini-2.5-flash", "models/gemini-3.8-flash"]
+          preferred = ["models/gemini-3.5-flash-lite"]
           model = next((m for m in preferred if m in available), None)
           if not model:
               sys.exit("GEMINI_NO_TEST_MODEL_AVAILABLE")
