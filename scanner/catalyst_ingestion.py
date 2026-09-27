@@ -55,10 +55,11 @@ def ingest_alpha_vantage_batch(batch_adapter, tickers, *, anchor, lookforward) -
 
 
 
-def persist_batch_result(adapter,tickers,result,*,anchor) -> dict:
-    """Persist a successful provider batch poll as per-ticker atomic checks."""
+def persist_batch_result(adapter,tickers,result,*,anchor,checked_at_by_ticker=None) -> dict:
+    """Persist successful provider observations using their own knowledge times."""
     provider=adapter.provider_name
     wanted=list(dict.fromkeys(str(x).upper() for x in tickers if x))
+    checked_at_by_ticker={str(k).upper():v for k,v in (checked_at_by_ticker or {}).items()}
     grouped={ticker:[] for ticker in wanted}
     rejected_by_ticker={ticker:0 for ticker in wanted}
     for event in result.events:
@@ -78,8 +79,9 @@ def persist_batch_result(adapter,tickers,result,*,anchor) -> dict:
                    "event_timestamp":e.event_timestamp,
                    "payload":{k:v for k,v in dict(e.payload).items() if k!="_canonical_ticker"}}
                   for e in events]
+            checked_at=checked_at_by_ticker.get(ticker,anchor)
             revisions=ingest_catalyst_batch(provider=provider,ticker=ticker,warehouse_run_id=run_id,
-                                            events=rows,checked_at=anchor,rejected_count=0)
+                                            events=rows,checked_at=checked_at,rejected_count=0)
             finish_run(run_id,"AVAILABLE",{"events":len(rows),"rejected":0,"batch":True})
             output[ticker]={"events":len(rows),"revisions":revisions}
         except Exception as exc:

@@ -46,7 +46,14 @@ def run(provider: str = "all") -> dict:
             successful = list(dict.fromkeys(
                 str(x).upper() for x in health.get("successful_tickers", [])
             ))
-            persist_batch_result(yahoo, successful, result, anchor=checked_at)
+            knowledge_times = {
+                str(item["ticker"]).upper(): item["checked_at"]
+                for item in health.get("successful_checks", [])
+            }
+            persist_batch_result(
+                yahoo, successful, result, anchor=checked_at,
+                checked_at_by_ticker=knowledge_times,
+            )
             failed = list(dict.fromkeys(
                 str(x).upper() for x in health.get("failed_tickers", [])
             ))
@@ -65,7 +72,14 @@ def run(provider: str = "all") -> dict:
             successful = list(dict.fromkeys(
                 str(x).upper() for x in health.get("successful_tickers", [])
             ))
-            persist_batch_result(sec, successful, result, anchor=checked_at)
+            knowledge_times = {
+                str(item["ticker"]).upper(): item["checked_at"]
+                for item in health.get("successful_checks", [])
+            }
+            persist_batch_result(
+                sec, successful, result, anchor=checked_at,
+                checked_at_by_ticker=knowledge_times,
+            )
             failed = list(dict.fromkeys(
                 str(x).upper() for x in health.get("failed_tickers", [])
             ))
