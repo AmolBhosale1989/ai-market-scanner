@@ -196,6 +196,56 @@ def stage_finished(
             raise RuntimeError(f"CONTROL_PLANE_STAGE_UNKNOWN: {stage_name}")
 
 
+V3_PROVENANCE_DATASETS = frozenset({
+    "v3_live_discovery", "v3_live_snapshot", "intraday_live", "recommended_trades",
+})
+
+
+def _state_anchor(as_of=None):
+    from .consumer_snapshot import consumer_anchor
+    anchor = consumer_anchor()
+    if anchor is None and os.getenv("PRODUCTION_RUN_ID", "").strip():
+        raise RuntimeError("CONTROL_PLANE_STATE_ANCHOR_REQUIRED")
+    if as_of is None:
+        as_of = anchor
+    if as_of is None:
+        return None
+    at = pd.Timestamp(as_of)
+    if pd.isna(at) or at.tzinfo is None:
+        raise RuntimeError("CONTROL_PLANE_STATE_ANCHOR_INVALID")
+    if anchor is not None and at > anchor:
+        raise RuntimeError("CONTROL_PLANE_STATE_READ_AFTER_ANCHOR")
+    return at.tz_convert("UTC")
+
+
+def _v3_provenance(records, rid):
+    from .consumer_snapshot import consumer_anchor
+    anchor = consumer_anchor()
+    if anchor is None:
+        raise RuntimeError("V3_OUTPUT_ANCHOR_REQUIRED")
+    if rid != current_run_id():
+        raise RuntimeError("V3_OUTPUT_RUN_MISMATCH")
+    at = pd.Timestamp(anchor)
+    if pd.isna(at) or at.tzinfo is None:
+        raise RuntimeError("V3_OUTPUT_ANCHOR_INVALID")
+    as_of = at.tz_convert("UTC").isoformat()
+    stamped = []
+    for original in records:
+        # Recompute the row digest after stamping; never trust inherited hashes.
+        row = dict(original)
+        if "production_run_id" in row and row["production_run_id"] != rid:
+            raise RuntimeError("V3_OUTPUT_INPUT_RUN_MISMATCH")
+        if "as_of_utc" in row and pd.Timestamp(row["as_of_utc"]) != at:
+            raise RuntimeError("V3_OUTPUT_INPUT_ANCHOR_MISMATCH")
+        row.pop("signal_content_hash", None)
+        row.update(production_run_id=rid, as_of_utc=as_of)
+        row["signal_content_hash"] = _hash(row)
+        stamped.append(row)
+    provenance = {"production_run_id": rid, "as_of_utc": as_of,
+                  "content_hash": _hash(stamped), "provenance_version": 1}
+    return stamped, provenance
+
+
 def write_dataset(
     dataset_name: str,
     frame: pd.DataFrame,
@@ -207,6 +257,10 @@ def write_dataset(
 ) -> dict:
     rid = run_id or current_run_id()
     records = [_clean(row) for row in frame.to_dict(orient="records")]
+    metadata = dict(metadata or {})
+    if dataset_name in V3_PROVENANCE_DATASETS:
+        records, provenance = _v3_provenance(records, rid)
+        metadata.update(provenance)
     digest = _hash(records)
     with _connect() as conn, conn.cursor() as cur:
         cur.execute(
@@ -236,7 +290,8 @@ def write_dataset(
                  content_hash=%s,completed_at=now() WHERE dataset_version_id=%s""",
             (len(records), digest, version_id),
         )
-    return {"dataset_version_id": version_id, "row_count": len(records), "content_hash": digest}
+    return {"dataset_version_id": version_id, "row_count": len(records), "content_hash": digest,
+            "metadata": metadata}
 
 
 def _dataset_version_query(dataset_name: str, run_id: str | None, mode: str | None):
@@ -315,12 +370,17 @@ def append_state(namespace: str, document_key: str, payload, run_id: str | None 
     return revision
 
 
-def read_state(namespace: str, document_key: str, default=None):
+def read_state(namespace: str, document_key: str, default=None, *, as_of=None):
+    """Read state at as_of; V3 production reads inherit the validated T0."""
+    # V3 defaults to T0; other namespaces opt in explicitly during migration.
+    at = _state_anchor(as_of) if as_of is not None or namespace == "v3" else None
+    cutoff = " AND created_at <= %s" if at is not None else ""
+    params = (namespace, document_key) + ((at,) if at is not None else ())
     with _connect() as conn, conn.cursor() as cur:
         cur.execute(
-            """SELECT payload FROM state_document WHERE namespace=%s AND document_key=%s
-               ORDER BY revision DESC LIMIT 1""",
-            (namespace, document_key),
+            "SELECT payload FROM state_document WHERE namespace=%s AND document_key=%s"
+            + cutoff + " ORDER BY revision DESC LIMIT 1",
+            params,
         )
         row = cur.fetchone()
     return row[0] if row else default
