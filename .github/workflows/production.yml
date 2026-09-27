@@ -101,17 +101,26 @@ jobs:
           export WAREHOUSE_CONSUMER_SNAPSHOT=1
           stage catalyst_ingestion 72 python -m scanner.catalyst_pipeline
           if [[ "$PIPELINE_MODE" == "full" ]]; then
-            stage daily_scan 75 python -m scanner.main --finalize-prepared
-            stage v3_live 80 python -m scanner.v3_live
-            stage theme_live 90 python -m scanner.theme_live
-            stage sector_rotation 100 python -m scanner.sector_rotation
-            stage broad_breakout 110 python -m scanner.broad_breakout
+            stage broad_breakout 110 python -m scanner.broad_breakout & broad_pid=$!
+            stage theme_live 90 python -m scanner.theme_live & theme_pid=$!
+            stage sector_rotation 100 python -m scanner.sector_rotation & sector_pid=$!
+            stage premarket 115 python -m scanner.premarket & premarket_pid=$!
+
+            wait_stage "$premarket_pid" premarket
+            wait_stage "$broad_pid" broad_breakout
+            stage v3_live 80 python -m scanner.v3_live --reuse-current-broad-discovery --defer-finalization & v3_pid=$!
+            wait_stage "$sector_pid" sector_rotation
             stage momentum 120 python -m scanner.momentum_signals
             stage order_flow 130 python -m scanner.order_flow_strategy
+            wait_stage "$v3_pid" v3_live
+            wait_stage "$theme_pid" theme_live
+            # Daily/legendary products cannot overwrite the primary V3 signals.
+            stage daily_scan 135 python -m scanner.main --finalize-prepared --defer-publication
+            stage strategy_finalize 138 python -m scanner.strategy_finalize --full
             stage order_flow_validation 140 python -m scanner.order_flow_validation
             stage v31_challenger 145 python -m scanner.v31_challenger
             stage paper_performance 150 bash -c 'python -m scanner.performance && python -m scanner.readiness'
-            stage discovery_products 160 bash -c 'python -m scanner.premarket && python -m scanner.daily_pick && python -m scanner.high_conviction_alerts && python -m scanner.product_feed'
+            stage discovery_products 160 bash -c 'python -m scanner.daily_pick && python -m scanner.high_conviction_alerts && python -m scanner.product_feed'
             stage quant_shadow 170 python -m scanner.quant_shadow
             stage v4_live 180 python -m scanner.v4_worker --once --catalysts --options-microstructure
             stage v4_outcomes 190 bash -c 'python -m scanner.v4_outcomes --resolve-daily --fit-calibration'
@@ -135,12 +144,13 @@ jobs:
 
             wait_stage "$premarket_pid" premarket
             wait_stage "$broad_pid" broad_breakout
-            stage v3_live 80 python -m scanner.v3_live --reuse-current-broad-discovery & v3_pid=$!
+            stage v3_live 80 python -m scanner.v3_live --reuse-current-broad-discovery --defer-finalization & v3_pid=$!
             wait_stage "$sector_pid" sector_rotation
             stage momentum 120 python -m scanner.momentum_signals
             stage order_flow 130 python -m scanner.order_flow_strategy
             wait_stage "$v3_pid" v3_live
             wait_stage "$theme_pid" theme_live
+            stage strategy_finalize 138 python -m scanner.strategy_finalize
 
             stage order_flow_validation 140 python -m scanner.order_flow_validation & validation_pid=$!
             stage v31_challenger 145 python -m scanner.v31_challenger & challenger_pid=$!

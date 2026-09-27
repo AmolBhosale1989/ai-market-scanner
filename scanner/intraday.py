@@ -240,7 +240,7 @@ def _write_state_transitions(transitions):
     write_dataset("state_transitions", frame)
 
 
-def run(input_file=None, input_frame=None, limit=LIVE_ENRICH_LIMIT):
+def run(input_file=None, input_frame=None, limit=LIVE_ENRICH_LIMIT, *, defer_finalization=False):
     if input_file:
         raise RuntimeError("INTRADAY_PERSISTED_INPUT_REJECTED: file inputs are disabled")
     if input_frame is None:
@@ -262,8 +262,9 @@ def run(input_file=None, input_frame=None, limit=LIVE_ENRICH_LIMIT):
         build_performance_reports(journal)
         build_empirical_calibration(journal)
         _write_monitor_health(empty,now,0,bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip()),False)
-        _write_recommendations(empty)
-        build_product_feed()
+        if not defer_finalization:
+            _write_recommendations(empty)
+            build_product_feed()
         return empty
 
     sort_col="market_hunt_score" if "market_hunt_score" in watch.columns else "final_score"
@@ -324,23 +325,25 @@ def run(input_file=None, input_frame=None, limit=LIVE_ENRICH_LIMIT):
     _write_state_transitions(transitions)
 
     write_dataset("intraday_live",live)
-    recommendations=_write_recommendations(live)
+    recommendations=pd.DataFrame() if defer_finalization else _write_recommendations(live)
     journal=_update_paper_journal(live,now)
     build_performance_reports(journal)
     build_empirical_calibration(journal)
     alert_text="\n\n".join(alerts)
     append_state("v3","live_alerts",{"text":alert_text,"checked_at_et":now})
     telegram_configured=bool(os.getenv("TELEGRAM_BOT_TOKEN","").strip() and os.getenv("TELEGRAM_CHAT_ID","").strip())
-    sent=_send_telegram(alerts)
+    sent=False if defer_finalization else _send_telegram(alerts)
     _write_monitor_health(live,now,len(alerts),telegram_configured,sent)
-    build_product_feed()
+    if not defer_finalization:
+        build_product_feed()
 
     print("\nINTRADAY MARKET HUNT MONITOR")
     cols=["ticker","stage","previous_state","monitor_state","live_price","entry_trigger",
           "live_vwap","opening_range_high","intraday_rvol","live_confirmation_score","live_trade_action"]
     print(live[[c for c in cols if c in live.columns]].to_string(index=False))
     print(f"State transitions this run: {len(transitions)}")
-    print(f"Live-confirmed recommendations: {len(recommendations)}")
+    print("Recommendation finalization deferred" if defer_finalization else
+          f"Live-confirmed recommendations: {len(recommendations)}")
     if alerts:
         print("\nALERTS")
         print(alert_text)

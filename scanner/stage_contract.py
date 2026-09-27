@@ -2,16 +2,6 @@
 from datetime import datetime
 
 
-FULL_STAGES = (
-    "master_universe", "critical_daily_warehouse", "critical_daily_gate",
-    "daily_warehouse", "daily_gate", "daily_prepare", "live_plan",
-    "intraday_warehouse", "warehouse_gate", "catalyst_ingestion", "daily_scan", "v3_live",
-    "theme_live", "sector_rotation", "broad_breakout", "momentum", "order_flow",
-    "order_flow_validation", "v31_challenger", "paper_performance",
-    "discovery_products", "quant_shadow", "v4_live", "v4_outcomes", "v5_model",
-    "v6_model", "v7_allocator", "v4_shadow", "evidence", "v7_research", "social",
-    "operational_health", "audit", "acceptance",
-)
 LIVE_DEPENDENCIES = {
     "seed_snapshot": (),
     "intraday_warehouse": ("seed_snapshot",),
@@ -22,7 +12,8 @@ LIVE_DEPENDENCIES = {
     "v3_live": ("broad_breakout", "premarket"),
     "momentum": ("sector_rotation", "broad_breakout"),
     "order_flow": ("momentum",),
-    **{name: ("order_flow", "v3_live", "theme_live") for name in (
+    "strategy_finalize": ("order_flow", "v3_live", "theme_live"),
+    **{name: ("strategy_finalize",) for name in (
         "order_flow_validation", "v31_challenger", "paper_performance",
         "daily_pick", "high_conviction_alerts")},
     "discovery_products": ("order_flow_validation", "v31_challenger",
@@ -31,6 +22,36 @@ LIVE_DEPENDENCIES = {
     "audit": ("operational_health",),
     "acceptance": ("audit",),
 }
+
+
+# Insertion order is topological for telemetry fixtures and audit tooling.
+_FULL_PREFIX = (
+    "master_universe", "critical_daily_warehouse", "critical_daily_gate",
+    "daily_warehouse", "daily_gate", "daily_prepare", "live_plan",
+    "intraday_warehouse", "warehouse_gate", "catalyst_ingestion",
+)
+FULL_DEPENDENCIES = {
+    name: (() if index == 0 else (_FULL_PREFIX[index-1],))
+    for index, name in enumerate(_FULL_PREFIX)
+}
+FULL_DEPENDENCIES.update({
+    name: parents for name, parents in LIVE_DEPENDENCIES.items()
+    if name in {"broad_breakout", "theme_live", "sector_rotation", "premarket",
+                "v3_live", "momentum", "order_flow"}
+})
+FULL_DEPENDENCIES.update({
+    "daily_scan": ("v3_live", "order_flow", "theme_live"),
+    "strategy_finalize": ("daily_scan", "v3_live", "order_flow", "theme_live"),
+})
+_FULL_TAIL = (
+    "strategy_finalize", "order_flow_validation", "v31_challenger", "paper_performance",
+    "discovery_products", "quant_shadow", "v4_live", "v4_outcomes", "v5_model",
+    "v6_model", "v7_allocator", "v4_shadow", "evidence", "v7_research", "social",
+    "operational_health", "audit", "acceptance",
+)
+FULL_DEPENDENCIES.update({name: (_FULL_TAIL[index-1],)
+                          for index, name in enumerate(_FULL_TAIL) if index})
+FULL_STAGES = tuple(FULL_DEPENDENCIES)
 
 
 def _aware(value):
@@ -45,10 +66,7 @@ def validate_stages(rows, *, run_started_at, now, acceptance_running=False):
     if len(stages) != len(rows):
         raise RuntimeError("ACCEPTANCE_DUPLICATE_STAGE")
     lane = "live" if "seed_snapshot" in stages else "full"
-    dependencies = LIVE_DEPENDENCIES if lane == "live" else {
-        name: (() if index == 0 else (FULL_STAGES[index-1],))
-        for index, name in enumerate(FULL_STAGES)
-    }
+    dependencies = LIVE_DEPENDENCIES if lane == "live" else FULL_DEPENDENCIES
     missing, extra = set(dependencies) - set(stages), set(stages) - set(dependencies)
     if missing or extra:
         raise RuntimeError(f"ACCEPTANCE_STAGE_SET: missing={','.join(sorted(missing))}; unexpected={','.join(sorted(extra))}")
