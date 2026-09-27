@@ -29,6 +29,7 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       PGSSLMODE: require
       PYTHONUNBUFFERED: "1"
+      ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

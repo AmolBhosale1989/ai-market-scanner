@@ -52,3 +52,38 @@ def ingest_alpha_vantage_batch(batch_adapter, tickers, *, anchor, lookforward) -
                        error=f"{type(exc).__name__}:{exc}")
             raise
     return results
+
+
+
+def persist_batch_result(adapter,tickers,result,*,anchor) -> dict:
+    """Persist a successful provider batch poll as per-ticker atomic checks."""
+    provider=adapter.provider_name
+    wanted=list(dict.fromkeys(str(x).upper() for x in tickers if x))
+    grouped={ticker:[] for ticker in wanted}
+    rejected_by_ticker={ticker:0 for ticker in wanted}
+    for event in result.events:
+        ticker=str(event.payload.get("_canonical_ticker") or "").upper()
+        if ticker not in grouped:
+            raise RuntimeError(f"CATALYST_BATCH_TICKER_UNKNOWN provider={provider} ticker={ticker}")
+        grouped[ticker].append(event)
+    # A batch-level rejected_count cannot be safely assigned to a ticker. Fail closed
+    # rather than laundering partial corruption into clean per-ticker checks.
+    if result.rejected_count:
+        raise RuntimeError(f"CATALYST_BATCH_REJECTED provider={provider} rejected={result.rejected_count}")
+    output={}
+    for ticker,events in grouped.items():
+        run_id=start_run(provider,"CATALYST_CONTEXT",{"ticker":ticker,"batch":True})
+        try:
+            rows=[{"provider_event_id":e.provider_event_id,"catalyst_type":e.catalyst_type,
+                   "event_timestamp":e.event_timestamp,
+                   "payload":{k:v for k,v in dict(e.payload).items() if k!="_canonical_ticker"}}
+                  for e in events]
+            revisions=ingest_catalyst_batch(provider=provider,ticker=ticker,warehouse_run_id=run_id,
+                                            events=rows,checked_at=anchor,rejected_count=0)
+            finish_run(run_id,"AVAILABLE",{"events":len(rows),"rejected":0,"batch":True})
+            output[ticker]={"events":len(rows),"revisions":revisions}
+        except Exception as exc:
+            finish_run(run_id,"FAILED",{"events":len(events),"rejected":0,"batch":True},
+                       error=f"{type(exc).__name__}:{exc}")
+            raise
+    return output

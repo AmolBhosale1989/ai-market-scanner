@@ -24,3 +24,9 @@ def test_acceptance_calls_catalyst_coverage():
     from pathlib import Path
     text=Path("scanner/production_acceptance.py").read_text()
     assert "verify_coverage(live_tickers,anchor=anchor.to_pydatetime())" in text
+
+
+def test_production_workflow_exposes_alpha_vantage_secret():
+    from pathlib import Path
+    text=Path(".github/workflows/production.yml").read_text()
+    assert 'ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}' in text

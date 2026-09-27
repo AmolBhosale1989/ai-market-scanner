@@ -7,7 +7,7 @@ import requests
 
 from .catalyst_adapters import AlphaVantageCalendarBatch
 from .catalyst_existing_adapters import ExistingSecEdgarAdapter,ExistingYahooNewsAdapter
-from .catalyst_ingestion import ingest_alpha_vantage_batch,ingest_ticker
+from .catalyst_ingestion import ingest_alpha_vantage_batch,persist_batch_result
 from .consumer_snapshot import consumer_anchor
 from .control_plane import read_dataset
 
@@ -36,17 +36,35 @@ def run() -> dict:
     if anchor is None:
         raise RuntimeError("CATALYST_CONTEXT_ANCHOR_REQUIRED")
 
-    yahoo=ExistingYahooNewsAdapter()
-    sec=ExistingSecEdgarAdapter()
+    yahoo=ExistingYahooNewsAdapter(max_workers=8,max_tickers=len(tickers))
+    sec=ExistingSecEdgarAdapter(max_workers=5)
     failures=[]
-    for ticker in tickers:
-        for adapter in (yahoo,sec):
-            try:
-                ingest_ticker(adapter,ticker,anchor=anchor)
-            except Exception as exc:
-                detail=f"{adapter.provider_name}:{ticker}:{type(exc).__name__}:{exc}"
-                failures.append(detail)
-                print("CATALYST_PROVIDER_FAILURE "+detail,flush=True)
+
+    try:
+        result,health=yahoo.fetch_batch(tickers,anchor=anchor)
+        if int(health.get("errors",0) or 0):
+            raise RuntimeError(f"YAHOO_NEWS_PROVIDER_FAILED health={health!r}")
+        persist_batch_result(yahoo,tickers,result,anchor=anchor)
+    except Exception as exc:
+        detail=f"YAHOO_NEWS:BATCH:{type(exc).__name__}:{exc}"
+        failures.append(detail)
+        print("CATALYST_PROVIDER_FAILURE "+detail,flush=True)
+
+    try:
+        result,health=sec.fetch_batch(tickers,anchor=anchor)
+        unresolved=set(health.get("unresolved_tickers") or [])
+        resolved=[ticker for ticker in tickers if ticker not in unresolved]
+        if int(health.get("errors",0) or 0):
+            raise RuntimeError(f"SEC_EDGAR_PROVIDER_FAILED health={health!r}")
+        persist_batch_result(sec,resolved,result,anchor=anchor)
+        if unresolved:
+            detail=f"SEC_EDGAR:UNRESOLVED:count={len(unresolved)} sample={sorted(unresolved)[:20]!r}"
+            failures.append(detail)
+            print("CATALYST_PROVIDER_FAILURE "+detail,flush=True)
+    except Exception as exc:
+        detail=f"SEC_EDGAR:BATCH:{type(exc).__name__}:{exc}"
+        failures.append(detail)
+        print("CATALYST_PROVIDER_FAILURE "+detail,flush=True)
 
     try:
         ingest_alpha_vantage_batch(AlphaVantageCalendarBatch(_alpha_calendar_fetch),tickers,
