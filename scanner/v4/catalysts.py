@@ -469,7 +469,8 @@ class SecFilingAdapter:
         events: list[MarketEvent] = []
         ticker_map = self._ticker_map(now)
         resolved = [(ticker, ticker_map.get(ticker)) for ticker in symbols]
-        unresolved = sum(1 for _, cik in resolved if not cik)
+        unresolved_tickers = [ticker for ticker,cik in resolved if not cik]
+        unresolved = len(unresolved_tickers)
 
         def validated_submissions(
             ticker: str,
@@ -547,6 +548,7 @@ class SecFilingAdapter:
             "requested": len(symbols),
             "resolved": len(valid),
             "unresolved": unresolved,
+            "unresolved_tickers": unresolved_tickers,
             "submissions_errors": search_fallbacks + relay_fallbacks + nasdaq_fallbacks + errors,
             "search_fallbacks": search_fallbacks,
             "search_errors": relay_fallbacks + nasdaq_fallbacks + errors,
