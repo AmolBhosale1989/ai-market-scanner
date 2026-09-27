@@ -49,3 +49,35 @@ def test_catalyst_data_plane_is_independently_scheduled():
     assert "workflow_dispatch:" in text
     assert "python -m scanner.catalyst_data_plane" in text
     assert "ALPHA_VANTAGE_API_KEY:" in text
+
+
+def test_control_plane_accepts_fresh_prior_knowledge_and_rejects_stale_or_missing(monkeypatch):
+    from scanner import catalyst_pipeline as gate
+    t0=datetime(2026,9,26,16,0,tzinfo=timezone.utc)
+    tminus1=t0-timedelta(minutes=1)
+    tminus20=t0-timedelta(minutes=20)
+    class Cursor:
+        def __init__(self,rows): self.rows=rows
+        def execute(self,*args,**kwargs): pass
+        def fetchall(self): return self.rows
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+    class Conn:
+        def __init__(self,rows): self.rows=rows
+        def cursor(self): return Cursor(self.rows)
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+    providers=list(gate.REQUIRED_PROVIDERS)
+    fresh=[("AAA",provider,tminus1) for provider in providers]
+    monkeypatch.setattr("scanner.database.connection",lambda: Conn(fresh))
+    assert gate.verify_coverage(["AAA"],anchor=t0) is True
+
+    stale=[("AAA",provider,tminus20) for provider in providers]
+    monkeypatch.setattr("scanner.database.connection",lambda: Conn(stale))
+    with pytest.raises(RuntimeError,match="CATALYST_COVERAGE_INCOMPLETE"):
+        gate.verify_coverage(["AAA"],anchor=t0)
+
+    missing=[("AAA",provider,tminus1) for provider in providers if provider!="SEC_EDGAR"]
+    monkeypatch.setattr("scanner.database.connection",lambda: Conn(missing))
+    with pytest.raises(RuntimeError,match="CATALYST_COVERAGE_INCOMPLETE"):
+        gate.verify_coverage(["AAA"],anchor=t0)
