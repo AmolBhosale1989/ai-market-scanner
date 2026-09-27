@@ -532,6 +532,7 @@ class SecFilingAdapter:
         relay_fallbacks = 0
         nasdaq_fallbacks = 0
         successful_tickers = []
+        successful_checks = []
         failed_tickers = []
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(valid)) or 1) as pool:
             futures = {pool.submit(fetch, item): item[0] for item in valid}
@@ -540,6 +541,7 @@ class SecFilingAdapter:
                 try:
                     fetched, provider_path = future.result()
                     successful_tickers.append(ticker)
+                    successful_checks.append({"ticker": ticker, "checked_at": datetime.now(timezone.utc)})
                     events.extend(fetched)
                     search_fallbacks += int(provider_path == "SEC_SEARCH")
                     relay_fallbacks += int(provider_path == "SEC_RELAY")
@@ -555,6 +557,7 @@ class SecFilingAdapter:
             "unresolved": unresolved,
             "unresolved_tickers": unresolved_tickers,
             "successful_tickers": successful_tickers,
+            "successful_checks": successful_checks,
             "failed_tickers": failed_tickers,
             "submissions_errors": search_fallbacks + relay_fallbacks + nasdaq_fallbacks + errors,
             "search_fallbacks": search_fallbacks,
@@ -643,6 +646,7 @@ class YahooNewsCatalystAdapter:
         events: list[MarketEvent] = []
         errors = 0
         successful_tickers = []
+        successful_checks = []
         failed_tickers = []
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(inputs)) or 1) as pool:
             futures = {pool.submit(self._ticker_events, ticker, name, now): ticker for ticker, name in inputs}
@@ -651,13 +655,14 @@ class YahooNewsCatalystAdapter:
                 try:
                     events.extend(future.result())
                     successful_tickers.append(ticker)
+                    successful_checks.append({"ticker": ticker, "checked_at": datetime.now(timezone.utc)})
                 except Exception:
                     errors += 1
                     failed_tickers.append(ticker)
         return events, {
             "provider": "YAHOO_NEWS", "requested": len(inputs), "errors": errors,
-            "successful_tickers": successful_tickers, "failed_tickers": failed_tickers,
-            "events": len(events), "duration_ms": round((time.monotonic() - started) * 1000),
+            "successful_tickers": successful_tickers, "successful_checks": successful_checks,
+            "failed_tickers": failed_tickers, "events": len(events), "duration_ms": round((time.monotonic() - started) * 1000),
         }
 
 
