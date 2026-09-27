@@ -62,7 +62,7 @@ def run(batch_size: int = 120, top_n: int = 80, scan_limit: int = 420) -> pd.Dat
         + u["max_up_day_30d_pct"].rank(pct=True)*0.25
         + u["ret20_pct"].rank(pct=True)*0.10
     )
-    tickers=u.head(scan_limit)["ticker"].dropna().astype(str).unique().tolist()
+    tickers=u.sort_values("_priority", ascending=False, kind="stable").head(scan_limit)["ticker"].dropna().astype(str).unique().tolist()
     now=datetime.now(NY)
 
     spy_raw=warehouse_history("SPY",period="3d",interval="5m",max_age_minutes=10)

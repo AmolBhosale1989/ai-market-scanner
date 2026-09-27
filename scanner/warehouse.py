@@ -44,12 +44,12 @@ def _tickers(values: Iterable[str] | None) -> tuple[str, ...]:
     return tuple(dict.fromkeys(str(x).upper() for x in (values or ()) if x))
 
 
-def _pit(tickers: Iterable[str], interval: str, consumer: str, as_of: datetime | None = None) -> pd.DataFrame:
+def _pit(tickers: Iterable[str], interval: str, consumer: str, as_of: datetime | None = None, period: str = "1y") -> pd.DataFrame:
     wanted = _tickers(tickers)
     if not wanted:
         raise RuntimeError(f"WAREHOUSE_REQUIREMENT_INVALID: {consumer} requested no tickers")
     return point_in_time(PointInTimeRequirement(
-        consumer=consumer, tickers=wanted, data_type="OHLCV", timeframe=interval, as_of=as_of,
+        consumer=consumer, tickers=wanted, data_type="OHLCV", timeframe=interval, as_of=as_of, period=period,
     ))
 
 
@@ -198,17 +198,17 @@ def is_fresh(max_age_minutes: int = 20, interval: str | None = None) -> bool:
 
 def ensure(tickers: Iterable[str], period: str = "1y", interval: str = "1d", max_age_minutes: int = 20):
     """Compatibility preflight. Ingestion is a workflow responsibility, never a consumer side effect."""
-    df = _pit(tickers, interval, "warehouse.ensure")
+    df = _pit(tickers, interval, "warehouse.ensure", period=period)
     _assert_coverage(df, tickers, "warehouse.ensure")
     newest = _assert_fresh(df, interval, max_age_minutes, "warehouse.ensure")
     return {"backend": "POSTGRESQL_BITEMPORAL", "updated_at_utc": newest.isoformat()}
 
 
-def get(tickers: Iterable[str] | None = None, interval: str = "1d", max_age_minutes: int = 20, require_fresh: bool = True) -> pd.DataFrame:
+def get(tickers: Iterable[str] | None = None, interval: str = "1d", max_age_minutes: int = 20, require_fresh: bool = True, period: str = "1y") -> pd.DataFrame:
     wanted = _tickers(tickers)
     if not wanted:
         raise RuntimeError("WAREHOUSE_REQUIREMENT_INVALID: PostgreSQL reads require explicit tickers")
-    raw = _pit(wanted, interval, "warehouse.get")
+    raw = _pit(wanted, interval, "warehouse.get", period=period)
     _assert_quality(raw, "warehouse.get")
     df = _compat_frame(raw)
     _assert_coverage(df, wanted, "warehouse.get")
@@ -219,13 +219,13 @@ def get(tickers: Iterable[str] | None = None, interval: str = "1d", max_age_minu
 
 def request(tickers: Iterable[str], period: str = "1y", interval: str = "1d", max_age_minutes: int = 20) -> pd.DataFrame:
     ensure(tickers, period=period, interval=interval, max_age_minutes=max_age_minutes)
-    return get(tickers, interval=interval, max_age_minutes=max_age_minutes)
+    return get(tickers, interval=interval, max_age_minutes=max_age_minutes, period=period)
 
 
 def frames(tickers: Iterable[str], period: str = "1y", interval: str = "1d", max_age_minutes: int = 20, require_complete: bool = True) -> dict[str, pd.DataFrame]:
     # Discovery scans may tolerate provider-unavailable symbols; targeted consumers default fail-closed.
     wanted = _tickers(tickers)
-    raw = _pit(wanted, interval, "warehouse.frames")
+    raw = _pit(wanted, interval, "warehouse.frames", period=period)
     if require_complete:
         _assert_quality(raw, "warehouse.frames")
     else:
@@ -262,7 +262,7 @@ def latest(tickers: Iterable[str] | None = None, interval: str = "1d", max_age_m
 
 
 def provide(req: DataRequirement) -> WarehouseView:
-    raw=_pit(req.tickers, req.interval, req.consumer, as_of=req.as_of)
+    raw=_pit(req.tickers, req.interval, req.consumer, as_of=req.as_of, period=req.period)
     _assert_coverage(raw, req.tickers, req.consumer)
     _assert_quality(raw, req.consumer, min_bars_per_symbol=req.min_bars_per_symbol)
     stale,_,expectation=_freshness_failures(raw,req.interval,req.max_age_minutes,req.consumer)
