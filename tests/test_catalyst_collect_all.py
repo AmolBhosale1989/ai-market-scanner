@@ -19,7 +19,8 @@ def test_data_plane_collects_independently_of_control_anchor(monkeypatch):
     monkeypatch.setattr(cp,"ExistingSecEdgarAdapter",lambda **kwargs: sec)
     calls=[]
     monkeypatch.setattr(cp,"persist_batch_result",
-        lambda adapter,tickers,result,anchor: calls.append((adapter.provider_name,tuple(tickers),anchor)))
+        lambda adapter,tickers,result,anchor,checked_at_by_ticker=None:
+            calls.append((adapter.provider_name,tuple(tickers),anchor)))
     monkeypatch.setattr(cp,"AlphaVantageCalendarBatch",lambda fn: Mock(provider_name="ALPHA_VANTAGE"))
     monkeypatch.setattr(cp,"ingest_alpha_vantage_batch",
         lambda *a,**k: calls.append(("ALPHA_VANTAGE","BATCH",k["anchor"])))
@@ -57,10 +58,29 @@ def test_partial_batch_never_turns_failed_ticker_into_no_event(monkeypatch):
     monkeypatch.setattr(cp,"ExistingSecEdgarAdapter",lambda **kwargs:sec)
     persisted=[]
     monkeypatch.setattr(cp,"persist_batch_result",
-        lambda adapter,tickers,result,anchor:persisted.append((adapter.provider_name,tuple(tickers))))
+        lambda adapter,tickers,result,anchor,checked_at_by_ticker=None:
+            persisted.append((adapter.provider_name,tuple(tickers))))
     monkeypatch.setattr(cp,"AlphaVantageCalendarBatch",lambda fn:Mock(provider_name="ALPHA_VANTAGE"))
     monkeypatch.setattr(cp,"ingest_alpha_vantage_batch",lambda *a,**k:None)
     cp.run()
     assert ("YAHOO_NEWS",("AAA",)) in persisted
     assert ("YAHOO_NEWS",("BBB",)) not in persisted
     assert ("SEC_EDGAR",()) in persisted
+
+
+def test_data_plane_passes_per_ticker_knowledge_times(monkeypatch):
+    t1=datetime(2026,9,27,14,1,tzinfo=timezone.utc)
+    t2=datetime(2026,9,27,14,2,tzinfo=timezone.utc)
+    yahoo=Mock(provider_name="YAHOO_NEWS")
+    yahoo.fetch_batch.return_value=(Mock(events=(),rejected_count=0),{
+        "errors":0,"successful_tickers":["AAA","BBB"],"failed_tickers":[],
+        "successful_checks":[{"ticker":"AAA","checked_at":t1},{"ticker":"BBB","checked_at":t2}],
+    })
+    monkeypatch.setattr(cp,"_universe",lambda:["AAA","BBB"])
+    monkeypatch.setattr(cp,"ExistingYahooNewsAdapter",lambda **kwargs:yahoo)
+    captured={}
+    monkeypatch.setattr(cp,"persist_batch_result",
+        lambda adapter,tickers,result,anchor,checked_at_by_ticker=None:
+            captured.update(checked_at_by_ticker or {}))
+    cp.run("yahoo")
+    assert captured=={"AAA":t1,"BBB":t2}
