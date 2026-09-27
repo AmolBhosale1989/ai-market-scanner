@@ -189,12 +189,12 @@ def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | 
         if pg_snapshot is not None:
             raise RuntimeError("WAREHOUSE_REPLAY_ANCHOR_REQUIRED")
         as_of, pg_snapshot = capture_boundary(run_id=current_run_id())
-        from .catalogue_snapshot import read_frozen_catalogue
-        master = _symbols(read_frozen_catalogue("master_universe", current_run_id(), as_of, pg_snapshot), "master_universe")
-        live = _symbols(read_frozen_catalogue("live_universe", current_run_id(), as_of, pg_snapshot, required=False), "live_universe", required="LIVE_INTRADAY" in selected or not selected)
     else:
         # Never manufacture today's visibility for an old timestamp.
         pg_snapshot = validate_pg_snapshot(pg_snapshot)
+    from .catalogue_snapshot import read_frozen_catalogue
+    master = _symbols(read_frozen_catalogue("master_universe", current_run_id(), as_of, pg_snapshot), "master_universe")
+    live = _symbols(read_frozen_catalogue("live_universe", current_run_id(), as_of, pg_snapshot, required=False), "live_universe", required="LIVE_INTRADAY" in selected or not selected)
     tiers=[x for x in build_tiers(master,live) if not selected or x.name in selected]
     results=[evaluate_tier(tier,coverage_frame(tier,as_of,pg_snapshot),now_utc=as_of) for tier in tiers]
     snapshot={

@@ -44,7 +44,10 @@ def test_gate_captures_and_uses_same_visibility_for_every_tier(monkeypatch):
     monkeypatch.setattr(gate, 'verify_health', lambda: None)
     monkeypatch.setattr(snapshot, 'capture_boundary', lambda **kwargs: (at, visibility))
     tiers = [gate.CoverageTier(n, ('AAA',), '5m', 1., 1, 10) for n in ('A', 'B')]
-    monkeypatch.setattr(gate, 'build_tiers', lambda *a: tiers)
+    def build_tiers(master, live):
+        assert master == live == ('AAA',)
+        return tiers
+    monkeypatch.setattr(gate, 'build_tiers', build_tiers)
     monkeypatch.setattr('scanner.catalogue_snapshot.read_frozen_catalogue', lambda *a, **k: pd.DataFrame({'ticker': ['AAA']}))
     def coverage(tier, anchor, pg_snapshot):
         seen.append((anchor, pg_snapshot))
@@ -54,6 +57,9 @@ def test_gate_captures_and_uses_same_visibility_for_every_tier(monkeypatch):
     result = gate.run(pd.DataFrame({'ticker': ['AAA']}), pd.DataFrame({'ticker': ['AAA']}))
     assert seen == [(at, visibility), (at, visibility)]
     assert result['pg_snapshot'] == visibility
+    replay = gate.run(pd.DataFrame({'ticker': ['FUTURE']}), pd.DataFrame({'ticker': ['FUTURE']}),
+                      as_of=at, pg_snapshot=visibility)
+    assert replay['master_catalogue_hash'] == result['master_catalogue_hash']
     with pytest.raises(RuntimeError, match='PG_SNAPSHOT'):
         gate.run(pd.DataFrame({'ticker': ['AAA']}), pd.DataFrame({'ticker': ['AAA']}), as_of=at)
 
