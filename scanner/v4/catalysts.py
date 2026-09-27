@@ -531,17 +531,22 @@ class SecFilingAdapter:
         search_fallbacks = 0
         relay_fallbacks = 0
         nasdaq_fallbacks = 0
+        successful_tickers = []
+        failed_tickers = []
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(valid)) or 1) as pool:
             futures = {pool.submit(fetch, item): item[0] for item in valid}
             for future in as_completed(futures):
+                ticker=futures[future]
                 try:
                     fetched, provider_path = future.result()
+                    successful_tickers.append(ticker)
                     events.extend(fetched)
                     search_fallbacks += int(provider_path == "SEC_SEARCH")
                     relay_fallbacks += int(provider_path == "SEC_RELAY")
                     nasdaq_fallbacks += int(provider_path == "NASDAQ_INDEX")
                 except Exception:
                     errors += 1
+                    failed_tickers.append(ticker)
         health = {
             "provider": "SEC_EDGAR",
             "ticker_map_source": self.ticker_map_source,
@@ -549,6 +554,8 @@ class SecFilingAdapter:
             "resolved": len(valid),
             "unresolved": unresolved,
             "unresolved_tickers": unresolved_tickers,
+            "successful_tickers": successful_tickers,
+            "failed_tickers": failed_tickers,
             "submissions_errors": search_fallbacks + relay_fallbacks + nasdaq_fallbacks + errors,
             "search_fallbacks": search_fallbacks,
             "search_errors": relay_fallbacks + nasdaq_fallbacks + errors,
@@ -635,15 +642,21 @@ class YahooNewsCatalystAdapter:
         ]
         events: list[MarketEvent] = []
         errors = 0
+        successful_tickers = []
+        failed_tickers = []
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(inputs)) or 1) as pool:
             futures = {pool.submit(self._ticker_events, ticker, name, now): ticker for ticker, name in inputs}
             for future in as_completed(futures):
+                ticker=futures[future]
                 try:
                     events.extend(future.result())
+                    successful_tickers.append(ticker)
                 except Exception:
                     errors += 1
+                    failed_tickers.append(ticker)
         return events, {
             "provider": "YAHOO_NEWS", "requested": len(inputs), "errors": errors,
+            "successful_tickers": successful_tickers, "failed_tickers": failed_tickers,
             "events": len(events), "duration_ms": round((time.monotonic() - started) * 1000),
         }
 
