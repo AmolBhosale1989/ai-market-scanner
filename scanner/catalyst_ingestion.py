@@ -52,3 +52,19 @@ def ingest_alpha_vantage_batch(batch_adapter, tickers, *, anchor, lookforward) -
                        error=f"{type(exc).__name__}:{exc}")
             raise
     return results
+
+
+def ingest_batch_result(adapter,tickers,result,*,anchor) -> dict:
+    """Persist one successful batch poll as per-ticker atomic evidence."""
+    provider=adapter.provider_name
+    wanted=list(dict.fromkeys(str(x).upper() for x in tickers if x))
+    by_ticker={ticker:[] for ticker in wanted}
+    for event in result.events:
+        ticker=str(event.payload.get("ticker") or "").upper()
+        if not ticker:
+            # Existing normalized events carry ticker in the source payload only inconsistently.
+            # Match by event payload/source identity is unsafe; callers must provide grouped events.
+            continue
+        if ticker in by_ticker:
+            by_ticker[ticker].append(event)
+    return by_ticker
