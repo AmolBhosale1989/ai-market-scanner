@@ -9,9 +9,11 @@ from scanner import catalyst_data_plane as cp
 def test_data_plane_collects_independently_of_control_anchor(monkeypatch):
     yahoo=Mock(provider_name="YAHOO_NEWS")
     sec=Mock(provider_name="SEC_EDGAR")
-    yahoo.fetch_batch.return_value=(Mock(events=(),rejected_count=0),{"errors":0})
+    yahoo.fetch_batch.return_value=(Mock(events=(),rejected_count=0),
+        {"errors":1,"successful_tickers":["AAA"],"failed_tickers":["BBB"]})
     sec.fetch_batch.return_value=(Mock(events=(),rejected_count=0),
-                                  {"errors":0,"unresolved":1,"unresolved_tickers":["AAA"]})
+        {"errors":0,"unresolved":1,"unresolved_tickers":["AAA"],
+         "successful_tickers":["BBB"],"failed_tickers":[]})
     monkeypatch.setattr(cp,"_universe",lambda: ["AAA","BBB"])
     monkeypatch.setattr(cp,"ExistingYahooNewsAdapter",lambda **kwargs: yahoo)
     monkeypatch.setattr(cp,"ExistingSecEdgarAdapter",lambda **kwargs: sec)
@@ -24,8 +26,8 @@ def test_data_plane_collects_independently_of_control_anchor(monkeypatch):
 
     result=cp.run()
 
-    assert result["failures"]==1  # unresolved SEC evidence remains explicit
-    assert calls[0][0:2]==("YAHOO_NEWS",("AAA","BBB"))
+    assert result["failures"]==2  # Yahoo failure + unresolved SEC remain explicit
+    assert calls[0][0:2]==("YAHOO_NEWS",("AAA",))
     assert calls[1][0:2]==("SEC_EDGAR",("BBB",))
     assert calls[2][0:2]==("ALPHA_VANTAGE","BATCH")
     knowledge_times={item[2] for item in calls}
@@ -40,3 +42,25 @@ def test_sec_failure_preserves_health_payload():
     adapter=ExistingSecEdgarAdapter(delegate=delegate)
     with pytest.raises(RuntimeError,match=r"ticker=AAA.*unresolved.*SEC_OFFICIAL"):
         adapter.fetch_catalysts("AAA",anchor=datetime(2026,9,26,16,0,tzinfo=timezone.utc))
+
+
+def test_partial_batch_never_turns_failed_ticker_into_no_event(monkeypatch):
+    yahoo=Mock(provider_name="YAHOO_NEWS")
+    yahoo.fetch_batch.return_value=(Mock(events=(),rejected_count=0),
+        {"errors":1,"successful_tickers":["AAA"],"failed_tickers":["BBB"]})
+    sec=Mock(provider_name="SEC_EDGAR")
+    sec.fetch_batch.return_value=(Mock(events=(),rejected_count=0),
+        {"errors":2,"successful_tickers":[],"failed_tickers":["AAA","BBB"],
+         "unresolved":0,"unresolved_tickers":[]})
+    monkeypatch.setattr(cp,"_universe",lambda:["AAA","BBB"])
+    monkeypatch.setattr(cp,"ExistingYahooNewsAdapter",lambda **kwargs:yahoo)
+    monkeypatch.setattr(cp,"ExistingSecEdgarAdapter",lambda **kwargs:sec)
+    persisted=[]
+    monkeypatch.setattr(cp,"persist_batch_result",
+        lambda adapter,tickers,result,anchor:persisted.append((adapter.provider_name,tuple(tickers))))
+    monkeypatch.setattr(cp,"AlphaVantageCalendarBatch",lambda fn:Mock(provider_name="ALPHA_VANTAGE"))
+    monkeypatch.setattr(cp,"ingest_alpha_vantage_batch",lambda *a,**k:None)
+    cp.run()
+    assert ("YAHOO_NEWS",("AAA",)) in persisted
+    assert ("YAHOO_NEWS",("BBB",)) not in persisted
+    assert ("SEC_EDGAR",()) in persisted
