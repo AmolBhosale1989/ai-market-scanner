@@ -22,9 +22,9 @@ def _alpha_calendar_fetch():
 
 
 def _universe():
-    frame=read_dataset("live_universe",required=False)
+    frame=read_dataset("live_universe",published_mode="production",required=False)
     if frame.empty or "ticker" not in frame.columns:
-        raise RuntimeError("CATALYST_INGESTION_UNIVERSE_EMPTY")
+        raise RuntimeError("CATALYST_PUBLISHED_UNIVERSE_EMPTY")
     return list(dict.fromkeys(frame["ticker"].dropna().astype(str).str.upper()))
 
 
