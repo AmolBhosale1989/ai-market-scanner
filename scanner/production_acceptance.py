@@ -101,6 +101,11 @@ def audit_current_run(run_id=None):
         gate = next(row for row in stages if row["stage_name"] == "warehouse_gate")
         if pd.isna(anchor) or anchor.tzinfo is None or not gate["started_at"] <= anchor <= gate["completed_at"]:
             raise RuntimeError("ACCEPTANCE_SNAPSHOT_TIME")
+        from .catalogue_snapshot import CATALOGUE_DATASETS, read_frozen_catalogue
+        for name in CATALOGUE_DATASETS.intersection(datasets):
+            frozen = read_frozen_catalogue(name, rid, anchor, snapshots[0].get("pg_snapshot"))
+            if cp._hash(frozen.to_dict("records")) != cp._hash(datasets[name]):
+                raise RuntimeError(f"ACCEPTANCE_CATALOGUE_CHANGED: {name}")
         reason = signal_expiry_reason(datasets, now_utc=now)
         if reason:
             raise RuntimeError("ACCEPTANCE_SIGNAL_FRESHNESS: " + reason)
@@ -109,7 +114,7 @@ def audit_current_run(run_id=None):
         live_tickers=[row.get("ticker") for row in live_rows if row.get("ticker")]
         if not live_tickers:
             raise RuntimeError("ACCEPTANCE_CATALYST_UNIVERSE_EMPTY")
-        verify_coverage(live_tickers,anchor=anchor.to_pydatetime())
+        verify_coverage(live_tickers,anchor=anchor.to_pydatetime(),pg_snapshot=snapshots[0].get("pg_snapshot"))
         return {"status": "PASS", "production_run_id": rid, "lane": lane,
                 "stages": len(stages), "datasets": len(versions),
                 "warehouse_as_of_utc": anchor.isoformat()}

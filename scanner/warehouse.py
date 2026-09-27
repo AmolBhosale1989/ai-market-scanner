@@ -24,6 +24,7 @@ class DataRequirement:
     view_name: str = ""
     latest_only: bool = False
     as_of: datetime | None = None
+    pg_snapshot: str | None = None
     min_bars_per_symbol: int = 1
     minimum_fresh_coverage: float = 1.0
     required_fresh_tickers: tuple[str, ...] = ()
@@ -44,12 +45,12 @@ def _tickers(values: Iterable[str] | None) -> tuple[str, ...]:
     return tuple(dict.fromkeys(str(x).upper() for x in (values or ()) if x))
 
 
-def _pit(tickers: Iterable[str], interval: str, consumer: str, as_of: datetime | None = None, period: str = "1y") -> pd.DataFrame:
+def _pit(tickers: Iterable[str], interval: str, consumer: str, as_of: datetime | None = None, period: str = "1y", pg_snapshot: str | None = None) -> pd.DataFrame:
     wanted = _tickers(tickers)
     if not wanted:
         raise RuntimeError(f"WAREHOUSE_REQUIREMENT_INVALID: {consumer} requested no tickers")
     return point_in_time(PointInTimeRequirement(
-        consumer=consumer, tickers=wanted, data_type="OHLCV", timeframe=interval, as_of=as_of, period=period,
+        consumer=consumer, tickers=wanted, data_type="OHLCV", timeframe=interval, as_of=as_of, period=period, pg_snapshot=pg_snapshot,
     ))
 
 
@@ -262,7 +263,7 @@ def latest(tickers: Iterable[str] | None = None, interval: str = "1d", max_age_m
 
 
 def provide(req: DataRequirement) -> WarehouseView:
-    raw=_pit(req.tickers, req.interval, req.consumer, as_of=req.as_of, period=req.period)
+    raw=_pit(req.tickers, req.interval, req.consumer, as_of=req.as_of, period=req.period, pg_snapshot=req.pg_snapshot)
     _assert_coverage(raw, req.tickers, req.consumer)
     _assert_quality(raw, req.consumer, min_bars_per_symbol=req.min_bars_per_symbol)
     stale,_,expectation=_freshness_failures(raw,req.interval,req.max_age_minutes,req.consumer)

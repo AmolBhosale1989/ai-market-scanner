@@ -22,6 +22,7 @@ class PointInTimeRequirement:
     max_age_minutes: int = 20
     columns: tuple[str, ...] = ()
     period: str | None = None
+    pg_snapshot: str | None = None
 
 
 def _connect():
@@ -81,7 +82,8 @@ def period_start(period: str, as_of) -> pd.Timestamp:
 
 def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
     """Return only versions that were known by req.as_of. Never query future ingestion."""
-    from .consumer_snapshot import consumer_anchor
+    from .consumer_snapshot import consumer_anchor, resolve_pg_snapshot
+    visibility = resolve_pg_snapshot(req.pg_snapshot)
     anchor = consumer_anchor()
     as_of = req.as_of or anchor or datetime.now(timezone.utc)
     if anchor is not None and pd.Timestamp(as_of) > anchor:
@@ -91,24 +93,30 @@ def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
         raise RuntimeError(f"WAREHOUSE_REQUIREMENT_INVALID: {req.consumer}")
     lower = period_start(req.period, as_of) if req.period is not None else None
     lower_clause = "AND o.event_timestamp >= %s" if lower is not None else ""
-    sql = f"""WITH ranked AS (
+    visibility_clause = "AND pg_visible_in_snapshot(o.writer_xid, %s::pg_snapshot)" if visibility else ""
+    from .catalogue_snapshot import instrument_cte
+    catalogue, catalogue_params = instrument_cte(as_of, visibility)
+    sql = f"""WITH {catalogue}, ranked AS (
       SELECT i.canonical_symbol AS ticker, o.*,
              row_number() OVER (
                PARTITION BY o.instrument_id,o.data_type,o.timeframe,o.event_timestamp
                ORDER BY o.ingested_at DESC,o.observation_id DESC
              ) AS version_rank
       FROM market_observation o
-      JOIN instrument i ON i.instrument_id=o.instrument_id
+      JOIN visible_instrument i ON i.instrument_id=o.instrument_id
       WHERE i.canonical_symbol = ANY(%s)
         AND o.data_type=%s AND o.timeframe=%s
         AND o.event_timestamp <= %s
         AND o.ingested_at <= %s
         {lower_clause}
+        {visibility_clause}
     )
     SELECT * FROM ranked WHERE version_rank=1 ORDER BY ticker,event_timestamp"""
-    params = (tickers, req.data_type, req.timeframe, event_cutoff(req.timeframe, as_of), as_of)
+    params = catalogue_params + (tickers, req.data_type, req.timeframe, event_cutoff(req.timeframe, as_of), as_of)
     if lower is not None:
         params += (lower,)
+    if visibility:
+        params += (visibility,)
     with _connect() as conn:
         df = pd.read_sql_query(sql, conn, params=params)
     if df.empty:

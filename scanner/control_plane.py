@@ -229,6 +229,8 @@ def _v3_provenance(records, rid):
     if pd.isna(at) or at.tzinfo is None:
         raise RuntimeError("V3_OUTPUT_ANCHOR_INVALID")
     as_of = at.tz_convert("UTC").isoformat()
+    from .consumer_snapshot import consumer_pg_snapshot
+    visibility = consumer_pg_snapshot()
     stamped = []
     for original in records:
         # Recompute the row digest after stamping; never trust inherited hashes.
@@ -238,11 +240,17 @@ def _v3_provenance(records, rid):
         if "as_of_utc" in row and pd.Timestamp(row["as_of_utc"]) != at:
             raise RuntimeError("V3_OUTPUT_INPUT_ANCHOR_MISMATCH")
         row.pop("signal_content_hash", None)
+        if visibility:
+            if "pg_snapshot" in row and row["pg_snapshot"] != visibility:
+                raise RuntimeError("V3_OUTPUT_INPUT_SNAPSHOT_MISMATCH")
+            row["pg_snapshot"] = visibility
         row.update(production_run_id=rid, as_of_utc=as_of)
         row["signal_content_hash"] = _hash(row)
         stamped.append(row)
     provenance = {"production_run_id": rid, "as_of_utc": as_of,
                   "content_hash": _hash(stamped), "provenance_version": 1}
+    if visibility:
+        provenance["pg_snapshot"] = visibility
     return stamped, provenance
 
 
@@ -325,6 +333,12 @@ def read_dataset(
         if required:
             raise RuntimeError("CONTROL_PLANE_RUN_REQUIRED: no current run or published mode")
         return pd.DataFrame()
+    from .catalogue_snapshot import CATALOGUE_DATASETS, read_frozen_catalogue
+    if dataset_name in CATALOGUE_DATASETS and not published_mode and os.getenv("WAREHOUSE_CONSUMER_SNAPSHOT") == "1":
+        from .consumer_snapshot import consumer_anchor, consumer_pg_snapshot
+        if rid != current_run_id():
+            raise RuntimeError("CATALOGUE_SNAPSHOT_WRONG_RUN")
+        return read_frozen_catalogue(dataset_name, rid, consumer_anchor(), consumer_pg_snapshot(), required=required)
     version_sql, params = _dataset_version_query(dataset_name, rid, published_mode)
     # Metadata and payload must describe the same statement snapshot. This also
     # avoids a second TLS connection for every consumer dataset read.
@@ -370,12 +384,18 @@ def append_state(namespace: str, document_key: str, payload, run_id: str | None 
     return revision
 
 
-def read_state(namespace: str, document_key: str, default=None, *, as_of=None):
+def read_state(namespace: str, document_key: str, default=None, *, as_of=None, pg_snapshot=None):
     """Read state at as_of; V3 production reads inherit the validated T0."""
     # V3 defaults to T0; other namespaces opt in explicitly during migration.
     at = _state_anchor(as_of) if as_of is not None or namespace == "v3" else None
     cutoff = " AND created_at <= %s" if at is not None else ""
+    from .consumer_snapshot import resolve_pg_snapshot
+    visibility = resolve_pg_snapshot(pg_snapshot) if at is not None else None
+    if visibility:
+        cutoff += " AND pg_visible_in_snapshot(writer_xid, %s::pg_snapshot)"
     params = (namespace, document_key) + ((at,) if at is not None else ())
+    if visibility:
+        params += (visibility,)
     with _connect() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT payload FROM state_document WHERE namespace=%s AND document_key=%s"

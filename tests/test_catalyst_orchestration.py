@@ -23,7 +23,7 @@ def test_production_workflow_orders_catalysts_before_consumers():
 def test_acceptance_calls_catalyst_coverage():
     from pathlib import Path
     text=Path("scanner/production_acceptance.py").read_text()
-    assert "verify_coverage(live_tickers,anchor=anchor.to_pydatetime())" in text
+    assert "verify_coverage(live_tickers,anchor=anchor.to_pydatetime(),pg_snapshot=snapshots[0].get(" in text
 
 
 def test_production_workflow_exposes_alpha_vantage_secret():

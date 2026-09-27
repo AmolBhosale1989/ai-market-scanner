@@ -66,7 +66,7 @@ def ingest_catalyst_revision(*, provider: str, provider_event_id: str, ticker: s
             warehouse_run_id=warehouse_run_id,payload=payload)
 
 def catalyst_context(*, tickers, as_of: datetime, start_time: datetime, end_time: datetime,
-                     allow_future_domain: bool = False) -> pd.DataFrame:
+                     allow_future_domain: bool = False, pg_snapshot=None) -> pd.DataFrame:
     anchor=pd.Timestamp(as_of)
     start=pd.Timestamp(start_time)
     end=pd.Timestamp(end_time)
@@ -78,14 +78,28 @@ def catalyst_context(*, tickers, as_of: datetime, start_time: datetime, end_time
     wanted=list(dict.fromkeys(str(x).upper() for x in tickers if x))
     if not wanted:
         raise RuntimeError("CATALYST_PIT_TICKERS_REQUIRED")
-    sql="""SELECT ticker,provider,provider_event_id,catalyst_type,event_timestamp,
-                  known_from,known_to,payload_hash,payload
-           FROM warehouse_catalyst
-           WHERE ticker=ANY(%s) AND event_timestamp BETWEEN %s AND %s
-             AND known_from<=%s AND (known_to IS NULL OR known_to>%s)
-           ORDER BY ticker,event_timestamp,provider,provider_event_id"""
+    from .consumer_snapshot import resolve_pg_snapshot
+    from .catalogue_snapshot import instrument_cte
+    visibility=resolve_pg_snapshot(pg_snapshot)
+    catalogue, params=instrument_cte(anchor,visibility)
+    clause="AND pg_visible_in_snapshot(c.writer_xid,%s::pg_snapshot)" if visibility else ""
+    # Rank all visible revisions before applying the event window. known_to may
+    # have been closed by an invisible late transaction and cannot drive replay.
+    sql=f"""WITH {catalogue}, ranked AS (
+        SELECT c.*,row_number() OVER (
+            PARTITION BY c.provider,c.provider_event_id,c.ticker
+            ORDER BY c.known_from DESC,c.catalyst_revision_id DESC) AS rank
+        FROM warehouse_catalyst c JOIN visible_instrument i
+          ON i.instrument_id=c.instrument_id AND i.canonical_symbol=c.ticker
+        WHERE c.ticker=ANY(%s) AND c.known_from<=%s {clause}
+    ) SELECT ticker,provider,provider_event_id,catalyst_type,event_timestamp,
+             known_from,NULL::timestamptz AS known_to,payload_hash,payload
+      FROM ranked WHERE rank=1 AND event_timestamp BETWEEN %s AND %s
+      ORDER BY ticker,event_timestamp,provider,provider_event_id"""
+    params += (wanted,anchor) + ((visibility,) if visibility else ()) + (start,end)
     with connection() as conn:
-        return pd.read_sql_query(sql,conn,params=(wanted,start,end,anchor,anchor))
+        return pd.read_sql_query(sql,conn,params=params)
+
 
 
 def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, events, checked_at, rejected_count: int = 0) -> list[tuple[int,str]]:
@@ -119,15 +133,22 @@ def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, 
           (provider,instrument[0],symbol,checked_at,warehouse_run_id,status,len(rows),rejected_count,verified_ids))
     return results
 
-def latest_catalyst_checks(*, tickers, as_of: datetime) -> pd.DataFrame:
+def latest_catalyst_checks(*, tickers, as_of: datetime, pg_snapshot=None) -> pd.DataFrame:
     anchor=pd.Timestamp(as_of)
     if anchor.tzinfo is None:
         raise RuntimeError("CATALYST_CHECK_ANCHOR_NAIVE")
     wanted=list(dict.fromkeys(str(x).upper() for x in tickers if x))
-    sql="""SELECT DISTINCT ON (ticker,provider)
-                  ticker,provider,checked_at,result_status,event_count,rejected_count,verified_event_ids
-           FROM catalyst_check
-           WHERE ticker=ANY(%s) AND checked_at<=%s
-           ORDER BY ticker,provider,checked_at DESC,catalyst_check_id DESC"""
+    from .consumer_snapshot import resolve_pg_snapshot
+    from .catalogue_snapshot import instrument_cte
+    visibility=resolve_pg_snapshot(pg_snapshot)
+    catalogue, params=instrument_cte(anchor,visibility)
+    clause="AND pg_visible_in_snapshot(c.writer_xid,%s::pg_snapshot)" if visibility else ""
+    sql=f"""WITH {catalogue} SELECT DISTINCT ON (c.ticker,c.provider)
+                  c.ticker,c.provider,c.checked_at,c.result_status,c.event_count,c.rejected_count,c.verified_event_ids
+           FROM catalyst_check c JOIN visible_instrument i
+             ON i.instrument_id=c.instrument_id AND i.canonical_symbol=c.ticker
+           WHERE c.ticker=ANY(%s) AND c.checked_at<=%s {clause}
+           ORDER BY c.ticker,c.provider,c.checked_at DESC,c.catalyst_check_id DESC"""
+    params += (wanted,anchor.tz_convert("UTC")) + ((visibility,) if visibility else ())
     with connection() as conn:
-        return pd.read_sql_query(sql,conn,params=(wanted,anchor.tz_convert("UTC")))
+        return pd.read_sql_query(sql,conn,params=params)

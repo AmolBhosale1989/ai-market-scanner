@@ -27,16 +27,23 @@ def run() -> dict:
     return result
 
 
-def verify_coverage(tickers,*,anchor):
+def verify_coverage(tickers,*,anchor,pg_snapshot=None):
     from .database import connection
+    from .consumer_snapshot import resolve_pg_snapshot
+    from .catalogue_snapshot import instrument_cte
+    visibility=resolve_pg_snapshot(pg_snapshot)
+    catalogue, params=instrument_cte(anchor,visibility)
+    clause="AND pg_visible_in_snapshot(c.writer_xid,%s::pg_snapshot)" if visibility else ""
     wanted=list(dict.fromkeys(str(x).upper() for x in tickers if x))
+    params += (wanted,anchor) + ((visibility,) if visibility else ())
     with connection() as conn,conn.cursor() as cur:
-        cur.execute("""SELECT ticker,provider,max(checked_at)
-                       FROM catalyst_check
-                       WHERE ticker=ANY(%s) AND checked_at<=%s
+        cur.execute(f"""WITH {catalogue} SELECT c.ticker,c.provider,max(c.checked_at)
+                       FROM catalyst_check c JOIN visible_instrument i ON i.instrument_id=c.instrument_id AND i.canonical_symbol=c.ticker
+                       WHERE c.ticker=ANY(%s) AND c.checked_at<=%s
+                         {clause}
                          AND result_status IN ('EVENTS','NO_EVENT')
                          AND rejected_count=0
-                       GROUP BY ticker,provider""",(wanted,anchor))
+                       GROUP BY c.ticker,c.provider""",params)
         rows=cur.fetchall()
         present={(ticker,provider) for ticker,provider,checked_at in rows
                  if anchor-checked_at <= PROVIDER_MAX_AGE[provider]}

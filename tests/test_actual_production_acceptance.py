@@ -72,43 +72,51 @@ def test_only_running_acceptance_can_check_itself_and_not_publish_yet():
 def real_run(monkeypatch):
     if not os.getenv("DATABASE_URL"):
         pytest.skip("requires isolated PostgreSQL")
+    from scanner.consumer_snapshot import capture_boundary
+    from scanner.catalyst_warehouse import ingest_catalyst_batch
+    from scanner.bitemporal_warehouse import start_run, finish_run
+    from scanner.catalogue_snapshot import CATALOGUE_DATASETS
     cp.migrate()
     rid = cp.start_run("audit-test")
+    live_tickers = ["AAPL", "MSFT"]
     with cp._connect() as conn, conn.cursor() as cur:
+        for ticker in live_tickers:
+            cur.execute("INSERT INTO instrument(canonical_symbol) VALUES (%s) ON CONFLICT DO NOTHING", (ticker,))
         cur.execute("SELECT clock_timestamp()")
-        start = cur.fetchone()[0] - timedelta(minutes=5)
-        cur.execute("UPDATE pipeline_run SET started_at=%s WHERE pipeline_run_id=%s", (start, rid))
-        rows = stage_rows(start, accepting=True)
-        cur.executemany("""INSERT INTO pipeline_stage(pipeline_run_id,stage_name,stage_order,status,started_at,completed_at)
-                            VALUES (%s,%s,%s,%s,%s,%s)""",
-                        [(rid, r["stage_name"], i, r["status"], r["started_at"], r["completed_at"])
-                         for i, r in enumerate(rows)])
-    anchor = next(r["started_at"] for r in rows if r["stage_name"] == "warehouse_gate") + timedelta(seconds=1)
-    # Production establishes the validated snapshot before any V3 output write.
+        checked_at = cur.fetchone()[0]
+    for provider in ("YAHOO_NEWS", "SEC_EDGAR", "ALPHA_VANTAGE"):
+        for ticker in live_tickers:
+            wr = start_run(provider, "CATALYST_CONTEXT", {"ticker": ticker, "fixture": True})
+            ingest_catalyst_batch(provider=provider, ticker=ticker, warehouse_run_id=wr,
+                                  events=[], checked_at=checked_at)
+            finish_run(wr, "AVAILABLE", {"events": 0})
+    for name in CATALOGUE_DATASETS:
+        cp.write_dataset(name, pd.DataFrame({"ticker": live_tickers}), run_id=rid)
+    # Evidence and catalogues COMMIT before the real visibility boundary.
+    anchor, visibility = capture_boundary(run_id=rid)
     cp.write_dataset("warehouse_snapshot", pd.DataFrame([{
         "status": "PASS", "production_run_id": rid, "as_of_utc": anchor.isoformat(),
+        "pg_snapshot": visibility,
     }]), entity_key=None, run_id=rid)
     monkeypatch.setenv("PRODUCTION_RUN_ID", rid)
     monkeypatch.setenv("WAREHOUSE_CONSUMER_SNAPSHOT", "1")
-    live_tickers=["AAPL","MSFT"]
     for name in REQUIRED_DATASETS:
-        if name == "warehouse_snapshot":
-            continue
-        elif name == "live_universe":
-            records=[{"ticker":ticker} for ticker in live_tickers]
-        else:
-            records=[]
-        cp.write_dataset(name,pd.DataFrame(records),entity_key=None,run_id=rid)
-    from scanner.catalyst_warehouse import ingest_catalyst_batch
-    from scanner.bitemporal_warehouse import start_run,finish_run
-    with cp._connect() as conn,conn.cursor() as cur:
-        for ticker in live_tickers:
-            cur.execute("INSERT INTO instrument(canonical_symbol) VALUES (%s) ON CONFLICT DO NOTHING",(ticker,))
-    for provider in ("YAHOO_NEWS","SEC_EDGAR","ALPHA_VANTAGE"):
-        for ticker in live_tickers:
-            warehouse_run=start_run(provider,"CATALYST_CONTEXT",{"ticker":ticker,"fixture":True})
-            ingest_catalyst_batch(provider=provider,ticker=ticker,warehouse_run_id=warehouse_run,events=[],checked_at=anchor)
-            finish_run(warehouse_run,"AVAILABLE",{"events":0,"fixture":True})
+        if name not in CATALOGUE_DATASETS and name != "warehouse_snapshot":
+            cp.write_dataset(name, pd.DataFrame(), entity_key=None, run_id=rid)
+    # Compress fixture stage durations to microseconds around the captured gate.
+    start = anchor.to_pydatetime() - timedelta(microseconds=5)
+    rows = stage_rows(START, accepting=True)
+    for row in rows:
+        for key in ("started_at", "completed_at"):
+            if row[key] is not None:
+                row[key] = start + (row[key] - START) / 1_000_000
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute("UPDATE pipeline_run SET started_at=%s WHERE pipeline_run_id=%s", (start, rid))
+        cur.executemany("""INSERT INTO pipeline_stage
+            (pipeline_run_id,stage_name,stage_order,status,started_at,completed_at)
+            VALUES (%s,%s,%s,%s,%s,%s)""",
+            [(rid, r["stage_name"], i, r["status"], r["started_at"], r["completed_at"])
+             for i, r in enumerate(rows)])
     return rid
 
 
