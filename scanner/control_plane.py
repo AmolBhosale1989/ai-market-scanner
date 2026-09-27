@@ -333,6 +333,12 @@ def read_dataset(
         if required:
             raise RuntimeError("CONTROL_PLANE_RUN_REQUIRED: no current run or published mode")
         return pd.DataFrame()
+    from .catalogue_snapshot import CATALOGUE_DATASETS, read_frozen_catalogue
+    if dataset_name in CATALOGUE_DATASETS and not published_mode and os.getenv("WAREHOUSE_CONSUMER_SNAPSHOT") == "1":
+        from .consumer_snapshot import consumer_anchor, consumer_pg_snapshot
+        if rid != current_run_id():
+            raise RuntimeError("CATALOGUE_SNAPSHOT_WRONG_RUN")
+        return read_frozen_catalogue(dataset_name, rid, consumer_anchor(), consumer_pg_snapshot(), required=required)
     version_sql, params = _dataset_version_query(dataset_name, rid, published_mode)
     # Metadata and payload must describe the same statement snapshot. This also
     # avoids a second TLS connection for every consumer dataset read.

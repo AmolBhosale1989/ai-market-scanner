@@ -42,9 +42,10 @@ def test_gate_captures_and_uses_same_visibility_for_every_tier(monkeypatch):
     visibility = '10:20:12'
     seen = []
     monkeypatch.setattr(gate, 'verify_health', lambda: None)
-    monkeypatch.setattr(snapshot, 'capture_boundary', lambda: (at, visibility))
+    monkeypatch.setattr(snapshot, 'capture_boundary', lambda **kwargs: (at, visibility))
     tiers = [gate.CoverageTier(n, ('AAA',), '5m', 1., 1, 10) for n in ('A', 'B')]
     monkeypatch.setattr(gate, 'build_tiers', lambda *a: tiers)
+    monkeypatch.setattr('scanner.catalogue_snapshot.read_frozen_catalogue', lambda *a, **k: pd.DataFrame({'ticker': ['AAA']}))
     def coverage(tier, anchor, pg_snapshot):
         seen.append((anchor, pg_snapshot))
         return pd.DataFrame([dict(ticker='AAA', event_timestamp=at-pd.Timedelta(minutes=5),

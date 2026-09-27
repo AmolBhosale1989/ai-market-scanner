@@ -64,9 +64,11 @@ def coverage_frame(tier: CoverageTier, as_of: datetime, pg_snapshot: str | None 
     from .consumer_snapshot import resolve_pg_snapshot
     visibility = resolve_pg_snapshot(pg_snapshot)
     clause = "AND pg_visible_in_snapshot(o.writer_xid, %s::pg_snapshot)" if visibility else ""
-    sql=f"""WITH wanted AS (
+    from .catalogue_snapshot import instrument_cte
+    catalogue, catalogue_params = instrument_cte(as_of, visibility)
+    sql=f"""WITH {catalogue}, wanted AS (
       SELECT DISTINCT ON (i.canonical_symbol) i.instrument_id,i.canonical_symbol AS ticker
-      FROM instrument i WHERE i.canonical_symbol = ANY(%s)
+      FROM visible_instrument i WHERE i.canonical_symbol = ANY(%s)
       ORDER BY i.canonical_symbol,i.instrument_id
     )
     SELECT w.ticker,s.bars,s.event_timestamp,s.ingested_at,s.invalid_bars,s.warehouse_run_id
@@ -85,7 +87,7 @@ def coverage_frame(tier: CoverageTier, as_of: datetime, pg_snapshot: str | None 
         ORDER BY o.event_timestamp,o.ingested_at DESC,o.observation_id DESC
       ) v
     ) s WHERE s.bars>0 ORDER BY w.ticker"""
-    params = (list(tier.symbols),tier.timeframe,event_cutoff(tier.timeframe,as_of),as_of)
+    params = catalogue_params + (list(tier.symbols),tier.timeframe,event_cutoff(tier.timeframe,as_of),as_of)
     if visibility:
         params += (visibility,)
     with _connect() as conn:
@@ -168,8 +170,9 @@ def validate_publication_freshness(run_id: str, *, now_utc=None) -> None:
         raise RuntimeError("PUBLICATION_FRESHNESS_BLOCKED: invalid snapshot timestamp")
     from .consumer_snapshot import validate_pg_snapshot
     visibility = validate_pg_snapshot(record.get("pg_snapshot"))
-    master = _symbols(read_dataset("master_universe", run_id=run_id), "master_universe")
-    live = _symbols(read_dataset("live_universe", run_id=run_id), "live_universe")
+    from .catalogue_snapshot import read_frozen_catalogue
+    master = _symbols(read_frozen_catalogue("master_universe", run_id, as_of, visibility), "master_universe")
+    live = _symbols(read_frozen_catalogue("live_universe", run_id, as_of, visibility), "live_universe")
     for tier in build_tiers(master, live):
         result = evaluate_tier(tier, coverage_frame(tier, as_of, visibility), now_utc=now)
         if result["status"] != "PASS":
@@ -185,7 +188,10 @@ def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | 
     if as_of is None:
         if pg_snapshot is not None:
             raise RuntimeError("WAREHOUSE_REPLAY_ANCHOR_REQUIRED")
-        as_of, pg_snapshot = capture_boundary()
+        as_of, pg_snapshot = capture_boundary(run_id=current_run_id())
+        from .catalogue_snapshot import read_frozen_catalogue
+        master = _symbols(read_frozen_catalogue("master_universe", current_run_id(), as_of, pg_snapshot), "master_universe")
+        live = _symbols(read_frozen_catalogue("live_universe", current_run_id(), as_of, pg_snapshot, required=False), "live_universe", required="LIVE_INTRADAY" in selected or not selected)
     else:
         # Never manufacture today's visibility for an old timestamp.
         pg_snapshot = validate_pg_snapshot(pg_snapshot)

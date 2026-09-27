@@ -56,6 +56,7 @@ def test_publication_uses_original_asof_and_current_freshness(monkeypatch):
         control_plane.write_dataset(name, pd.DataFrame([{"ticker": "SPY"}]))
     tier = warehouse_gate.CoverageTier("CRITICAL_INTRADAY", ("SPY",), "5m", 1.0, 1, 10)
     monkeypatch.setattr(warehouse_gate, "build_tiers", lambda *_: [tier])
+    monkeypatch.setattr("scanner.catalogue_snapshot.read_frozen_catalogue", lambda *a, **k: pd.DataFrame({"ticker": ["SPY"]}))
     captured = []
     def coverage(tier, at, pg_snapshot):
         assert pg_snapshot == "10:10:"

@@ -94,14 +94,16 @@ def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
     lower = period_start(req.period, as_of) if req.period is not None else None
     lower_clause = "AND o.event_timestamp >= %s" if lower is not None else ""
     visibility_clause = "AND pg_visible_in_snapshot(o.writer_xid, %s::pg_snapshot)" if visibility else ""
-    sql = f"""WITH ranked AS (
+    from .catalogue_snapshot import instrument_cte
+    catalogue, catalogue_params = instrument_cte(as_of, visibility)
+    sql = f"""WITH {catalogue}, ranked AS (
       SELECT i.canonical_symbol AS ticker, o.*,
              row_number() OVER (
                PARTITION BY o.instrument_id,o.data_type,o.timeframe,o.event_timestamp
                ORDER BY o.ingested_at DESC,o.observation_id DESC
              ) AS version_rank
       FROM market_observation o
-      JOIN instrument i ON i.instrument_id=o.instrument_id
+      JOIN visible_instrument i ON i.instrument_id=o.instrument_id
       WHERE i.canonical_symbol = ANY(%s)
         AND o.data_type=%s AND o.timeframe=%s
         AND o.event_timestamp <= %s
@@ -110,7 +112,7 @@ def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
         {visibility_clause}
     )
     SELECT * FROM ranked WHERE version_rank=1 ORDER BY ticker,event_timestamp"""
-    params = (tickers, req.data_type, req.timeframe, event_cutoff(req.timeframe, as_of), as_of)
+    params = catalogue_params + (tickers, req.data_type, req.timeframe, event_cutoff(req.timeframe, as_of), as_of)
     if lower is not None:
         params += (lower,)
     if visibility:

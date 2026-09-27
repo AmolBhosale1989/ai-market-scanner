@@ -60,10 +60,14 @@ def resolve_pg_snapshot(explicit=None):
     return current if explicit is None else explicit
 
 
-def capture_boundary():
+def capture_boundary(*, run_id=None):
     """Capture the server clock and transaction visibility in one SQL statement."""
     from .database import connection
     with connection() as conn, conn.cursor() as cur:
+        cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
         cur.execute("SELECT statement_timestamp(), pg_current_snapshot()::text")
         at, visibility = cur.fetchone()
+        if run_id is not None:
+            from .catalogue_snapshot import freeze_catalogues
+            freeze_catalogues(cur, run_id, at, visibility)
     return pd.Timestamp(at), validate_pg_snapshot(visibility)
