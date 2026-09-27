@@ -101,6 +101,6 @@ def test_catalyst_workflow_isolates_provider_jobs():
     assert "fail-fast: false" in text
     assert "provider: [alpha_vantage, yahoo, sec]" in text
     assert "python -m scanner.catalyst_data_plane --provider ${{ matrix.provider }}" in text
-    assert "timeout: 5" in text
-    assert "timeout: 10" in text
-    assert "timeout: 30" in text
+    assert "timeout-minutes: 30" in text
+    assert "timeout: 5" not in text
+    assert "timeout: 10" not in text
