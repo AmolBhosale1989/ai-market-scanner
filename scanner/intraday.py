@@ -15,6 +15,7 @@ from .live import enrich_live_candidates
 from .performance import build_performance_reports, build_empirical_calibration
 from .product_feed import build_product_feed
 from .control_plane import append_state, read_state, write_dataset
+from .consumer_snapshot import consumer_anchor
 
 NY = ZoneInfo("America/New_York")
 ALERT_STATES = {"TRIGGERED", "LIVE_CONFIRMED", "FAILED_BREAKOUT", "INVALIDATED", "TARGET_HIT"}
@@ -47,7 +48,7 @@ def _write_recommendations(live: pd.DataFrame):
 
 
 def _load_state():
-    return read_state("v3","market_hunt_state",default={}) or {}
+    return read_state("v3","market_hunt_state",default={},as_of=consumer_anchor()) or {}
 
 def _derive_state(row, previous):
     if str(row.get("live_status",""))!="LIVE":
@@ -90,7 +91,7 @@ def _update_paper_journal(live: pd.DataFrame, now: str):
         "triggered_at_et","live_confirmed_at_et","closed_at_et","outcome","return_pct","r_multiple",
         "max_price_seen","min_price_seen","mfe_pct","mae_pct","hit_5pct","hit_8pct","hit_10pct"
     ]
-    payload=read_state("v3","paper_journal",default=[])
+    payload=read_state("v3","paper_journal",default=[],as_of=consumer_anchor())
     journal=pd.DataFrame(payload) if payload else pd.DataFrame(columns=cols)
 
     for _,row in live.iterrows():
@@ -231,7 +232,7 @@ def _send_telegram(messages):
         return False
 
 def _write_state_transitions(transitions):
-    prior = read_state("v3", "state_transitions", default=[])
+    prior = read_state("v3", "state_transitions", default=[], as_of=consumer_anchor())
     frame = pd.DataFrame([*prior, *transitions])
     if transitions:
         append_state("v3", "state_transitions", frame.to_dict("records"))

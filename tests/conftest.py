@@ -42,7 +42,7 @@ def memory_control_plane(monkeypatch, request):
         states[(str(namespace), str(key))] = copy.deepcopy(payload)
         return 1
 
-    def read_state(namespace, key, default=None):
+    def read_state(namespace, key, default=None, *, as_of=None):
         return copy.deepcopy(states.get((str(namespace), str(key)), default))
 
     def append_events(namespace, rows, *, key_field="event_id", **kwargs):
