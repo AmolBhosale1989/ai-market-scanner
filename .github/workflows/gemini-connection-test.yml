@@ -1,0 +1,58 @@
+name: Gemini connection test
+on:
+  push:
+    branches: [diagnostic/gemini-connection-20260928]
+    paths: [.github/workflows/gemini-connection-test.yml]
+permissions: {}
+jobs:
+  connection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify Gemini authentication and minimal generation
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, urllib.request, urllib.error
+          key = os.environ.get("GEMINI_API_KEY", "").strip()
+          if not key:
+              sys.exit("GEMINI_SECRET_MISSING")
+          def call(path, payload=None):
+              req = urllib.request.Request(
+                  "https://generativelanguage.googleapis.com/v1beta/" + path,
+                  data=None if payload is None else json.dumps(payload).encode(),
+                  headers={"x-goog-api-key": key, "Content-Type": "application/json"})
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as exc:
+                  try:
+                      error = json.load(exc).get("error", {})
+                      reasons = [x.get("reason") for x in error.get("details", []) if x.get("reason")]
+                      print(json.dumps({"http_status": exc.code, "status": error.get("status"), "reasons": reasons,
+                                        "message": str(error.get("message", "")).replace(key, "[REDACTED]")[:1200]}))
+                  except Exception:
+                      print("GEMINI_HTTP_ERROR", exc.code)
+                  sys.exit(1)
+              except Exception as exc:
+                  sys.exit("GEMINI_TRANSPORT_ERROR " + type(exc).__name__)
+          models = call("models?pageSize=1000")
+          available = {m["name"] for m in models.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])}
+          print("GEMINI_AUTH_PASS")
+          preferred = ["models/gemini-2.5-flash-lite", "models/gemini-2.5-flash", "models/gemini-3.8-flash"]
+          model = next((m for m in preferred if m in available), None)
+          if not model:
+              sys.exit("GEMINI_NO_TEST_MODEL_AVAILABLE")
+          print("GEMINI_TEST_MODEL", model)
+          result = call(model + ":generateContent", {
+              "contents": [{"parts": [{"text": "Reply with exactly: GEMINI_CONNECTION_OK"}]}],
+              "generationConfig": {"maxOutputTokens": 128, "temperature": 0}})
+          output = "".join(p.get("text", "") for c in result.get("candidates", []) for p in c.get("content", {}).get("parts", []) if not p.get("thought"))
+          if output.strip() != "GEMINI_CONNECTION_OK":
+              sys.exit("GEMINI_UNEXPECTED_RESPONSE")
+          print("GEMINI_CONNECTION_OK")
+          print("USAGE", json.dumps(result.get("usageMetadata", {})))
+          
+          PY
