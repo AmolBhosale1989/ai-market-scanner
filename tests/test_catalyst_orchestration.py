@@ -30,3 +30,22 @@ def test_production_workflow_exposes_alpha_vantage_secret():
     from pathlib import Path
     text=Path(".github/workflows/production.yml").read_text()
     assert 'ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}' in text
+
+
+def test_stage72_is_database_only():
+    from pathlib import Path
+    text=Path("scanner/catalyst_pipeline.py").read_text()
+    assert "verify_coverage(tickers,anchor=anchor)" in text
+    assert "ExistingYahooNewsAdapter" not in text
+    assert "ExistingSecEdgarAdapter" not in text
+    assert "AlphaVantageCalendarBatch" not in text
+    assert "requests" not in text
+
+
+def test_catalyst_data_plane_is_independently_scheduled():
+    from pathlib import Path
+    text=Path(".github/workflows/catalyst_ingestion.yml").read_text()
+    assert "schedule:" in text
+    assert "workflow_dispatch:" in text
+    assert "python -m scanner.catalyst_data_plane" in text
+    assert "ALPHA_VANTAGE_API_KEY:" in text
