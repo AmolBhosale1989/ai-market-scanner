@@ -69,7 +69,7 @@ def test_only_running_acceptance_can_check_itself_and_not_publish_yet():
 
 
 @pytest.fixture
-def real_run():
+def real_run(monkeypatch):
     if not os.getenv("DATABASE_URL"):
         pytest.skip("requires isolated PostgreSQL")
     cp.migrate()
@@ -84,10 +84,16 @@ def real_run():
                         [(rid, r["stage_name"], i, r["status"], r["started_at"], r["completed_at"])
                          for i, r in enumerate(rows)])
     anchor = next(r["started_at"] for r in rows if r["stage_name"] == "warehouse_gate") + timedelta(seconds=1)
+    # Production establishes the validated snapshot before any V3 output write.
+    cp.write_dataset("warehouse_snapshot", pd.DataFrame([{
+        "status": "PASS", "production_run_id": rid, "as_of_utc": anchor.isoformat(),
+    }]), entity_key=None, run_id=rid)
+    monkeypatch.setenv("PRODUCTION_RUN_ID", rid)
+    monkeypatch.setenv("WAREHOUSE_CONSUMER_SNAPSHOT", "1")
     live_tickers=["AAPL","MSFT"]
     for name in REQUIRED_DATASETS:
         if name == "warehouse_snapshot":
-            records=[{"status":"PASS","production_run_id":rid,"as_of_utc":anchor.isoformat()}]
+            continue
         elif name == "live_universe":
             records=[{"ticker":ticker} for ticker in live_tickers]
         else:
