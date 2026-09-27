@@ -14,8 +14,19 @@ permissions:
 
 jobs:
   ingest:
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [alpha_vantage, yahoo, sec]
+        include:
+          - provider: alpha_vantage
+            timeout: 5
+          - provider: yahoo
+            timeout: 10
+          - provider: sec
+            timeout: 30
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.timeout }}
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
@@ -30,5 +41,5 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Migrate warehouse schema
         run: python -m scanner.control_plane migrate
-      - name: Refresh catalyst evidence
-        run: python -m scanner.catalyst_data_plane
+      - name: Refresh ${{ matrix.provider }} catalyst evidence
+        run: python -m scanner.catalyst_data_plane --provider ${{ matrix.provider }}
