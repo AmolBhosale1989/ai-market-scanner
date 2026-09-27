@@ -93,3 +93,14 @@ def test_data_plane_reads_last_published_production_universe(monkeypatch):
     monkeypatch.setattr(data_plane,"read_dataset",fake_read)
     assert data_plane._universe()==["AAA","BBB"]
     assert calls==[("live_universe",{"published_mode":"production","required":False})]
+
+
+def test_catalyst_workflow_isolates_provider_jobs():
+    from pathlib import Path
+    text=Path(".github/workflows/catalyst_ingestion.yml").read_text()
+    assert "fail-fast: false" in text
+    assert "provider: [alpha_vantage, yahoo, sec]" in text
+    assert "python -m scanner.catalyst_data_plane --provider ${{ matrix.provider }}" in text
+    assert "timeout: 5" in text
+    assert "timeout: 10" in text
+    assert "timeout: 30" in text
