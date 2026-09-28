@@ -16,7 +16,7 @@ def test_production_workflow_orders_catalysts_before_consumers():
     text=Path(".github/workflows/production.yml").read_text()
     assert text.index("stage intraday_warehouse 60") < text.index("stage catalyst_ingest 65")
     assert text.index("stage catalyst_ingest 65") < text.index("stage warehouse_gate 70")
-    assert "--ingest-only" in text
+    assert "stage catalyst_ingest 65 timeout 1800s python -m scanner.catalyst_pipeline --ingest-only --mandatory-only" in text
     assert "stage catalyst_gate 72 python -m scanner.catalyst_pipeline --verify-only" in text
     assert text.index("stage warehouse_gate 70") < text.index("stage catalyst_gate 72")
     assert text.index("stage catalyst_gate 72") < text.index("stage v3_live 80")
