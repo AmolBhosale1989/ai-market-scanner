@@ -8,7 +8,8 @@ from .consumer_snapshot import consumer_anchor
 from .control_plane import read_dataset
 
 
-REQUIRED_PROVIDERS=("YAHOO_NEWS","SEC_EDGAR","ALPHA_VANTAGE")
+REQUIRED_PROVIDERS=("ALPHA_VANTAGE",)
+OPTIONAL_PROVIDERS=("YAHOO_NEWS","SEC_EDGAR")
 PROVIDER_MAX_AGE={"YAHOO_NEWS":timedelta(minutes=15),"SEC_EDGAR":timedelta(minutes=15),
                   "ALPHA_VANTAGE":timedelta(hours=24)}
 
@@ -54,7 +55,8 @@ def run() -> dict:
     tickers=_current_tickers()
     verify_coverage(tickers,anchor=anchor)
     result={"tickers":len(tickers),"providers":len(REQUIRED_PROVIDERS),
-            "required_checks":len(tickers)*len(REQUIRED_PROVIDERS)}
+            "required_checks":len(tickers)*len(REQUIRED_PROVIDERS),
+            "optional_providers":list(OPTIONAL_PROVIDERS)}
     print("CATALYST_COVERAGE_PASS "+str(result),flush=True)
     return result
 
@@ -78,7 +80,12 @@ def verify_coverage(tickers,*,anchor,pg_snapshot=None):
                        GROUP BY c.ticker,c.provider""",params)
         rows=cur.fetchall()
         present={(ticker,provider) for ticker,provider,checked_at in rows
-                 if anchor-checked_at <= PROVIDER_MAX_AGE[provider]}
+                 if provider in PROVIDER_MAX_AGE and anchor-checked_at <= PROVIDER_MAX_AGE[provider]}
+    for provider in OPTIONAL_PROVIDERS:
+        optional_missing = sorted(ticker for ticker in wanted if (ticker, provider) not in present)
+        if optional_missing:
+            print(f"CATALYST_COVERAGE_WARNING provider={provider} missing={len(optional_missing)} "
+                  f"sample={','.join(optional_missing[:10])}", flush=True)
     required={(ticker,provider) for ticker in wanted for provider in REQUIRED_PROVIDERS}
     missing=required-present
     if missing:

@@ -14,7 +14,6 @@ from urllib.parse import urlencode
 
 import pandas as pd
 import requests
-import yfinance as yf
 
 from ..catalysts import NEGATIVE_TERMS, POSITIVE_TERMS, _extract_news_item, _news_relevance
 from ..control_plane import append_state, read_dataset, read_state
@@ -364,12 +363,12 @@ class SecFilingAdapter:
         cache_key: str = "sec_ticker_map",
         session: requests.Session | None = None,
         user_agent: str | None = None,
-        timeout_seconds: float = 12.0,
+        timeout_seconds: float | tuple[float, float] = (3.0, 5.0),
         max_workers: int = 4,
         lookback_hours: float = 72.0,
         cache_hours: float = 24.0,
         requests_per_second: float = 8.0,
-        max_retries: int = 2,
+        max_retries: int = 1,
     ):
         self.cache_key = cache_key
         self.session = session or requests.Session()
@@ -379,7 +378,7 @@ class SecFilingAdapter:
         self.lookback_hours = lookback_hours
         self.cache_hours = cache_hours
         self.request_interval = 1 / max(0.1, min(float(requests_per_second), 8.0))
-        self.max_retries = max(0, min(int(max_retries), 3))
+        self.max_retries = max(0, min(int(max_retries), 1))
         self._request_lock = threading.Lock()
         self._last_request_at = 0.0
         self.ticker_map_source = ""
@@ -397,13 +396,15 @@ class SecFilingAdapter:
                     url,
                     headers={"User-Agent": self.user_agent, "Accept-Encoding": "gzip, deflate"},
                     timeout=self.timeout_seconds,
+                    allow_redirects=False,
                 )
                 response.raise_for_status()
                 return response.json()
             except requests.RequestException as exc:
                 last_error = exc
                 status = getattr(getattr(exc, "response", None), "status_code", None)
-                if attempt >= self.max_retries or status not in {429, 500, 502, 503, 504}:
+                if attempt >= self.max_retries or (status not in {429, 500, 502, 503, 504}
+                        and not isinstance(exc, (requests.Timeout, requests.ConnectionError))):
                     raise
                 time.sleep(min(2 ** attempt, 2))
         raise last_error or RuntimeError("SEC request failed")
@@ -412,7 +413,8 @@ class SecFilingAdapter:
         response = self.session.get(
             JINA_READER_URL.format(url=url),
             headers={"User-Agent": self.user_agent},
-            timeout=max(self.timeout_seconds, 30.0),
+            timeout=self.timeout_seconds,
+            allow_redirects=False,
         )
         response.raise_for_status()
         marker = "Markdown Content:"
@@ -580,11 +582,27 @@ class YahooNewsCatalystAdapter:
 
     @staticmethod
     def _fetch_news(ticker: str) -> Iterable[Mapping[str, Any]]:
-        obj = yf.Ticker(ticker)
-        try:
-            return obj.get_news(count=12)
-        except TypeError:
-            return obj.news
+        # Use the same tickerStream endpoint as yfinance.get_news, but own the
+        # transport: no hidden cookie/crumb retries, explicit socket limits.
+        for attempt in range(2):
+            try:
+                response = requests.post(
+                    "https://finance.yahoo.com/xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin",
+                    json={"serviceConfig": {"snippetCount": 12, "s": [ticker]}},
+                    timeout=(3.0, 5.0), allow_redirects=False,
+                )
+                response.raise_for_status()
+                data = response.json()
+                news = data.get("data", {}).get("tickerStream", {}).get("stream")
+                if not isinstance(news, list) or any(not isinstance(item, dict) for item in news):
+                    raise ValueError("Yahoo response was missing a valid tickerStream.stream")
+                return [item for item in news if not item.get("ad")]
+            except requests.RequestException as exc:
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if attempt == 1 or (status not in {429, 500, 502, 503, 504}
+                        and not isinstance(exc, (requests.Timeout, requests.ConnectionError))):
+                    raise
+                time.sleep(1.0)
 
     def _ticker_events(self, ticker: str, company_name: str, now: datetime) -> list[MarketEvent]:
         output = []

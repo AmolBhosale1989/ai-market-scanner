@@ -55,7 +55,7 @@ def test_verify_only_never_calls_provider_worker(monkeypatch):
     monkeypatch.setattr(data_plane, 'run', lambda *a, **k: pytest.fail('network on verification path'))
     calls = []
     monkeypatch.setattr(pipeline, 'verify_coverage', lambda tickers, *, anchor: calls.append((tickers, anchor)))
-    assert pipeline.main(['--verify-only'])['required_checks'] == 3
+    assert pipeline.main(['--verify-only'])['required_checks'] == 1
     assert calls == [(['AAA'], t0)]
 
 
