@@ -58,7 +58,8 @@ def _text(df: pd.DataFrame, name: str, default="") -> pd.Series:
 
 
 def _base(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
+    from .catalyst_policy import normalize
+    out = normalize(df)
     out["_price"] = _num(out, "price")
     out["_atr"] = _num(out, "atr_pct")
     out["_adr"] = _num(out, "adr20_pct")
@@ -438,7 +439,7 @@ def _superstock(d: pd.DataFrame, a: TraderAgent) -> pd.DataFrame:
     runway = pd.to_numeric(out.get("runway_to_next_resistance_pct"), errors="coerce").fillna(0)
     rs = pd.to_numeric(out.get("rs20_vs_spy"), errors="coerce").fillna(0)
     tech = pd.to_numeric(out.get("technical_score"), errors="coerce").fillna(0)
-    cat = pd.to_numeric(out.get("catalyst_score"), errors="coerce").fillna(0)
+    cat = _num(out, "catalyst_score")
     maxup = pd.to_numeric(out.get("max_up_day_30d_pct"), errors="coerce").fillna(0)
 
     aplus = sc.ge(85) & rr.ge(2.5) & runway.ge(6) & rs.ge(10) & tech.ge(60) & maxup.ge(10)

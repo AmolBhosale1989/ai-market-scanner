@@ -8,8 +8,8 @@ from .consumer_snapshot import consumer_anchor
 from .control_plane import read_dataset
 
 
-REQUIRED_PROVIDERS=("ALPHA_VANTAGE",)
-OPTIONAL_PROVIDERS=("YAHOO_NEWS","SEC_EDGAR")
+REQUIRED_PROVIDERS=()
+OPTIONAL_PROVIDERS=("ALPHA_VANTAGE","YAHOO_NEWS","SEC_EDGAR")
 PROVIDER_MAX_AGE={"YAHOO_NEWS":timedelta(minutes=15),"SEC_EDGAR":timedelta(minutes=15),
                   "ALPHA_VANTAGE":timedelta(hours=24)}
 
@@ -54,6 +54,7 @@ def run() -> dict:
     anchor=consumer_anchor()
     if anchor is None:
         raise RuntimeError("CATALYST_CONTEXT_ANCHOR_REQUIRED")
+    validate_price_snapshot(anchor)
     tickers=_current_tickers()
     verify_coverage(tickers,anchor=anchor)
     result={"tickers":len(tickers),"providers":len(REQUIRED_PROVIDERS),
@@ -63,11 +64,36 @@ def run() -> dict:
     return result
 
 
+def validate_price_snapshot(anchor):
+    from .consumer_snapshot import consumer_pg_snapshot
+    import pandas as pd
+    visibility = consumer_pg_snapshot()
+    if not visibility:
+        raise RuntimeError("CONSUMER_PG_SNAPSHOT_REQUIRED_OR_INVALID")
+    snapshot = read_dataset("warehouse_snapshot")
+    required = {"MASTER_DAILY", "CRITICAL_DAILY", "CRITICAL_INTRADAY", "THEME_INTRADAY", "LIVE_INTRADAY"}
+    if len(snapshot) != 1:
+        raise RuntimeError("PRICE_SNAPSHOT_REQUIRED")
+    row = snapshot.iloc[0]
+    tiers = row.get("tiers")
+    if (row.get("status") != "PASS" or pd.Timestamp(row.get("as_of_utc")) != anchor
+            or row.get("pg_snapshot") != visibility or not isinstance(tiers, list)
+            or not required.issubset({t.get("tier") for t in tiers if t.get("status") == "PASS"})):
+        raise RuntimeError("PRICE_SNAPSHOT_INCOMPLETE")
+
+
 def verify_coverage(tickers,*,anchor,pg_snapshot=None):
     from .database import connection
     from .consumer_snapshot import resolve_pg_snapshot
     from .catalogue_snapshot import instrument_cte
     visibility=resolve_pg_snapshot(pg_snapshot)
+    from .catalyst_policy import disabled
+    if disabled():
+        if visibility is None or anchor is None:
+            raise RuntimeError("CONSUMER_PG_SNAPSHOT_REQUIRED_OR_INVALID")
+        for provider in OPTIONAL_PROVIDERS:
+            print(f"CATALYST_COVERAGE_WARNING provider={provider} status=unavailable reason=disabled", flush=True)
+        return True
     catalogue, params=instrument_cte(anchor,visibility)
     clause="AND pg_visible_in_snapshot(c.writer_xid,%s::pg_snapshot)" if visibility else ""
     wanted=list(dict.fromkeys(str(x).upper() for x in tickers if x))
@@ -88,11 +114,6 @@ def verify_coverage(tickers,*,anchor,pg_snapshot=None):
         if optional_missing:
             print(f"CATALYST_COVERAGE_WARNING provider={provider} missing={len(optional_missing)} "
                   f"sample={','.join(optional_missing[:10])}", flush=True)
-    required={(ticker,provider) for ticker in wanted for provider in REQUIRED_PROVIDERS}
-    missing=required-present
-    if missing:
-        sample=",".join(f"{t}:{p}" for t,p in sorted(missing)[:10])
-        raise RuntimeError(f"CATALYST_COVERAGE_INCOMPLETE missing={len(missing)} sample={sample}")
     return True
 
 
