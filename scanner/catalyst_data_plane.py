@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import time
 from datetime import datetime,timedelta,timezone
 
 import requests
@@ -16,10 +17,29 @@ def _alpha_calendar_fetch():
     key=os.getenv("ALPHA_VANTAGE_API_KEY","").strip()
     if not key:
         raise RuntimeError("ALPHA_VANTAGE_API_KEY_MISSING")
-    response=requests.get("https://www.alphavantage.co/query",params={
-        "function":"EARNINGS_CALENDAR","horizon":"3month","apikey":key},timeout=20)
-    response.raise_for_status()
-    return response.text
+    # Two total attempts, matching the Yahoo/SEC cap. Never log an exception
+    # URL: requests embeds the API key in that URL on HTTP failures.
+    for attempt in range(2):
+        try:
+            response=requests.get("https://www.alphavantage.co/query",params={
+                "function":"EARNINGS_CALENDAR","horizon":"3month","apikey":key},
+                timeout=(3.0,5.0),allow_redirects=False)
+            try:
+                response.raise_for_status()
+                if 300 <= response.status_code < 400:
+                    raise RuntimeError("ALPHA_VANTAGE_REDIRECT_REJECTED")
+                return response.text
+            finally:
+                response.close()
+        except requests.RequestException as exc:
+            status=getattr(getattr(exc,"response",None),"status_code",None)
+            print(f"CATALYST_HTTP_FAILURE provider=ALPHA_VANTAGE attempt={attempt+1} "
+                  f"status={status} error={type(exc).__name__}",flush=True)
+            # Rate limits fail immediately. No Retry-After or quota sleep loop.
+            transient=isinstance(exc,(requests.Timeout,requests.ConnectionError)) or status in {500,502,503,504}
+            if attempt == 1 or not transient:
+                raise RuntimeError(f"ALPHA_VANTAGE_HTTP_FAILED status={status} error={type(exc).__name__}") from None
+            time.sleep(1.0)
 
 
 def _universe():
@@ -39,6 +59,9 @@ def run(provider: str = "all", *, tickers=None) -> dict:
     if not tickers:
         raise RuntimeError("CATALYST_INGEST_UNIVERSE_EMPTY")
     checked_at = datetime.now(timezone.utc)
+    started = time.monotonic()
+    print(f"CATALYST_DATA_PLANE_START provider={provider} tickers={len(tickers)} "
+          f"checked_at={checked_at.isoformat()}",flush=True)
     failures = []
 
     if provider in {"all", "yahoo"}:
@@ -69,7 +92,9 @@ def run(provider: str = "all", *, tickers=None) -> dict:
     if provider in {"all", "sec"}:
         sec = ExistingSecEdgarAdapter(max_workers=5)
         try:
+            print("CATALYST_FETCH_START provider=SEC_EDGAR",flush=True)
             result, health = sec.fetch_batch(tickers, anchor=checked_at)
+            print("CATALYST_FETCH_COMPLETE provider=SEC_EDGAR",flush=True)
             unresolved = set(health.get("unresolved_tickers") or [])
             successful = list(dict.fromkeys(
                 str(x).upper() for x in health.get("successful_tickers", [])
@@ -106,7 +131,7 @@ def run(provider: str = "all", *, tickers=None) -> dict:
                 lookforward=timedelta(days=14),
             )
         except Exception as exc:
-            failures.append(f"ALPHA_VANTAGE:{type(exc).__name__}:{exc}")
+            failures.append(f"ALPHA_VANTAGE:{type(exc).__name__}")
 
     for detail in failures:
         print("CATALYST_DATA_PLANE_FAILURE " + detail, flush=True)
@@ -116,6 +141,7 @@ def run(provider: str = "all", *, tickers=None) -> dict:
         "tickers": len(tickers),
         "checked_at": checked_at.isoformat(),
         "failures": len(failures),
+        "duration_seconds": round(time.monotonic()-started,3),
     }
     print("CATALYST_DATA_PLANE_COMPLETE " + str(result), flush=True)
     return result

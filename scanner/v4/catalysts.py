@@ -403,7 +403,9 @@ class SecFilingAdapter:
             except requests.RequestException as exc:
                 last_error = exc
                 status = getattr(getattr(exc, "response", None), "status_code", None)
-                if attempt >= self.max_retries or (status not in {429, 500, 502, 503, 504}
+                # Quota responses fail this fetch immediately; never wait for
+                # Retry-After. Other transient errors retain the two-attempt cap.
+                if status == 429 or attempt >= self.max_retries or (status not in {500, 502, 503, 504}
                         and not isinstance(exc, (requests.Timeout, requests.ConnectionError))):
                     raise
                 time.sleep(min(2 ** attempt, 2))
