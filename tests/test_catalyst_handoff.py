@@ -40,12 +40,48 @@ def test_ingest_uses_current_plan_and_joins_all_provider_commits(monkeypatch):
     assert result == {'tickers': 2, 'providers': 3, 'failures': 1}
 
 
-def test_ingest_refuses_consumer_mode_before_reads_or_network(monkeypatch):
+@pytest.mark.parametrize('flags', [[], ['--mandatory-only']])
+def test_ingest_refuses_consumer_mode_before_reads_or_network(monkeypatch, flags):
     monkeypatch.setenv('WAREHOUSE_CONSUMER_SNAPSHOT', '1')
     monkeypatch.setattr(pipeline, 'read_dataset', lambda *a: pytest.fail('must reject before reads'))
     monkeypatch.setattr(data_plane, 'run', lambda *a, **k: pytest.fail('must reject before network'))
     with pytest.raises(RuntimeError, match='INGEST_AFTER_SNAPSHOT_FORBIDDEN'):
-        pipeline.main(['--ingest-only'])
+        pipeline.main(['--ingest-only'] + flags)
+
+
+def test_mandatory_only_never_fetches_optional_providers_and_waits_for_alpha(monkeypatch, capsys):
+    monkeypatch.delenv('WAREHOUSE_CONSUMER_SNAPSHOT', raising=False)
+    monkeypatch.setenv('PRODUCTION_RUN_ID', 'test-run')
+    monkeypatch.setattr(pipeline, 'read_dataset', lambda name: pd.DataFrame({'ticker': ['AAA','AAA','BBB']}))
+    started, release = Event(), Event()
+    calls = []
+    def collect(provider, *, tickers):
+        assert provider == 'alpha_vantage', 'optional provider must never be submitted'
+        calls.append((provider, tickers))
+        started.set()
+        assert release.wait(5)
+        return {'failures': 1}  # still returned explicitly; Gate 72 checks evidence
+    monkeypatch.setattr(data_plane, 'run', collect)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(pipeline.main, ['--ingest-only','--mandatory-only'])
+        try:
+            assert started.wait(5)
+            assert not future.done()
+        finally:
+            release.set()
+        result = future.result(timeout=5)
+    assert calls == [('alpha_vantage', ['AAA','BBB'])]
+    assert result == {'tickers': 2, 'providers': 1, 'failures': 1}
+    assert 'CATALYST_INGEST_OPTIONAL_SKIPPED' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('flags', [['--mandatory-only'], ['--verify-only','--mandatory-only']])
+def test_mandatory_flag_requires_ingestion_before_any_work(monkeypatch, flags):
+    monkeypatch.setattr(pipeline, 'run', lambda: pytest.fail('verification must not start'))
+    monkeypatch.setattr(data_plane, 'run', lambda *a, **k: pytest.fail('network must not start'))
+    with pytest.raises(SystemExit) as exc:
+        pipeline.main(flags)
+    assert exc.value.code == 2
 
 
 def test_verify_only_never_calls_provider_worker(monkeypatch):
