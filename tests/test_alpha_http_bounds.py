@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
+from contextlib import nullcontext
 
 import pytest
 import requests
@@ -82,7 +83,7 @@ def test_sec_rate_limit_does_not_sleep_or_retry():
 def test_persistence_progress_only_follows_completed_writes(monkeypatch, capsys):
     adapter = Mock(provider_name='ALPHA_VANTAGE')
     adapter.fetch_and_index.return_value = {}
-    monkeypatch.setattr(ingestion, 'start_run', lambda *a, **k: 'run')
+    monkeypatch.setattr(ingestion, 'bounded_persistence', lambda: nullcontext(Mock()))
     monkeypatch.setattr(ingestion, 'finish_run', lambda *a, **k: None)
     write = Mock(side_effect=[[], RuntimeError('DB stalled')])
     monkeypatch.setattr(ingestion, 'ingest_catalyst_batch', write)
@@ -91,6 +92,6 @@ def test_persistence_progress_only_follows_completed_writes(monkeypatch, capsys)
             anchor=datetime.now(timezone.utc),lookforward=timedelta(days=14))
     output = capsys.readouterr().out
     assert 'CATALYST_FETCH_COMPLETE provider=ALPHA_VANTAGE' in output
-    assert 'committed=1 total=2' in output
-    assert 'committed=2' not in output
+    assert 'staged=1 total=2' in output
+    assert 'committed=' not in output
     assert 'CATALYST_PERSIST_COMPLETE' not in output

@@ -33,8 +33,11 @@ def _alpha_calendar_fetch():
                 response.close()
         except requests.RequestException as exc:
             status=getattr(getattr(exc,"response",None),"status_code",None)
+            kind = ('HTTP_READ_TIMEOUT' if isinstance(exc, requests.ReadTimeout) else
+                    'HTTP_CONNECT_TIMEOUT' if isinstance(exc, requests.ConnectTimeout) else
+                    'HTTP_RATE_LIMIT' if status == 429 else 'HTTP_ERROR')
             print(f"CATALYST_HTTP_FAILURE provider=ALPHA_VANTAGE attempt={attempt+1} "
-                  f"status={status} error={type(exc).__name__}",flush=True)
+                  f"status={status} kind={kind} error={type(exc).__name__}",flush=True)
             # Rate limits fail immediately. No Retry-After or quota sleep loop.
             transient=isinstance(exc,(requests.Timeout,requests.ConnectionError)) or status in {500,502,503,504}
             if attempt == 1 or not transient:

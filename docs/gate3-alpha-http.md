@@ -22,7 +22,36 @@ counts advance only after the evidence write and warehouse-run completion return
 Run #51 does not establish an Alpha HTTP hang. Alpha downloads a global calendar
 once, then writes evidence for each ticker with start/write/finish database calls;
 SEC also persists successful results ticker by ticker. Both lacked phase progress
-logs. This patch does not batch those transactions or bound SQL execution time.
+logs. The persistence update below replaces those per-ticker commits with one bounded transaction.
 Socket inactivity limits are not total wall-clock limits (DNS, slow streams,
 separate fallback requests, and database work remain possible delays). The
 30-minute outer deadline remains. Production performance is still unproven.
+
+## Atomic bounded Alpha persistence (Run #52 follow-up)
+
+Alpha's entire calendar batch now shares one PostgreSQL transaction: warehouse
+run rows, event revisions, and successful checks all commit together. Each
+progress message counts staged tickers; only the final message means committed.
+No failed-run metadata is written on a separate unbounded cleanup connection.
+
+Pool acquisition is explicitly capped at 5 seconds (the shared pool already
+bounds physical connection attempts at 15 seconds). Once acquired, transaction-
+local lock_timeout=3s and statement_timeout=15s protect every SQL statement.
+A 120-second monotonic persistence budget includes acquisition and commit. A
+watchdog cancels active SQL with a bounded 2-second cancellation request and
+closes/discards the connection; sequential short queries cannot reset this
+budget. The watchdog is joined before the connection is returned to the pool.
+Cancellation/cleanup can add up to approximately 2 seconds and scheduling delay;
+this is not a real-time OS guarantee. Network fetching occurs before this budget.
+
+Closing an uncommitted session causes PostgreSQL to roll back the entire batch.
+A transport/deadline failure during COMMIT is explicitly COMMIT_UNCERTAIN: a
+client cannot prove rollback after losing a commit acknowledgment. No completion
+marker is emitted in that case; the atomic database transaction cannot expose a
+partially committed ticker batch. Gate 72's mandatory Alpha checks are unchanged.
+
+Failure logs classify pool/connection, lock, statement, overall deadline,
+deadlock, or other database errors without SQL parameters or credentials.
+Tests exercise real PostgreSQL lock contention, pg_sleep cancellation, cumulative
+short-query deadlines, complete rollback after a later ticker fails, and timeout
+settings not leaking into the next pooled transaction.
