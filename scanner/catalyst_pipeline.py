@@ -14,7 +14,7 @@ PROVIDER_MAX_AGE={"YAHOO_NEWS":timedelta(minutes=15),"SEC_EDGAR":timedelta(minut
                   "ALPHA_VANTAGE":timedelta(hours=24)}
 
 
-def ingest_only() -> dict:
+def ingest_only(*, mandatory_only: bool = False) -> dict:
     """Pre-snapshot handoff to isolated provider workers for this run's plan."""
     if os.getenv("WAREHOUSE_CONSUMER_SNAPSHOT") == "1":
         raise RuntimeError("CATALYST_INGEST_AFTER_SNAPSHOT_FORBIDDEN")
@@ -25,8 +25,10 @@ def ingest_only() -> dict:
     # Import provider code only in the explicitly selected ingestion mode.
     from concurrent.futures import ThreadPoolExecutor
     from .catalyst_data_plane import run as collect
-    providers = ("alpha_vantage", "yahoo", "sec")
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    providers = ("alpha_vantage",) if mandatory_only else ("alpha_vantage", "yahoo", "sec")
+    if mandatory_only:
+        print("CATALYST_INGEST_OPTIONAL_SKIPPED providers=YAHOO_NEWS,SEC_EDGAR", flush=True)
+    with ThreadPoolExecutor(max_workers=len(providers)) as pool:
         futures = [pool.submit(collect, provider, tickers=tickers) for provider in providers]
         results = [future.result() for future in futures]
     # Provider failures remain explicit. Stage 72 alone decides whether fresh,
@@ -99,8 +101,12 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--ingest-only", action="store_true")
     mode.add_argument("--verify-only", action="store_true")
+    parser.add_argument("--mandatory-only", action="store_true",
+                        help="In ingestion mode, collect only Alpha Vantage; skip Yahoo and SEC")
     args = parser.parse_args(argv)
-    return ingest_only() if args.ingest_only else run()
+    if args.mandatory_only and not args.ingest_only:
+        parser.error("--mandatory-only requires --ingest-only")
+    return ingest_only(mandatory_only=args.mandatory_only) if args.ingest_only else run()
 
 
 if __name__=="__main__":
