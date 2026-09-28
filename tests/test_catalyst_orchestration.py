@@ -1,11 +1,11 @@
 from datetime import datetime,timedelta,timezone
 import pytest
 
-from scanner.catalyst_pipeline import PROVIDER_MAX_AGE,REQUIRED_PROVIDERS
+from scanner.catalyst_pipeline import PROVIDER_MAX_AGE,REQUIRED_PROVIDERS,OPTIONAL_PROVIDERS
 
 
 def test_required_provider_policy_is_complete():
-    assert set(PROVIDER_MAX_AGE)==set(REQUIRED_PROVIDERS)
+    assert set(PROVIDER_MAX_AGE)==set(REQUIRED_PROVIDERS+OPTIONAL_PROVIDERS)
     assert PROVIDER_MAX_AGE["YAHOO_NEWS"]==timedelta(minutes=15)
     assert PROVIDER_MAX_AGE["SEC_EDGAR"]==timedelta(minutes=15)
     assert PROVIDER_MAX_AGE["ALPHA_VANTAGE"]==timedelta(hours=24)
@@ -57,7 +57,7 @@ def test_control_plane_accepts_fresh_prior_knowledge_and_rejects_stale_or_missin
     from scanner import catalyst_pipeline as gate
     t0=datetime(2026,9,26,16,0,tzinfo=timezone.utc)
     tminus1=t0-timedelta(minutes=1)
-    tminus20=t0-timedelta(minutes=20)
+    tminus25h=t0-timedelta(hours=25)
     class Cursor:
         def __init__(self,rows): self.rows=rows
         def execute(self,*args,**kwargs): pass
@@ -74,12 +74,12 @@ def test_control_plane_accepts_fresh_prior_knowledge_and_rejects_stale_or_missin
     monkeypatch.setattr("scanner.database.connection",lambda: Conn(fresh))
     assert gate.verify_coverage(["AAA"],anchor=t0) is True
 
-    stale=[("AAA",provider,tminus20) for provider in providers]
+    stale=[("AAA",provider,tminus25h) for provider in providers]
     monkeypatch.setattr("scanner.database.connection",lambda: Conn(stale))
     with pytest.raises(RuntimeError,match="CATALYST_COVERAGE_INCOMPLETE"):
         gate.verify_coverage(["AAA"],anchor=t0)
 
-    missing=[("AAA",provider,tminus1) for provider in providers if provider!="SEC_EDGAR"]
+    missing=[("AAA",provider,tminus1) for provider in providers if provider!="ALPHA_VANTAGE"]
     monkeypatch.setattr("scanner.database.connection",lambda: Conn(missing))
     with pytest.raises(RuntimeError,match="CATALYST_COVERAGE_INCOMPLETE"):
         gate.verify_coverage(["AAA"],anchor=t0)
