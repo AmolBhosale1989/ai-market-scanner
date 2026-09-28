@@ -150,3 +150,14 @@ def test_real_output_json_preserves_unavailable_types_and_hash(monkeypatch):
                 assert pd.Timestamp(row['as_of_utc']) == anchor
     finally:
         _validated_anchor.cache_clear()
+
+
+def test_daily_finalization_accepts_technical_buy_but_retains_other_gates():
+    from scanner.main import _recommendation_mask
+    frame = pd.DataFrame([
+        {'universal_10pct_gate': True, 'live_trade_action': 'BUY / LIVE CONFIRMED', 'final_decision': 'BUY / CONFIRMED'},
+        {'universal_10pct_gate': False, 'live_trade_action': 'BUY / LIVE CONFIRMED', 'final_decision': 'BUY / CONFIRMED'},
+        {'universal_10pct_gate': True, 'live_trade_action': 'WAIT', 'final_decision': 'BUY / CONFIRMED'},
+        {'universal_10pct_gate': True, 'live_trade_action': 'BUY / LIVE CONFIRMED', 'final_decision': 'NO TRADE / NEGATIVE CATALYST'},
+    ])
+    assert _recommendation_mask(frame).tolist() == [True, False, False, False]

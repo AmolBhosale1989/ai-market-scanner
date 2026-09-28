@@ -353,6 +353,14 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     write_dataset("daily_prepared_health",pd.DataFrame([health]),entity_key=None,metadata=metadata)
     return finalize_daily(df,pfdf,health,top_n,defer_publication=defer_publication)
 
+def _recommendation_mask(df):
+    return (
+        df["universal_10pct_gate"]
+        & df["live_trade_action"].astype(str).str.startswith("BUY / LIVE CONFIRMED")
+        & df["final_decision"].astype(str).str.startswith("BUY / CONFIRMED")
+    )
+
+
 def finalize_daily(df, pfdf, health, top_n=TOP_N, *, defer_publication=False):
     # Validate the exact consumers, even if an aggregate tier tolerates gaps.
     selected=select_live_candidates(df,LIVE_ENRICH_LIMIT)
@@ -385,11 +393,7 @@ def finalize_daily(df, pfdf, health, top_n=TOP_N, *, defer_publication=False):
     all_candidates=df.sort_values(["market_hunt_score","avg_dollar_volume"],ascending=[False,False])
     write_dataset("all_candidates",all_candidates)
 
-    recommended=df[
-        df["universal_10pct_gate"]
-        & df["live_trade_action"].astype(str).str.startswith("BUY / LIVE CONFIRMED")
-        & df["final_decision"].astype(str).str.startswith("BUY / CONFIRMED + CATALYST")
-    ].copy()
+    recommended=df[_recommendation_mask(df)].copy()
     recommended=recommended.sort_values(
         ["market_hunt_score","avg_dollar_volume"],ascending=[False,False]
     ).head(top_n)
