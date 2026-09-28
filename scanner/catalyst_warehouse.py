@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
+
 import hashlib
 import json
 from datetime import datetime
@@ -102,35 +104,36 @@ def catalyst_context(*, tickers, as_of: datetime, start_time: datetime, end_time
 
 
 
-def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, events, checked_at, rejected_count: int = 0) -> list[tuple[int,str]]:
+def ingest_catalyst_batch(*, provider: str, ticker: str, warehouse_run_id: str, events, checked_at, rejected_count: int = 0, cursor=None) -> list[tuple[int,str]]:
     """Atomically write all event revisions and the proof of a successful provider check."""
     symbol=str(ticker).strip().upper()
     provider=str(provider).strip()
     rows=list(events)
     if rejected_count < 0:
         raise ValueError("rejected_count must be nonnegative")
-    with connection() as conn,conn.cursor() as cur:
-        cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
-                    (f"catalyst-batch\\x1f{provider}\\x1f{symbol}",))
-        results=[]
-        for event in rows:
-            results.append(_ingest_revision_cursor(cur,provider=provider,
-                provider_event_id=event["provider_event_id"],ticker=symbol,
-                catalyst_type=event["catalyst_type"],event_timestamp=event["event_timestamp"],
-                warehouse_run_id=warehouse_run_id,payload=event["payload"]))
-        cur.execute("""SELECT instrument_id FROM instrument
-                       WHERE canonical_symbol=%s ORDER BY instrument_id LIMIT 1""",(symbol,))
-        instrument=cur.fetchone()
-        if instrument is None:
-            raise RuntimeError(f"CATALYST_INSTRUMENT_UNKNOWN: {symbol}")
-        status="PROVIDER_PAYLOAD_REJECTED" if rejected_count else ("EVENTS" if rows else "NO_EVENT")
-        verified_ids=[str(row["provider_event_id"]) for row in rows]
-        if len(verified_ids) != len(set(verified_ids)):
-            raise RuntimeError("CATALYST_DUPLICATE_EVENT_ID_IN_FETCH")
-        cur.execute("""INSERT INTO catalyst_check
-          (provider,instrument_id,ticker,checked_at,warehouse_run_id,result_status,event_count,rejected_count,verified_event_ids)
-          VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-          (provider,instrument[0],symbol,checked_at,warehouse_run_id,status,len(rows),rejected_count,verified_ids))
+    with (connection() if cursor is None else nullcontext(None)) as conn:
+        with (conn.cursor() if cursor is None else nullcontext(cursor)) as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                        (f"catalyst-batch\\x1f{provider}\\x1f{symbol}",))
+            results=[]
+            for event in rows:
+                results.append(_ingest_revision_cursor(cur,provider=provider,
+                    provider_event_id=event["provider_event_id"],ticker=symbol,
+                    catalyst_type=event["catalyst_type"],event_timestamp=event["event_timestamp"],
+                    warehouse_run_id=warehouse_run_id,payload=event["payload"]))
+            cur.execute("""SELECT instrument_id FROM instrument
+                           WHERE canonical_symbol=%s ORDER BY instrument_id LIMIT 1""",(symbol,))
+            instrument=cur.fetchone()
+            if instrument is None:
+                raise RuntimeError(f"CATALYST_INSTRUMENT_UNKNOWN: {symbol}")
+            status="PROVIDER_PAYLOAD_REJECTED" if rejected_count else ("EVENTS" if rows else "NO_EVENT")
+            verified_ids=[str(row["provider_event_id"]) for row in rows]
+            if len(verified_ids) != len(set(verified_ids)):
+                raise RuntimeError("CATALYST_DUPLICATE_EVENT_ID_IN_FETCH")
+            cur.execute("""INSERT INTO catalyst_check
+              (provider,instrument_id,ticker,checked_at,warehouse_run_id,result_status,event_count,rejected_count,verified_event_ids)
+              VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+              (provider,instrument[0],symbol,checked_at,warehouse_run_id,status,len(rows),rejected_count,verified_ids))
     return results
 
 def latest_catalyst_checks(*, tickers, as_of: datetime, pg_snapshot=None) -> pd.DataFrame:

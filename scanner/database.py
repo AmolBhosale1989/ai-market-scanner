@@ -34,7 +34,7 @@ def _new_pool(url: str, sslmode: str):
     return pool
 
 
-def connection():
+def connection(*, timeout=None):
     """Get an exclusive connection for one transaction; never share it concurrently."""
     url = os.getenv("DATABASE_URL", "").strip()
     if not url:
@@ -46,7 +46,7 @@ def connection():
         if pool is None:
             pool = _new_pool(url, key[2])
             _pools[key] = pool
-    return pool.connection()
+    return pool.connection() if timeout is None else pool.connection(timeout=timeout)
 
 
 def close_pools():
