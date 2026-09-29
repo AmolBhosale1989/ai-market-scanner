@@ -115,7 +115,8 @@ def test_sector_rotation_keeps_core_etfs_strict_and_constituents_tolerant(monkey
     monkeypatch.setattr(module,"provide",strict)
     monkeypatch.setattr(module,"warehouse_frames",tolerant)
     _,raw=module._load_rotation_history()
-    assert captured["strict"]=={"SPY",*module.THEME_ETFS.values()}
+    assert captured["strict"]=={"SPY",*module.THEME_ETFS.values()}-{"SKYY"}
+    assert "SKYY" in captured["tolerant"]
     assert not captured["strict"] & captured["tolerant"]
     assert captured["require_complete"] is False
     assert raw=={}

@@ -46,9 +46,11 @@ THEME_ETFS = (
 # five-minute intervals, so they are enforced separately instead of weakening
 # the core-market contract or blocking V3 because one theme ETF did not print.
 CORE_INTRADAY_MARKET_SYMBOLS = tuple(dict.fromkeys((BENCHMARK,) + SECTOR_ETFS))
-# Every rotation benchmark is mandatory for the cross-sectional consumer.
+# Sparse SKYY bars must not block the live market core. Keep it in the theme
+# universe, with the same freshness limit and quarantine before scoring.
+ROTATION_OPTIONAL_SYMBOLS = ("SKYY",)
 ROTATION_REQUIRED_SYMBOLS = (
-    "SPY", "HACK", "SMH", "BOTZ", "SKYY", "XBI", "ITA", "XLE",
+    "SPY", "HACK", "SMH", "BOTZ", "XBI", "ITA", "XLE",
     "URA", "GDX", "ICLN", "WGMI",
 )
 THEME_INTRADAY_MARKET_SYMBOLS = tuple(

@@ -10,7 +10,7 @@ from .warehouse import DataRequirement, frames as warehouse_frames, provide
 from .session_contract import latest_frame_session
 from .intraday_metrics import close_return_30m
 from .control_plane import write_dataset
-from .config import ROTATION_REQUIRED_SYMBOLS
+from .config import ROTATION_REQUIRED_SYMBOLS, ROTATION_OPTIONAL_SYMBOLS
 
 NY = ZoneInfo("America/New_York")
 
@@ -78,7 +78,8 @@ def _stats(d: pd.DataFrame, ticker: str, session_date):
 
 def _load_rotation_history() -> tuple[list[str], dict[str, pd.DataFrame]]:
     core=sorted(ROTATION_REQUIRED_SYMBOLS)
-    members=sorted({ticker for values in THEME_CONSTITUENTS.values() for ticker in values}-set(core))
+    members=sorted(({ticker for values in THEME_CONSTITUENTS.values() for ticker in values}
+                    | set(ROTATION_OPTIONAL_SYMBOLS))-set(core))
     view=provide(DataRequirement(
         consumer="sector_rotation.core",tickers=tuple(core),interval="5m",period="5d",
         max_age_minutes=10,view_name="sector_rotation_core_5m",
