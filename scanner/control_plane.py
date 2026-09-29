@@ -467,10 +467,11 @@ def read_record(dataset_name: str, *, run_id: str | None = None,
 
 
 def seed_from_publication(mode: str, dataset_names: Iterable[str],
-                          run_id: str | None = None) -> int:
+                          run_id: str | None = None, *, optional_datasets: Iterable[str] = ()) -> int:
     """Copy an immutable published snapshot into a new run before selective refresh."""
     rid = run_id or current_run_id()
     names = tuple(dict.fromkeys(dataset_names))
+    requested = tuple(dict.fromkeys((*names, *optional_datasets)))
     with _connect() as conn, conn.cursor() as cur:
         cur.execute(
             """SELECT pdx.dataset_name,dv.dataset_version_id,dv.schema_version,
@@ -480,7 +481,7 @@ def seed_from_publication(mode: str, dataset_names: Iterable[str],
                JOIN publication_dataset pdx ON pdx.publication_snapshot_id=ps.publication_snapshot_id
                JOIN dataset_version dv ON dv.dataset_version_id=pdx.dataset_version_id
                WHERE ph.mode=%s AND ps.status='PUBLISHED' AND pdx.dataset_name=ANY(%s)""",
-            (mode, list(names)),
+            (mode, list(requested)),
         )
         source = {row[0]: row[1:] for row in cur.fetchall()}
         missing = sorted(set(names) - set(source))
@@ -502,9 +503,9 @@ def seed_from_publication(mode: str, dataset_names: Iterable[str],
                SELECT target.dataset_version_id,r.row_ordinal,r.entity_key,r.payload
                FROM inserted target JOIN source USING(dataset_name)
                JOIN dataset_row r ON r.dataset_version_id=source.dataset_version_id""",
-            ([source[name][0] for name in names], rid),
+            ([value[0] for value in source.values()], rid),
         )
-    return len(names)
+    return len(source)
 
 
 def record_health(module_name: str, status: str, metrics: Mapping | None = None,
@@ -535,9 +536,11 @@ def _read_version_records(cur, version_ids: Iterable[int]) -> dict[int, list]:
     return records
 
 
-def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = None) -> dict:
+def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = None,
+            *, optional_datasets: Iterable[str] = ()) -> dict:
     rid = run_id or current_run_id()
     required = tuple(dict.fromkeys(required_datasets))
+    requested = tuple(dict.fromkeys((*required, *optional_datasets)))
     if not required:
         raise RuntimeError("CONTROL_PLANE_PUBLICATION_EMPTY")
     if mode == "production":
@@ -555,7 +558,7 @@ def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = No
             """SELECT dataset_name,dataset_version_id,content_hash,row_count
                FROM dataset_version WHERE pipeline_run_id=%s AND status='AVAILABLE'
                  AND dataset_name=ANY(%s)""",
-            (rid, list(required)),
+            (rid, list(requested)),
         )
         versions = {row[0]: row[1:] for row in cur.fetchall()}
         missing = sorted(set(required) - set(versions))
@@ -594,7 +597,7 @@ def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = No
             if len(records) != int(expected_rows) or _hash(records) != expected_hash:
                 raise RuntimeError(f"CONTROL_PLANE_PUBLICATION_BLOCKED: corrupt={name}")
         manifest = [{"name": name, "version": versions[name][0], "hash": versions[name][1],
-                     "rows": versions[name][2]} for name in sorted(required)]
+                     "rows": versions[name][2]} for name in sorted(versions)]
         manifest_hash = _hash(manifest)
         cur.execute(
             """INSERT INTO publication_snapshot(pipeline_run_id,mode,status,manifest_hash,metadata)
@@ -606,7 +609,7 @@ def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = No
         cur.executemany(
             """INSERT INTO publication_dataset
                (publication_snapshot_id,dataset_name,dataset_version_id) VALUES (%s,%s,%s)""",
-            [(snapshot_id, name, versions[name][0]) for name in required],
+            [(snapshot_id, name, versions[name][0]) for name in versions],
         )
         if mode == "production":
             from .signal_freshness import signal_expiry_reason

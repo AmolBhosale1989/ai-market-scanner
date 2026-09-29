@@ -5,6 +5,8 @@ from .control_plane import _connect, _hash
 
 
 def read_dashboard_datasets(names, *, run_id):
+    from .production_telemetry import OPTIONAL_DATASETS
+
     names = list(dict.fromkeys(names))
     if not run_id:
         raise RuntimeError("CONTROL_PLANE_RUN_REQUIRED")
@@ -27,7 +29,7 @@ def read_dashboard_datasets(names, *, run_id):
     result = {}
     for name in names:
         if name not in grouped:
-            result[name] = (pd.DataFrame(), "blocked")
+            result[name] = (pd.DataFrame(), "unavailable" if name in OPTIONAL_DATASETS else "blocked")
             continue
         digest, count, records = grouped[name]
         if len(records) != count or _hash(records) != digest:
