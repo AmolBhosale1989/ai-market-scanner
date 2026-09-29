@@ -27,14 +27,15 @@ def test_bulk_revision_idempotency_snapshot_and_atomicity():
     revision['Close']=11.
     assert pit.ingest_observations(revision,rid,'test','OHLCV','5m',instrument_ids=ids)==3
     frozen=pit.point_in_time(pit.PointInTimeRequirement('bulk',tuple(names),timeframe='5m',
-                             as_of=stamp+pd.Timedelta(days=1),pg_snapshot=visibility))
+                             as_of=pd.Timestamp.now(tz='UTC'),pg_snapshot=visibility))
     assert len(frozen)==3
     assert set(frozen.close.astype(float))=={10.}
     # A foreign-key failure anywhere in the set must leave no partial rows.
     broken=dict(ids);broken[names[-1]]=9223372036854775807
     revision['ingested_at']=stamp+pd.Timedelta(seconds=2)
     revision['Close']=10.5
-    with pytest.raises(Exception):
+    from psycopg.errors import ForeignKeyViolation
+    with pytest.raises(ForeignKeyViolation):
         pit.ingest_observations(revision,rid,'test','OHLCV','5m',instrument_ids=broken)
     with pit._connect() as conn, conn.cursor() as cur:
         cur.execute('SELECT count(*) FROM market_observation WHERE warehouse_run_id=%s',(rid,))
