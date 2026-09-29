@@ -9,6 +9,8 @@ import numpy as np
 from .bitemporal_warehouse import _connect, finish_run, ingest_observations, latest_event_timestamps, start_run, verify_health
 from .config import CRITICAL_MARKET_SYMBOLS, INGESTION_CRITICAL_SYMBOLS, RETRY_CHUNK_SIZE
 from .control_plane import read_dataset
+from .bitemporal_warehouse import resolve_instrument_ids
+from .ingestion_timing import BatchTiming
 from .data import download_batch
 from .warehouse import _freshness_failures
 from .ohlcv_quality import invalid_rows
@@ -132,6 +134,11 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
         payload={"tickers": tickers, "period": period, "interval": interval},
     )
     try:
+        instrument_ids = None
+        if interval == '5m':
+            with BatchTiming(run_id=run_id, kind='instrument_cache') as timing:
+                with timing.phase('instrument_cache_load'):
+                    instrument_ids = resolve_instrument_ids(tickers)
         watermarks = {} if bootstrap else latest_event_timestamps(tickers, timeframe=interval)
         stale_existing=set(watermarks) if bootstrap else _refresh_candidates(watermarks,interval,tickers)
         incremental_period = "5d" if interval == "1d" else "2d"
@@ -141,6 +148,13 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
         provider_chunk = RETRY_CHUNK_SIZE
         ingested_symbols=set()
         observations=0
+        pending_frames=[]
+        pending_symbols=0
+        pending_rows=0
+        def persist(frame):
+            options = {'instrument_ids': instrument_ids} if instrument_ids is not None else {}
+            return ingest_observations(frame,run_id=run_id,provider="YAHOO_YFINANCE",
+                                       data_type="OHLCV",timeframe=interval,**options)
         # Download and commit each small provider batch immediately. A later
         # provider failure cannot discard already committed successful chunks.
         for i in range(0, len(tickers), provider_chunk):
@@ -195,10 +209,24 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
             if not frames:
                 continue
             combined=pd.concat(frames,ignore_index=True,sort=False)
-            inserted=ingest_observations(combined,run_id=run_id,provider="YAHOO_YFINANCE",data_type="OHLCV",timeframe=interval)
+            pending_frames.append(combined)
+            pending_symbols += len(chunk)
+            pending_rows += len(combined)
+            if interval == '5m' and pending_symbols < 100 and pending_rows < 20000:
+                continue
+            combined=pd.concat(pending_frames,ignore_index=True)
+            inserted=persist(combined)
+            pending_frames=[]
+            pending_symbols=pending_rows=0
             observations += inserted
             ingested_symbols.update(combined["ticker"].astype(str).str.upper().unique())
             print(f"WAREHOUSE_CHUNK_COMMITTED offset={i} requested={len(chunk)} symbols={combined['ticker'].nunique()} inserted={inserted}", flush=True)
+        if pending_frames:
+            combined=pd.concat(pending_frames,ignore_index=True)
+            inserted=persist(combined)
+            observations += inserted
+            ingested_symbols.update(combined['ticker'].astype(str).str.upper().unique())
+            print(f"WAREHOUSE_CHUNK_COMMITTED offset=tail symbols={combined['ticker'].nunique()} inserted={inserted}",flush=True)
         metadata={"requested_symbols":len(tickers),"ingested_symbols":len(ingested_symbols),
                   "observations":observations,"period":period,"interval":interval,
                   "mode":"BOOTSTRAP" if bootstrap else "INCREMENTAL_WITH_MISSING_BACKFILL",
