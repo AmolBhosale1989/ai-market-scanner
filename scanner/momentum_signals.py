@@ -31,6 +31,8 @@ def _read_optional(name: str) -> pd.DataFrame:
 def _write_outputs(out: pd.DataFrame, now: datetime, session_date: str, candidate_inputs: int) -> pd.DataFrame:
     if out.empty:
         out=pd.DataFrame(columns=MOMENTUM_COLUMNS)
+    from .catalyst_policy import normalize
+    out = normalize(out)
     write_dataset("momentum_signals",out)
     health=pd.DataFrame([{
         "updated_at_et":now.isoformat(timespec="seconds"),

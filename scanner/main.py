@@ -51,18 +51,19 @@ def _write_health(**kwargs):
     write_dataset("scan_health",pd.DataFrame([kwargs]),entity_key=None)
 
 def _final_decision(row):
-    if not bool(row.get("catalyst_gate_ok",False)):
-        return "NO TRADE / CATALYST DATA BLIND"
+    from .catalyst_policy import disabled, truth
+    if disabled() or not truth(row.get("catalyst_gate_ok")):
+        return row["decision"]
     technical=row["decision"]
     score=pd.to_numeric(pd.Series([row.get("catalyst_score",0)]),errors="coerce").fillna(0).iloc[0]
-    negative=bool(row.get("negative_catalyst_risk",False))
+    negative=truth(row.get("negative_catalyst_risk"))
 
     if negative and row["stage"] in {"CONFIRMED","ARMED"}:
         return "NO TRADE / NEGATIVE CATALYST"
     if row["stage"]=="CONFIRMED" and technical=="BUY / CONFIRMED":
         if score>=CATALYST_ACTIVE_SCORE:
             return "BUY / CONFIRMED + CATALYST"
-        return "WAIT / ACTIVE CATALYST REQUIRED"
+        return technical
     if row["stage"]=="ARMED" and technical in {"WAIT FOR TRIGGER","WAIT FOR RETEST"}:
         if score>=CATALYST_ACTIVE_SCORE:
             return f"{technical} + CATALYST"
@@ -179,7 +180,8 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
         print(theme_table.head(10)[["theme_rank","theme","etf","theme_score","theme_state","rel5_vs_spy","rel20_vs_spy"]].to_string(index=False))
 
     print("Building event-first earnings watchlist for the most liquid stocks...")
-    event_watchlist=build_event_watchlist(tradable_df)
+    from .catalyst_policy import disabled
+    event_watchlist=pd.DataFrame() if disabled() else build_event_watchlist(tradable_df)
 
     # Daily fast mode: preserve broad-market discovery by prefiltering the full
     # universe, then spend the expensive 1-year analysis budget on the strongest
@@ -310,7 +312,8 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     df=pd.DataFrame(rows)
     event_watchlist=merge_technical_context(event_watchlist,df)
     print("Enriching upcoming earnings with historical reactions, beat/miss, compression, guidance/revision context and options...")
-    event_watchlist=enrich_earnings_intelligence(event_watchlist)
+    if not disabled():
+        event_watchlist=enrich_earnings_intelligence(event_watchlist)
     if event_watchlist is not None:
         write_dataset("upcoming_events",event_watchlist)
     stage_rank={"CONFIRMED":5,"ARMED":4,"FORMING":3,"DISCOVER":2,"EXTENDED":1,"REJECT":0}
@@ -350,6 +353,14 @@ def run(refresh_universe: bool=False, limit: int|None=None, top_n: int=TOP_N, de
     write_dataset("daily_prepared_health",pd.DataFrame([health]),entity_key=None,metadata=metadata)
     return finalize_daily(df,pfdf,health,top_n,defer_publication=defer_publication)
 
+def _recommendation_mask(df):
+    return (
+        df["universal_10pct_gate"]
+        & df["live_trade_action"].astype(str).str.startswith("BUY / LIVE CONFIRMED")
+        & df["final_decision"].astype(str).str.startswith("BUY / CONFIRMED")
+    )
+
+
 def finalize_daily(df, pfdf, health, top_n=TOP_N, *, defer_publication=False):
     # Validate the exact consumers, even if an aggregate tier tolerates gaps.
     selected=select_live_candidates(df,LIVE_ENRICH_LIMIT)
@@ -382,11 +393,7 @@ def finalize_daily(df, pfdf, health, top_n=TOP_N, *, defer_publication=False):
     all_candidates=df.sort_values(["market_hunt_score","avg_dollar_volume"],ascending=[False,False])
     write_dataset("all_candidates",all_candidates)
 
-    recommended=df[
-        df["universal_10pct_gate"]
-        & df["live_trade_action"].astype(str).str.startswith("BUY / LIVE CONFIRMED")
-        & df["final_decision"].astype(str).str.startswith("BUY / CONFIRMED + CATALYST")
-    ].copy()
+    recommended=df[_recommendation_mask(df)].copy()
     recommended=recommended.sort_values(
         ["market_hunt_score","avg_dollar_volume"],ascending=[False,False]
     ).head(top_n)

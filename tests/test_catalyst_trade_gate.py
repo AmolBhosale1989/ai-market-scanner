@@ -11,12 +11,12 @@ def _row(**overrides):
     return pd.Series(base)
 
 
-def test_blind_catalyst_gate_dominates_positive_score():
-    assert _final_decision(_row(catalyst_gate_ok=False,catalyst_score=100)) == "NO TRADE / CATALYST DATA BLIND"
+def test_missing_catalyst_preserves_technical_signal():
+    assert _final_decision(_row(catalyst_gate_ok=False,catalyst_score=100)) == "BUY / CONFIRMED"
 
 
-def test_stale_catalyst_gate_dominates_positive_score():
-    assert _final_decision(_row(catalyst_gate_ok=False,catalyst_status="STALE",catalyst_score=100)) == "NO TRADE / CATALYST DATA BLIND"
+def test_stale_catalyst_does_not_supply_bonus_or_block_technical_signal():
+    assert _final_decision(_row(catalyst_gate_ok=False,catalyst_status="STALE",catalyst_score=100)) == "BUY / CONFIRMED"
 
 
 def test_available_gate_preserves_existing_decision_logic():

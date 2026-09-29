@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .catalyst_policy import normalize, truth
+
 from datetime import datetime, time as dtime
 import math
 import os
@@ -257,7 +259,7 @@ def analyze_live_candidate(ticker: str, entry_trigger: float, stage: str, cataly
     above_vwap=math.isfinite(vwap) and price>vwap; above_or=or_complete and math.isfinite(or_high) and price>or_high; retest_touched=bool(entry_condition=="TOUCH_AND_RECLAIM" and math.isfinite(entry_trigger) and float(latest_session["Low"].min())<=entry_trigger)
     trigger_reached=(retest_touched and price>=entry_trigger) if entry_condition=="TOUCH_AND_RECLAIM" else (math.isfinite(entry_trigger) and price>=entry_trigger)
     score=(25 if above_vwap else 0)+(25 if ((retest_touched if entry_condition=="TOUCH_AND_RECLAIM" else above_or)) else 0)+(25 if trigger_reached else 0)+(20 if math.isfinite(rvol) and rvol>=LIVE_MIN_INTRADAY_RVOL else 0)+(5 if math.isfinite(volume_vs_9ma) and volume_vs_9ma>=2.0 else 0)+(5 if opening_volume_spike_2x else 0)
-    technical_ok=stage in {"ARMED","CONFIRMED"} or (stage=="FORMING" and technical_score>=80 and formation_score>=60); catalyst_ok=(not negative_catalyst_risk) and catalyst_score>=CATALYST_ACTIVE_SCORE; rr_ok=math.isfinite(rr_to_8pct) and rr_to_8pct>=1.30; rr_strong=math.isfinite(rr_to_8pct) and rr_to_8pct>=2.00; runway_ok=math.isfinite(runway_pct) and runway_pct>=MIN_RUNWAY_PCT
+    technical_ok=stage in {"ARMED","CONFIRMED"} or (stage=="FORMING" and technical_score>=80 and formation_score>=60); catalyst_ok=not truth(negative_catalyst_risk); rr_ok=math.isfinite(rr_to_8pct) and rr_to_8pct>=1.30; rr_strong=math.isfinite(rr_to_8pct) and rr_to_8pct>=2.00; runway_ok=math.isfinite(runway_pct) and runway_pct>=MIN_RUNWAY_PCT
     live_conditions=above_vwap and (retest_touched if entry_condition=="TOUCH_AND_RECLAIM" else above_or) and trigger_reached and math.isfinite(rvol) and rvol>=LIVE_MIN_INTRADAY_RVOL and spread_ok
     if status!="LIVE": live_action="WAIT / MARKET NOT LIVE"
     elif stage=="DISCOVER": live_action="WATCH / DISCOVERY"
@@ -282,6 +284,7 @@ def select_live_candidates(df: pd.DataFrame, limit: int = LIVE_ENRICH_LIMIT):
 def enrich_live_candidates(df: pd.DataFrame, limit: int = LIVE_ENRICH_LIMIT):
     if df.empty:
         return df
+    df=normalize(df)
     out=df.copy(); defaults=_empty_live()
     for col,value in defaults.items(): out[col]=value
     as_of=_evaluation_time()
@@ -296,6 +299,6 @@ def enrich_live_candidates(df: pd.DataFrame, limit: int = LIVE_ENRICH_LIMIT):
     ) if tickers else {}
     for idx,row in eligible.iterrows():
         ticker=str(row["ticker"]).upper()
-        live=analyze_live_candidate(ticker=ticker,entry_trigger=float(row.get("entry_trigger",math.nan)),stage=str(row.get("stage","")),catalyst_score=float(pd.to_numeric(pd.Series([row.get("catalyst_score",0)]),errors="coerce").fillna(0).iloc[0]),rr_to_8pct=float(pd.to_numeric(pd.Series([row.get("effective_rr",row.get("rr_to_8pct",math.nan))]),errors="coerce").iloc[0]),runway_pct=float(pd.to_numeric(pd.Series([row.get("runway_to_next_resistance_pct",math.nan)]),errors="coerce").iloc[0]),negative_catalyst_risk=bool(row.get("negative_catalyst_risk",False)),entry_condition=str(row.get("entry_condition","BREAKOUT")),technical_score=float(pd.to_numeric(pd.Series([row.get("technical_score",0)]),errors="coerce").fillna(0).iloc[0]),formation_score=float(pd.to_numeric(pd.Series([row.get("formation_score",0)]),errors="coerce").fillna(0).iloc[0]),avg_dollar_volume=float(pd.to_numeric(pd.Series([row.get("avg_dollar_volume",0)]),errors="coerce").fillna(0).iloc[0]),history_frame=histories[ticker],as_of=as_of)
+        live=analyze_live_candidate(ticker=ticker,entry_trigger=float(row.get("entry_trigger",math.nan)),stage=str(row.get("stage","")),catalyst_score=float(pd.to_numeric(pd.Series([row.get("catalyst_score",0)]),errors="coerce").fillna(0).iloc[0]),rr_to_8pct=float(pd.to_numeric(pd.Series([row.get("effective_rr",row.get("rr_to_8pct",math.nan))]),errors="coerce").iloc[0]),runway_pct=float(pd.to_numeric(pd.Series([row.get("runway_to_next_resistance_pct",math.nan)]),errors="coerce").iloc[0]),negative_catalyst_risk=truth(row.get("negative_catalyst_risk")),entry_condition=str(row.get("entry_condition","BREAKOUT")),technical_score=float(pd.to_numeric(pd.Series([row.get("technical_score",0)]),errors="coerce").fillna(0).iloc[0]),formation_score=float(pd.to_numeric(pd.Series([row.get("formation_score",0)]),errors="coerce").fillna(0).iloc[0]),avg_dollar_volume=float(pd.to_numeric(pd.Series([row.get("avg_dollar_volume",0)]),errors="coerce").fillna(0).iloc[0]),history_frame=histories[ticker],as_of=as_of)
         for k,v in live.items(): out.at[idx,k]=v
     return out

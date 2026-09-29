@@ -201,6 +201,12 @@ def enrich_candidates(df: pd.DataFrame,limit: int):
     from .consumer_snapshot import consumer_anchor
     from .catalyst_contract import CatalystState,ProviderRequirement,resolve_catalyst_state
 
+    from .catalyst_policy import disabled, normalize
+    if disabled():
+        from .consumer_snapshot import consumer_pg_snapshot
+        if consumer_anchor() is None or consumer_pg_snapshot() is None:
+            raise RuntimeError("CATALYST_CONTEXT_ANCHOR_REQUIRED")
+        return normalize(df)
     out=df.copy()
     defaults={
         "catalyst_score":0,"catalyst_status":"NOT CHECKED","catalyst_type":"NONE",

@@ -41,7 +41,8 @@ def run() -> pd.DataFrame:
         write_dataset("order_flow_strategy_health",health,entity_key=None)
         return pd.DataFrame()
 
-    d = src.copy()
+    from .catalyst_policy import normalize
+    d = normalize(src)
     for c in [
         "price","day_change_pct","rel_vs_spy_pct","theme_rotation_score","intraday_rvol",
         "vwap","opening_range_high","stop","risk_pct","order_flow_score","buy_pressure_pct",

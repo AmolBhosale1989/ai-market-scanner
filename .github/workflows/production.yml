@@ -29,6 +29,7 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       PGSSLMODE: require
       PYTHONUNBUFFERED: "1"
+      CATALYST_MODE: disabled
       ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
@@ -97,7 +98,7 @@ jobs:
 
           stage intraday_warehouse 60 timeout 3600s python -m scanner.live_ingestion
           # Join all provider commits for the current structural plan before T0.
-          stage catalyst_ingest 65 timeout 1800s python -m scanner.catalyst_pipeline --ingest-only --mandatory-only
+          stage catalyst_ingest 65 echo "CATALYST_INGEST_SKIPPED mode=disabled providers=ALL"
           stage warehouse_gate 70 python -m scanner.warehouse_gate --tier MASTER_DAILY --tier CRITICAL_DAILY --tier CRITICAL_INTRADAY --tier THEME_INTRADAY --tier LIVE_INTRADAY
           # Consumers read the same validated versions and evaluate arrival age
           # at that snapshot. Publication still rechecks actual-time freshness.
@@ -126,7 +127,7 @@ jobs:
             stage paper_performance 150 bash -c 'python -m scanner.performance && python -m scanner.readiness'
             stage discovery_products 160 bash -c 'python -m scanner.daily_pick && python -m scanner.high_conviction_alerts && python -m scanner.product_feed'
             stage quant_shadow 170 python -m scanner.quant_shadow
-            stage v4_live 180 python -m scanner.v4_worker --once --catalysts --options-microstructure
+            stage v4_live 180 python -m scanner.v4_worker --once --options-microstructure
             stage v4_outcomes 190 bash -c 'python -m scanner.v4_outcomes --resolve-daily --fit-calibration'
             stage v5_model 200 python -m scanner.v5_model
             stage v6_model 210 python -m scanner.v6_model
@@ -144,7 +145,7 @@ jobs:
             stage theme_live 90 python -m scanner.theme_live & theme_pid=$!
             stage sector_rotation 100 python -m scanner.sector_rotation & sector_pid=$!
             stage premarket 115 python -m scanner.premarket & premarket_pid=$!
-            stage v4_live 180 python -m scanner.v4_worker --once --catalysts --options-microstructure & v4_pid=$!
+            stage v4_live 180 python -m scanner.v4_worker --once --options-microstructure & v4_pid=$!
 
             wait_stage "$premarket_pid" premarket
             wait_stage "$broad_pid" broad_breakout

@@ -19,9 +19,10 @@ def build_worker(args) -> ContinuousMomentumWorker:
     telegram = TelegramAlertSink.from_environment() if args.telegram_alerts else None
     if telegram is not None:
         sinks.append(telegram)
+    from .catalyst_policy import disabled
     catalysts = CompositeCatalystAdapter([
         YahooNewsCatalystAdapter(max_workers=args.catalyst_workers, max_tickers=args.news_limit)
-    ]) if args.catalysts else None
+    ]) if args.catalysts and not disabled() else None
     options = YahooOptionsMicrostructureAdapter(
         max_workers=args.options_workers,
         max_tickers=args.options_limit,

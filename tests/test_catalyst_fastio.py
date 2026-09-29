@@ -96,8 +96,9 @@ def test_optional_coverage_warns_but_keeps_snapshot_predicate(monkeypatch, capsy
     assert 'pg_visible_in_snapshot(c.writer_xid,%s::pg_snapshot)' in sql
     assert '10:20:15' in params
     output = capsys.readouterr().out
-    for provider in gate.OPTIONAL_PROVIDERS:
+    for provider in ("YAHOO_NEWS", "SEC_EDGAR"):
         assert f'CATALYST_COVERAGE_WARNING provider={provider} missing=1' in output
     cur.fetchall.return_value = [('AAA', p, t0) for p in gate.OPTIONAL_PROVIDERS]
-    with pytest.raises(RuntimeError, match='AAA:ALPHA_VANTAGE'):
-        gate.verify_coverage(['AAA'], anchor=t0, pg_snapshot='10:20:15')
+    cur.fetchall.return_value = []
+    assert gate.verify_coverage(['AAA'], anchor=t0, pg_snapshot='10:20:15')
+    assert 'provider=ALPHA_VANTAGE missing=1' in capsys.readouterr().out

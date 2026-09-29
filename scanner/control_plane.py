@@ -264,6 +264,9 @@ def write_dataset(
     run_id: str | None = None,
 ) -> dict:
     rid = run_id or current_run_id()
+    from .catalyst_policy import OUTPUT_DATASETS, normalize
+    if dataset_name in OUTPUT_DATASETS or dataset_name.startswith("trader_"):
+        frame = normalize(frame)
     records = [_clean(row) for row in frame.to_dict(orient="records")]
     metadata = dict(metadata or {})
     if dataset_name in V3_PROVENANCE_DATASETS:
