@@ -70,7 +70,7 @@ def audit_current_run(run_id=None):
     """Read the actual run, stage DAG, immutable rows and source snapshot in one transaction."""
     import pandas as pd
     from . import control_plane as cp
-    from .production_telemetry import REQUIRED_DATASETS
+    from .production_telemetry import REQUIRED_DATASETS, OPTIONAL_DATASETS
     from .signal_freshness import signal_expiry_reason
     from .stage_contract import read_and_validate_stages
 
@@ -82,7 +82,7 @@ def audit_current_run(run_id=None):
         lane, stages, now = read_and_validate_stages(cur, rid, acceptance_running=True)
         cur.execute("""SELECT dataset_name,dataset_version_id,content_hash,row_count
                        FROM dataset_version WHERE pipeline_run_id=%s AND status='AVAILABLE'
-                       AND dataset_name=ANY(%s)""", (rid, list(REQUIRED_DATASETS)))
+                       AND dataset_name=ANY(%s)""", (rid, list(REQUIRED_DATASETS + OPTIONAL_DATASETS)))
         versions = {row[0]: row[1:] for row in cur.fetchall()}
         missing = set(REQUIRED_DATASETS) - set(versions)
         if missing:

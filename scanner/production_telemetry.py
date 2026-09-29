@@ -12,7 +12,7 @@ REQUIRED_DATASETS = (
     "warehouse_snapshot", "warehouse_coverage", "master_universe", "master_universe_health",
     "tradable_universe", "live_universe", "scan_health", "all_candidates", "latest_scan",
     "recommended_trades", "liquid_leaders", "watchlist", "trending_themes", "upcoming_events",
-    "event_status", "product_feed", "legendary_setups", "legendary_consensus",
+    "product_feed", "legendary_setups", "legendary_consensus",
     "v3_live_discovery", "v3_live_snapshot", "intraday_live", "monitor_health",
     "state_transitions", "paper_journal", "performance_summary", "performance_by_setup",
     "probability_calibration", "validation_gate", "theme_health", "sector_rotation",
@@ -27,7 +27,6 @@ REQUIRED_DATASETS = (
     "v4_monitor_shortlist", "v4_live_snapshot", "v4_transitions", "v4_worker_cycles",
     "v4_worker_health", "v4_outcomes", "v4_outcome_summary", "v4_shadow_observations",
     "v4_options_microstructure", "v4_options_microstructure_health",
-    "v4_catalyst_events", "v4_catalyst_health",
     "v4_shadow_strategy_summary", "v4_shadow_daily_comparison", "v4_shadow_breakdowns",
     "v4_shadow_validation_health", "v4_5_model", "v4_5_validation", "v4_5_ranked_candidates",
     "v4_model_monitor", "v4_6_cutover_evaluation", "v5_model", "v5_validation",
@@ -44,12 +43,15 @@ REQUIRED_DATASETS = (
 )
 
 
+# Optional enrichment may be absent when Catalyst ingestion is disabled.
+OPTIONAL_DATASETS = ("event_status", "v4_catalyst_events", "v4_catalyst_health")
+
 def finalize(mode: str = "production") -> dict:
-    return publish(mode, REQUIRED_DATASETS)
+    return publish(mode, REQUIRED_DATASETS, optional_datasets=OPTIONAL_DATASETS)
 
 
 def seed(mode: str = "production") -> int:
-    return seed_from_publication(mode, REQUIRED_DATASETS)
+    return seed_from_publication(mode, REQUIRED_DATASETS, optional_datasets=OPTIONAL_DATASETS)
 
 
 def record_failure(stage: str, message: str) -> dict:

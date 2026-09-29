@@ -6,20 +6,22 @@ import scanner.production_telemetry as telemetry
 def test_publication_gate_forwards_complete_required_dataset_set(monkeypatch):
     captured = {}
 
-    def publish(mode, required):
-        captured.update(mode=mode, required=tuple(required))
+    def publish(mode, required, *, optional_datasets=()):
+        captured.update(mode=mode, required=tuple(required), optional=tuple(optional_datasets))
         return {"pipeline_run_id": "run-1", "datasets": list(required)}
 
     monkeypatch.setattr(telemetry, "publish", publish)
     result = telemetry.finalize()
     assert result["pipeline_run_id"] == "run-1"
     assert captured["mode"] == "production"
+    assert captured["optional"] == telemetry.OPTIONAL_DATASETS
+    assert not set(captured["optional"]) & set(captured["required"])
     assert set(captured["required"]) == set(telemetry.REQUIRED_DATASETS)
     assert {"all_candidates", "intraday_live", "v4_shadow_observations", "v9_readiness"}.issubset(captured["required"])
 
 
 def test_publication_failure_propagates(monkeypatch):
-    monkeypatch.setattr(telemetry, "publish", lambda *_: (_ for _ in ()).throw(RuntimeError("blocked")))
+    monkeypatch.setattr(telemetry, "publish", lambda *_, **kwargs: (_ for _ in ()).throw(RuntimeError("blocked")))
     with pytest.raises(RuntimeError, match="blocked"):
         telemetry.finalize()
 

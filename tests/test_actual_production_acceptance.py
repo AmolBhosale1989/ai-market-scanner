@@ -156,3 +156,61 @@ def test_wrong_snapshot_run_is_rejected_despite_valid_content_hash(real_run):
     cp.write_dataset("warehouse_snapshot", snapshot, entity_key=None, run_id=real_run)
     with pytest.raises(RuntimeError, match="SNAPSHOT_PROVENANCE"):
         audit_current_run(real_run)
+
+
+@pytest.mark.postgres_integration
+@pytest.mark.parametrize("with_optional", [False, True])
+def test_optional_catalyst_acceptance_publication_and_dashboard(real_run, monkeypatch, with_optional):
+    from scanner.production_telemetry import OPTIONAL_DATASETS, finalize
+    from scanner.dashboard_data import read_dashboard_datasets
+    from scanner import warehouse_gate
+    if with_optional:
+        for name in OPTIONAL_DATASETS:
+            cp.write_dataset(name, pd.DataFrame([{"status": "unavailable"}]),
+                             entity_key=None, run_id=real_run)
+    assert audit_current_run(real_run)["status"] == "PASS"
+    # Price freshness is independently tested; retain real stage/hash/pointer checks.
+    monkeypatch.setattr(warehouse_gate, "validate_publication_freshness", lambda rid: None)
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute("UPDATE pipeline_stage SET status='PASS', completed_at=clock_timestamp() "
+                    "WHERE pipeline_run_id=%s AND stage_name='acceptance'", (real_run,))
+    result = finalize()
+    names = {row["name"] for row in result["datasets"]}
+    assert set(REQUIRED_DATASETS) <= names
+    assert (set(OPTIONAL_DATASETS) <= names) == with_optional
+    assert cp.publication_info("production")["pipeline_run_id"] == real_run
+    dashboard = read_dashboard_datasets(OPTIONAL_DATASETS, run_id=real_run)
+    for name in OPTIONAL_DATASETS:
+        frame, source = dashboard[name]
+        assert frame.empty == (not with_optional)
+        assert source == ("postgresql" if with_optional else "unavailable")
+    seeded_run = cp.start_run("optional-seed-test")
+    assert cp.seed_from_publication("production", REQUIRED_DATASETS, run_id=seeded_run,
+                                    optional_datasets=OPTIONAL_DATASETS) == len(names)
+
+
+@pytest.mark.postgres_integration
+def test_optional_catalyst_corruption_still_blocks_acceptance_and_publication(real_run, monkeypatch):
+    from scanner.production_telemetry import finalize
+    from scanner import warehouse_gate
+    cp.write_dataset("event_status", pd.DataFrame(), entity_key=None, run_id=real_run)
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute("UPDATE dataset_version SET content_hash='tampered' "
+                    "WHERE pipeline_run_id=%s AND dataset_name='event_status'", (real_run,))
+    with pytest.raises(RuntimeError, match="DATASET_CORRUPT: event_status"):
+        audit_current_run(real_run)
+    monkeypatch.setattr(warehouse_gate, "validate_publication_freshness", lambda rid: None)
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute("UPDATE pipeline_stage SET status='PASS', completed_at=clock_timestamp() "
+                    "WHERE pipeline_run_id=%s AND stage_name='acceptance'", (real_run,))
+    with pytest.raises(RuntimeError, match="corrupt=event_status"):
+        finalize()
+
+
+@pytest.mark.postgres_integration
+def test_missing_core_dataset_remains_fatal(real_run):
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute("UPDATE dataset_version SET status='FAILED' "
+                    "WHERE pipeline_run_id=%s AND dataset_name='recommended_trades'", (real_run,))
+    with pytest.raises(RuntimeError, match="ACCEPTANCE_DATASET_MISSING: recommended_trades"):
+        audit_current_run(real_run)
