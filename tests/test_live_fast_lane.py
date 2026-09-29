@@ -22,15 +22,11 @@ def test_v3_can_reuse_current_run_broad_discovery(monkeypatch):
     assert result["v3_discovery_source"].eq("POSTGRES_WAREHOUSE_DISCOVERY").all()
 
 
-def test_v3_rejects_empty_reused_discovery(monkeypatch):
+def test_v3_accepts_available_empty_reused_discovery(monkeypatch, memory_control_plane):
     monkeypatch.setattr(v3_live,"read_dataset",lambda name:pd.DataFrame())
-
-    try:
-        v3_live._fresh_discovery(reuse_current_broad_discovery=True)
-    except RuntimeError as exc:
-        assert "no qualified candidates" in str(exc)
-    else:
-        raise AssertionError("empty current-run discovery did not fail closed")
+    result = v3_live._fresh_discovery(reuse_current_broad_discovery=True)
+    assert result.empty and {"ticker", "stage"}.issubset(result.columns)
+    assert (memory_control_plane["run_id"], "v3_live_discovery") in memory_control_plane["datasets"]
 
 
 def test_market_open_lane_is_bounded_and_preserves_final_gates():

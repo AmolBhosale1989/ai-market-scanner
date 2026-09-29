@@ -16,19 +16,28 @@ def _fresh_discovery(reuse_current_broad_discovery: bool = False) -> pd.DataFram
     """Build the V3 production candidate set from fresh PostgreSQL warehouse data.
 
     Persisted scan outputs are never accepted as production candidate inputs.
-    The tradable-universe file is only a symbol/universe catalogue; the actual
-    candidate qualification is recomputed from current intraday provider data.
+    Candidate qualification is recomputed from snapshot-bound warehouse prices.
+    An available zero-row current-run dataset is a valid no-setups result;
+    missing datasets and warehouse errors are never converted to that result.
     """
     discovered = (
         read_dataset("broad_breakout_discovery")
         if reuse_current_broad_discovery
         else run_broad_discovery(top_n=max(80, LIVE_ENRICH_LIMIT * 3))
     )
-    if discovered is None or discovered.empty or "ticker" not in discovered.columns:
-        raise RuntimeError(
-            "V3 LIVE ABORTED: fresh PostgreSQL warehouse discovery returned no qualified candidates."
-        )
-    out = discovered.drop_duplicates("ticker").copy()
+    if not isinstance(discovered, pd.DataFrame):
+        raise RuntimeError("V3_DISCOVERY_INVALID: expected a current-run DataFrame")
+    if discovered.empty:
+        # Empty dataset rows lose their columns when read from PostgreSQL.
+        # Restore the schema needed by the existing empty intraday path.
+        out = pd.DataFrame(columns=["ticker", "stage"])
+        print("V3_DISCOVERY_EMPTY: no qualified candidates; writing empty snapshot-bound outputs", flush=True)
+    else:
+        if "ticker" not in discovered or discovered["ticker"].isna().any():
+            raise RuntimeError("V3_DISCOVERY_INVALID: missing candidate identities")
+        if discovered["ticker"].astype(str).str.strip().eq("").any():
+            raise RuntimeError("V3_DISCOVERY_INVALID: blank candidate identities")
+        out = discovered.drop_duplicates("ticker").copy()
     out["v3_discovery_source"] = "POSTGRES_WAREHOUSE_DISCOVERY"
     out["v3_discovered_at_utc"] = datetime.now(timezone.utc).isoformat()
     write_dataset("v3_live_discovery",out)
@@ -48,7 +57,7 @@ def run(input_file=None, limit=LIVE_ENRICH_LIMIT, reuse_current_broad_discovery:
         )
 
     base = _fresh_discovery(reuse_current_broad_discovery=reuse_current_broad_discovery)
-    refreshed = refresh_v3_candidates(base)
+    refreshed = base.copy() if base.empty else refresh_v3_candidates(base)
     write_dataset("v3_live_snapshot",refreshed)
     kwargs = {"defer_finalization": True} if defer_finalization else {}
     return run_intraday(input_frame=refreshed, limit=limit, **kwargs)
