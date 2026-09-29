@@ -178,7 +178,7 @@ def test_optional_catalyst_acceptance_publication_and_dashboard(real_run, monkey
     names = {row["name"] for row in result["datasets"]}
     assert set(REQUIRED_DATASETS) <= names
     assert (set(OPTIONAL_DATASETS) <= names) == with_optional
-    assert cp.publication_info("production")["pipeline_run_id"] == real_run
+    assert cp.publication_info("production")["production_run_id"] == real_run
     dashboard = read_dashboard_datasets(OPTIONAL_DATASETS, run_id=real_run)
     for name in OPTIONAL_DATASETS:
         frame, source = dashboard[name]
