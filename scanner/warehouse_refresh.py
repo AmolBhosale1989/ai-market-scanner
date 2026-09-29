@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from .ingestion_timing import BatchTiming
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -178,24 +179,26 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
                         batch[t]=fixed
                         damaged.remove(t)
                         print(f"WAREHOUSE_DAILY_RECONSTRUCTED ticker={t} source=complete_{recovery_interval}_session",flush=True)
-            ingested_at=datetime.now(timezone.utc)
-            frames=[]
-            for t in chunk:
-                if t not in batch:
-                    continue
-                frame=_normalize(t,batch.get(t),ingested_at)
-                frame=_completed_observations(frame, interval, ingested_at)
-                watermark=watermarks.get(t)
-                if watermark is not None and not frame.empty:
-                    wm=pd.Timestamp(watermark)
-                    wm=wm.tz_localize("UTC") if wm.tzinfo is None else wm.tz_convert("UTC")
-                    frame=frame[frame["event_timestamp"] >= wm]
-                if not frame.empty:
-                    frames.append(frame)
-            if not frames:
-                continue
-            combined=pd.concat(frames,ignore_index=True,sort=False)
-            inserted=ingest_observations(combined,run_id=run_id,provider="YAHOO_YFINANCE",data_type="OHLCV",timeframe=interval)
+            with BatchTiming(run_id=run_id, provider="YAHOO_YFINANCE", timeframe=interval, offset=i, kind="batch") as timing:
+                with timing.phase("normalization_validation"):
+                    ingested_at=datetime.now(timezone.utc)
+                    frames=[]
+                    for t in chunk:
+                        if t not in batch:
+                            continue
+                        frame=_normalize(t,batch.get(t),ingested_at)
+                        frame=_completed_observations(frame, interval, ingested_at)
+                        watermark=watermarks.get(t)
+                        if watermark is not None and not frame.empty:
+                            wm=pd.Timestamp(watermark)
+                            wm=wm.tz_localize("UTC") if wm.tzinfo is None else wm.tz_convert("UTC")
+                            frame=frame[frame["event_timestamp"] >= wm]
+                        if not frame.empty:
+                            frames.append(frame)
+                    if not frames:
+                        continue
+                    combined=pd.concat(frames,ignore_index=True,sort=False)
+                inserted=ingest_observations(combined,run_id=run_id,provider="YAHOO_YFINANCE",data_type="OHLCV",timeframe=interval)
             observations += inserted
             ingested_symbols.update(combined["ticker"].astype(str).str.upper().unique())
             print(f"WAREHOUSE_CHUNK_COMMITTED offset={i} requested={len(chunk)} symbols={combined['ticker'].nunique()} inserted={inserted}", flush=True)

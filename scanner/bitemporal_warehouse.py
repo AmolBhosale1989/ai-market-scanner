@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from .ingestion_timing import BatchTiming
 import os
 import re
 import uuid
@@ -146,51 +147,60 @@ def latest_event_timestamps(tickers: list[str], data_type: str = "OHLCV", timefr
 
 def ingest_observations(frame: pd.DataFrame, run_id: str, provider: str, data_type: str, timeframe: str):
     """Bulk insert a provider batch in one transaction; identical logical bars are idempotent."""
-    required = {"ticker", "event_timestamp", "ingested_at"}
-    missing = required - set(frame.columns)
-    if missing:
-        raise RuntimeError(f"BITEMPORAL_INGEST_SCHEMA_FAILED: {sorted(missing)}")
-    if frame.empty:
-        return 0
-    normalized=frame.rename(columns={c:c.lower() for c in ("Open","High","Low","Close","Volume")})
-    if not set(("open","high","low","close","volume")).issubset(normalized.columns) or invalid_rows(normalized).any():
-        raise RuntimeError("BITEMPORAL_INGEST_QUALITY_FAILED: invalid OHLCV")
-    tickers = list(dict.fromkeys(frame["ticker"].astype(str).str.upper()))
-    with _connect() as conn, conn.cursor() as cur:
-        cur.executemany("""INSERT INTO instrument(canonical_symbol)
-            SELECT %s WHERE NOT EXISTS (
-              SELECT 1 FROM instrument WHERE canonical_symbol=%s
-            )""", [(t, t) for t in tickers])
-        cur.execute("""SELECT canonical_symbol,instrument_id FROM instrument
-            WHERE canonical_symbol = ANY(%s) ORDER BY instrument_id""", (tickers,))
-        instrument_ids = {}
-        for symbol, iid in cur.fetchall():
-            instrument_ids.setdefault(str(symbol), iid)
-        rows=[]
-        for _, r in frame.iterrows():
-            ticker=str(r["ticker"]).upper()
-            payload={k:(None if pd.isna(v) else v) for k,v in r.items()
-                     if k not in {"ticker","event_timestamp","ingested_at","Open","High","Low","Close","Volume"}}
-            rows.append((instrument_ids[ticker],data_type,timeframe,r["event_timestamp"],r["ingested_at"],run_id,
-                         provider,r.get("Open"),r.get("High"),r.get("Low"),r.get("Close"),r.get("Volume"),
-                         __import__("json").dumps(payload,default=str)))
-        before=0
-        cur.execute("SELECT count(*) FROM market_observation WHERE warehouse_run_id=%s",(run_id,))
-        before=cur.fetchone()[0]
-        cur.executemany("""INSERT INTO market_observation
-          (instrument_id,data_type,timeframe,event_timestamp,ingested_at,warehouse_run_id,
-           provider,open,high,low,close,volume,payload)
-          SELECT %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
-          WHERE NOT EXISTS (
-            SELECT 1 FROM (SELECT * FROM market_observation WHERE instrument_id=%s AND data_type=%s
-              AND timeframe=%s AND event_timestamp=%s ORDER BY ingested_at DESC,observation_id DESC LIMIT 1) o
-              WHERE o.provider=%s
-              AND o.open IS NOT DISTINCT FROM %s AND o.high IS NOT DISTINCT FROM %s
-              AND o.low IS NOT DISTINCT FROM %s AND o.close IS NOT DISTINCT FROM %s
-              AND o.volume IS NOT DISTINCT FROM %s
-          )""", [r + (r[0],r[1],r[2],r[3],r[6],r[7],r[8],r[9],r[10],r[11]) for r in rows])
-        cur.execute("SELECT count(*) FROM market_observation WHERE warehouse_run_id=%s",(run_id,))
-        return int(cur.fetchone()[0]-before)
+    with BatchTiming(run_id=run_id, provider=provider, timeframe=timeframe, rows=len(frame)) as timing:
+        with timing.phase("validation"):
+            required = {"ticker", "event_timestamp", "ingested_at"}
+            missing = required - set(frame.columns)
+            if missing:
+                raise RuntimeError(f"BITEMPORAL_INGEST_SCHEMA_FAILED: {sorted(missing)}")
+            if frame.empty:
+                return 0
+            normalized=frame.rename(columns={c:c.lower() for c in ("Open","High","Low","Close","Volume")})
+            if not set(("open","high","low","close","volume")).issubset(normalized.columns) or invalid_rows(normalized).any():
+                raise RuntimeError("BITEMPORAL_INGEST_QUALITY_FAILED: invalid OHLCV")
+            tickers = list(dict.fromkeys(frame["ticker"].astype(str).str.upper()))
+        with timing.connection(_connect) as conn, conn.cursor() as cur:
+            with timing.phase("instrument_lookup"):
+                cur.executemany("""INSERT INTO instrument(canonical_symbol)
+                    SELECT %s WHERE NOT EXISTS (
+                      SELECT 1 FROM instrument WHERE canonical_symbol=%s
+                    )""", [(t, t) for t in tickers])
+                cur.execute("""SELECT canonical_symbol,instrument_id FROM instrument
+                    WHERE canonical_symbol = ANY(%s) ORDER BY instrument_id""", (tickers,))
+                instrument_ids = {}
+                for symbol, iid in cur.fetchall():
+                    instrument_ids.setdefault(str(symbol), iid)
+            with timing.phase("row_preparation"):
+                rows=[]
+                for _, r in frame.iterrows():
+                    ticker=str(r["ticker"]).upper()
+                    payload={k:(None if pd.isna(v) else v) for k,v in r.items()
+                             if k not in {"ticker","event_timestamp","ingested_at","Open","High","Low","Close","Volume"}}
+                    rows.append((instrument_ids[ticker],data_type,timeframe,r["event_timestamp"],r["ingested_at"],run_id,
+                                 provider,r.get("Open"),r.get("High"),r.get("Low"),r.get("Close"),r.get("Volume"),
+                                 __import__("json").dumps(payload,default=str)))
+            with timing.phase("count_before"):
+                before=0
+                cur.execute("SELECT count(*) FROM market_observation WHERE warehouse_run_id=%s",(run_id,))
+                before=cur.fetchone()[0]
+            with timing.phase("insert_execution"):
+                cur.executemany("""INSERT INTO market_observation
+                  (instrument_id,data_type,timeframe,event_timestamp,ingested_at,warehouse_run_id,
+                   provider,open,high,low,close,volume,payload)
+                  SELECT %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
+                  WHERE NOT EXISTS (
+                    SELECT 1 FROM (SELECT * FROM market_observation WHERE instrument_id=%s AND data_type=%s
+                      AND timeframe=%s AND event_timestamp=%s ORDER BY ingested_at DESC,observation_id DESC LIMIT 1) o
+                      WHERE o.provider=%s
+                      AND o.open IS NOT DISTINCT FROM %s AND o.high IS NOT DISTINCT FROM %s
+                      AND o.low IS NOT DISTINCT FROM %s AND o.close IS NOT DISTINCT FROM %s
+                      AND o.volume IS NOT DISTINCT FROM %s
+                  )""", [r + (r[0],r[1],r[2],r[3],r[6],r[7],r[8],r[9],r[10],r[11]) for r in rows])
+            with timing.phase("count_after"):
+                cur.execute("SELECT count(*) FROM market_observation WHERE warehouse_run_id=%s",(run_id,))
+                inserted = int(cur.fetchone()[0]-before)
+            timing.inserted = inserted
+        return inserted
 
 def main():
     parser = argparse.ArgumentParser(description="Bitemporal PostgreSQL warehouse")
