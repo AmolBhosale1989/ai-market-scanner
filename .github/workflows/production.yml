@@ -96,6 +96,7 @@ jobs:
             stage live_plan 50 python -m scanner.universe_plan --include-daily-candidates
           fi
 
+          export INTRADAY_FETCH_WORKERS=2
           stage intraday_warehouse 60 timeout 3600s python -m scanner.live_ingestion
           # Join all provider commits for the current structural plan before T0.
           stage catalyst_ingest 65 echo "CATALYST_INGEST_SKIPPED mode=disabled providers=ALL"

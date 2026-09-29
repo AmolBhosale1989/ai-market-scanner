@@ -1,4 +1,5 @@
 import time
+import os
 import json
 from datetime import datetime, timezone
 from typing import Iterable
@@ -28,7 +29,7 @@ def _download_once(tickers, period, interval):
             auto_adjust=True,
             progress=False,
             group_by="ticker",
-            threads=True,
+            threads=max(1, min(5, int(os.environ['YAHOO_DOWNLOAD_THREADS']))) if os.getenv('YAHOO_DOWNLOAD_THREADS') else True,
             timeout=30,
         )
     except TypeError:
@@ -39,7 +40,7 @@ def _download_once(tickers, period, interval):
             auto_adjust=True,
             progress=False,
             group_by="ticker",
-            threads=True,
+            threads=max(1, min(5, int(os.environ['YAHOO_DOWNLOAD_THREADS']))) if os.getenv('YAHOO_DOWNLOAD_THREADS') else True,
         )
 
     if raw is None or raw.empty:
