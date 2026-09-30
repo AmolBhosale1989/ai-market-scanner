@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-import uuid
 
 from .catalyst_db_bounds import bounded_persistence
+from .execution_timing import profiled, phase
 from .catalyst_adapters import CatalystProviderAdapter
 from .catalyst_warehouse import ingest_catalyst_batch
 from .bitemporal_warehouse import start_run,finish_run
@@ -32,6 +32,7 @@ def ingest_ticker(adapter: CatalystProviderAdapter,ticker: str,*,anchor) -> dict
         raise
 
 
+@profiled("alpha_ingestion")
 def ingest_alpha_vantage_batch(batch_adapter, tickers, *, anchor, lookforward) -> dict:
     """Fetch once; persist the complete calendar evidence batch in one bounded transaction."""
     wanted=list(dict.fromkeys(str(x).upper() for x in tickers if x))
@@ -39,27 +40,10 @@ def ingest_alpha_vantage_batch(batch_adapter, tickers, *, anchor, lookforward) -
     indexed=batch_adapter.fetch_and_index(anchor=anchor,lookforward=lookforward)
     print("CATALYST_FETCH_COMPLETE provider=ALPHA_VANTAGE",flush=True)
     print(f"CATALYST_PERSIST_START provider=ALPHA_VANTAGE tickers={len(wanted)}",flush=True)
-    results={}
-    with bounded_persistence() as cur:
-        for ticker in wanted:
-            fetched=indexed.get(ticker)
-            events=() if fetched is None else fetched.events
-            rejected=0 if fetched is None else fetched.rejected_count
-            run_id=str(uuid.uuid4())
-            cur.execute("""INSERT INTO warehouse_run_log
-                (warehouse_run_id,provider,request_type,requested_at,status,request_payload)
-                VALUES (%s,%s,'CATALYST_CONTEXT',now(),'STARTED',%s::jsonb)""",
-                (run_id,batch_adapter.provider_name,json.dumps({'ticker':ticker,'global_batch':True})))
-            rows=[{"provider_event_id":e.provider_event_id,"catalyst_type":e.catalyst_type,
-                   "event_timestamp":e.event_timestamp,"payload":dict(e.payload)} for e in events]
-            revisions=ingest_catalyst_batch(provider=batch_adapter.provider_name,ticker=ticker,
-                warehouse_run_id=run_id,events=rows,checked_at=anchor,rejected_count=rejected,cursor=cur)
-            cur.execute("""UPDATE warehouse_run_log SET completed_at=now(),status='AVAILABLE',
-                response_metadata=%s::jsonb WHERE warehouse_run_id=%s""",
-                (json.dumps({'events':len(rows),'rejected':rejected,'global_batch':True}),run_id))
-            results[ticker]={"events":len(rows),"rejected":rejected,"revisions":revisions}
-            if len(results) == 1 or len(results) % 25 == 0 or len(results) == len(wanted):
-                print(f"CATALYST_PERSIST_PROGRESS provider=ALPHA_VANTAGE staged={len(results)} total={len(wanted)}",flush=True)
+    from .catalyst_bulk import persist_alpha
+    with phase('transaction_overhead'):
+        with bounded_persistence() as cur:
+            results = persist_alpha(cur, batch_adapter.provider_name, wanted, indexed, anchor)
     print(f"CATALYST_PERSIST_COMPLETE provider=ALPHA_VANTAGE committed={len(results)}",flush=True)
     return results
 
