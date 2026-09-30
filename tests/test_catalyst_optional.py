@@ -8,12 +8,12 @@ from scanner import catalyst_policy as policy, catalyst_pipeline as gate
 from scanner.main import _final_decision
 
 
-def test_production_bypasses_all_provider_workers():
+def test_production_collects_alpha_without_enabling_strategy_enrichment():
     workflow = Path('.github/workflows/production.yml').read_text()
     assert 'CATALYST_MODE: disabled' in workflow
     stage65 = next(x for x in workflow.splitlines() if 'stage catalyst_ingest 65' in x)
-    assert 'echo "CATALYST_INGEST_SKIPPED' in stage65
-    assert 'python' not in stage65
+    assert "timeout --kill-after=5s 150s" in stage65
+    assert "env CATALYST_MODE=optional python -m scanner.catalyst_pipeline --ingest-only --mandatory-only" in stage65
     assert '--catalysts' not in workflow
 
 

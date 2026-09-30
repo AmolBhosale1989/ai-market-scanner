@@ -98,8 +98,9 @@ jobs:
 
           export INTRADAY_FETCH_WORKERS=2
           stage intraday_warehouse 60 timeout 3600s python -m scanner.live_ingestion
-          # Join all provider commits for the current structural plan before T0.
-          stage catalyst_ingest 65 echo "CATALYST_INGEST_SKIPPED mode=disabled providers=ALL"
+          # Collect mandatory Alpha evidence before T0; technical enrichment
+          # remains disabled for strategies. Optional provider I/O stays skipped.
+          stage catalyst_ingest 65 timeout --kill-after=5s 150s env CATALYST_MODE=optional python -m scanner.catalyst_pipeline --ingest-only --mandatory-only
           stage warehouse_gate 70 python -m scanner.warehouse_gate --tier MASTER_DAILY --tier CRITICAL_DAILY --tier CRITICAL_INTRADAY --tier THEME_INTRADAY --tier LIVE_INTRADAY
           # Consumers read the same validated versions and evaluate arrival age
           # at that snapshot. Publication still rechecks actual-time freshness.
