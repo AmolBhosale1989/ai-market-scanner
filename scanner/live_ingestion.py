@@ -39,4 +39,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    from .ingestion_deadline import run_bounded
+    run_bounded(main, seconds=120)

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+from .execution_timing import profiled
 
 from .control_plane import read_dataset, write_dataset
 
@@ -15,6 +16,7 @@ def _read(name: str) -> pd.DataFrame:
     return read_dataset(name,required=False)
 
 
+@profiled("order_flow")
 def run() -> pd.DataFrame:
     src = _read("momentum_signals")
     momentum_health = _read("momentum_health")

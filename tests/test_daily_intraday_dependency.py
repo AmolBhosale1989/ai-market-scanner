@@ -96,7 +96,8 @@ python() {
   if [[ "$FAIL_AT" == gate && "$*" == *scanner.warehouse_gate* && "$*" == *LIVE_INTRADAY* ]]; then return 8; fi
   return 0
 }
-timeout() { shift; "$@"; }
+timeout() { while [[ "$1" == --* ]]; do shift; done; shift; "$@"; }
+env() { while [[ "$1" == *=* ]]; do local "$1"; shift; done; "$@"; }
 bash() { printf '%s\\n' "$*"; }
 '''
     result=subprocess.run(["bash"],input=f"FAIL_AT={fail_at}\n"+shim+body,

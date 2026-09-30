@@ -8,8 +8,8 @@ from .consumer_snapshot import consumer_anchor
 from .control_plane import read_dataset
 
 
-REQUIRED_PROVIDERS=()
-OPTIONAL_PROVIDERS=("ALPHA_VANTAGE","YAHOO_NEWS","SEC_EDGAR")
+REQUIRED_PROVIDERS=("ALPHA_VANTAGE",)
+OPTIONAL_PROVIDERS=("YAHOO_NEWS","SEC_EDGAR")
 PROVIDER_MAX_AGE={"YAHOO_NEWS":timedelta(minutes=15),"SEC_EDGAR":timedelta(minutes=15),
                   "ALPHA_VANTAGE":timedelta(hours=24)}
 
@@ -87,13 +87,8 @@ def verify_coverage(tickers,*,anchor,pg_snapshot=None):
     from .consumer_snapshot import resolve_pg_snapshot
     from .catalogue_snapshot import instrument_cte
     visibility=resolve_pg_snapshot(pg_snapshot)
-    from .catalyst_policy import disabled
-    if disabled():
-        if visibility is None or anchor is None:
-            raise RuntimeError("CONSUMER_PG_SNAPSHOT_REQUIRED_OR_INVALID")
-        for provider in OPTIONAL_PROVIDERS:
-            print(f"CATALYST_COVERAGE_WARNING provider={provider} status=unavailable reason=disabled", flush=True)
-        return True
+    if visibility is None or anchor is None:
+        raise RuntimeError('CONSUMER_PG_SNAPSHOT_REQUIRED_OR_INVALID')
     catalogue, params=instrument_cte(anchor,visibility)
     clause="AND pg_visible_in_snapshot(c.writer_xid,%s::pg_snapshot)" if visibility else ""
     wanted=list(dict.fromkeys(str(x).upper() for x in tickers if x))
@@ -109,6 +104,10 @@ def verify_coverage(tickers,*,anchor,pg_snapshot=None):
         rows=cur.fetchall()
         present={(ticker,provider) for ticker,provider,checked_at in rows
                  if provider in PROVIDER_MAX_AGE and anchor-checked_at <= PROVIDER_MAX_AGE[provider]}
+    missing=[(ticker,provider) for ticker in wanted for provider in REQUIRED_PROVIDERS
+             if (ticker,provider) not in present]
+    if missing:
+        raise RuntimeError(f'CATALYST_COVERAGE_INCOMPLETE: required_checks_missing={len(missing)}')
     for provider in OPTIONAL_PROVIDERS:
         optional_missing = sorted(ticker for ticker in wanted if (ticker, provider) not in present)
         if optional_missing:
