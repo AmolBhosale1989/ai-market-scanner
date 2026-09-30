@@ -16,6 +16,8 @@ import pandas as pd
 from .bitemporal_warehouse import _connect
 
 
+from .execution_timing import timed, profiled, phase
+
 def _json_default(value):
     if isinstance(value, uuid.UUID):
         return str(value)
@@ -28,6 +30,7 @@ def _json_default(value):
     raise TypeError(type(value).__name__)
 
 
+@timed("result_mapping")
 def _clean(value):
     if isinstance(value, Mapping):
         return {str(k): _clean(v) for k, v in value.items()}
@@ -54,10 +57,12 @@ def _clean(value):
     return value
 
 
+@timed("result_mapping")
 def _canonical(value) -> str:
     return json.dumps(_clean(value), sort_keys=True, separators=(",", ":"), default=_json_default)
 
 
+@timed("result_mapping")
 def _hash(value) -> str:
     return hashlib.sha256(_canonical(value).encode()).hexdigest()
 
@@ -254,6 +259,7 @@ def _v3_provenance(records, rid):
     return stamped, provenance
 
 
+@timed("result_write")
 def write_dataset(
     dataset_name: str,
     frame: pd.DataFrame,
@@ -324,6 +330,7 @@ def _dataset_version_query(dataset_name: str, run_id: str | None, mode: str | No
     return sql, params
 
 
+@timed("database_read")
 def read_dataset(
     dataset_name: str,
     *,
@@ -387,6 +394,7 @@ def append_state(namespace: str, document_key: str, payload, run_id: str | None 
     return revision
 
 
+@timed("database_read")
 def read_state(namespace: str, document_key: str, default=None, *, as_of=None, pg_snapshot=None):
     """Read state at as_of; V3 production reads inherit the validated T0."""
     # V3 defaults to T0; other namespaces opt in explicitly during migration.
@@ -441,6 +449,7 @@ def append_events(
     return inserted
 
 
+@timed("database_read")
 def read_events(namespace: str, *, limit: int | None = None) -> list[dict]:
     sql = """SELECT payload FROM event_record WHERE namespace=%s
              ORDER BY observed_at NULLS LAST,created_at,event_key"""
@@ -536,6 +545,7 @@ def _read_version_records(cur, version_ids: Iterable[int]) -> dict[int, list]:
     return records
 
 
+@profiled("publication")
 def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = None,
             *, optional_datasets: Iterable[str] = ()) -> dict:
     rid = run_id or current_run_id()
@@ -545,8 +555,11 @@ def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = No
         raise RuntimeError("CONTROL_PLANE_PUBLICATION_EMPTY")
     if mode == "production":
         from .warehouse_gate import validate_publication_freshness
-        validate_publication_freshness(rid)
-    with _connect() as conn, conn.cursor() as cur:
+        with phase('freshness_revalidation'):
+            validate_publication_freshness(rid)
+    from .publication_bounds import bounded_publication, TimedCursor
+    with bounded_publication() as raw_cur:
+        cur = TimedCursor(raw_cur)
         cur.execute("SELECT status FROM pipeline_run WHERE pipeline_run_id=%s FOR UPDATE", (rid,))
         row = cur.fetchone()
         if row is None or row[0] not in {"STARTED", "VALIDATING"}:
@@ -587,7 +600,8 @@ def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = No
                    WHERE pipeline_run_id=%s""",
                 (as_of_row[0], rid),
             )
-        all_records = _read_version_records(cur, (version[0] for version in versions.values()))
+        with phase('payload_read'):
+            all_records = _read_version_records(cur, (version[0] for version in versions.values()))
         from .signal_freshness import SIGNAL_BAR_FIELDS
         signal_records = {}
         for name, (version_id, expected_hash, expected_rows) in versions.items():

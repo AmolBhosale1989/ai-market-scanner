@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Iterable
 
 import pandas as pd
+from .execution_timing import profiled, phase
 
 from .bitemporal_warehouse import _connect, verify_health
 from .config import (
@@ -91,7 +92,8 @@ def coverage_frame(tier: CoverageTier, as_of: datetime, pg_snapshot: str | None 
     if visibility:
         params += (visibility,)
     with _connect() as conn:
-        return pd.read_sql_query(sql,conn,params=params)
+        with phase('coverage_sql_'+tier.name):
+            return pd.read_sql_query(sql,conn,params=params)
 
 
 def evaluate_tier(tier: CoverageTier, frame: pd.DataFrame, *, now_utc=None) -> dict:
@@ -179,6 +181,7 @@ def validate_publication_freshness(run_id: str, *, now_utc=None) -> None:
             raise RuntimeError(f"PUBLICATION_FRESHNESS_BLOCKED: {tier.name}: {result}")
 
 
+@profiled("warehouse_gate")
 def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | None = None, selected: set[str] | None = None, pg_snapshot: str | None = None) -> dict:
     verify_health()
     selected=selected or set()
@@ -188,7 +191,8 @@ def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | 
     if as_of is None:
         if pg_snapshot is not None:
             raise RuntimeError("WAREHOUSE_REPLAY_ANCHOR_REQUIRED")
-        as_of, pg_snapshot = capture_boundary(run_id=current_run_id())
+        with phase('snapshot_capture'):
+            as_of, pg_snapshot = capture_boundary(run_id=current_run_id())
     else:
         # Never manufacture today's visibility for an old timestamp.
         pg_snapshot = validate_pg_snapshot(pg_snapshot)

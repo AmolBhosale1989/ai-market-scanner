@@ -25,6 +25,8 @@ class PointInTimeRequirement:
     pg_snapshot: str | None = None
 
 
+from .execution_timing import timed
+
 def _connect():
     from .database import connection
     return connection()
@@ -80,6 +82,7 @@ def period_start(period: str, as_of) -> pd.Timestamp:
     return anchor.tz_convert("UTC").normalize() - pd.DateOffset(**{field: count})
 
 
+@timed("database_read")
 def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
     """Return only versions that were known by req.as_of. Never query future ingestion."""
     from .consumer_snapshot import consumer_anchor, resolve_pg_snapshot

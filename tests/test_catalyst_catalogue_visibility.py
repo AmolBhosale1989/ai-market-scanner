@@ -6,7 +6,7 @@ import pytest
 
 from scanner import control_plane as cp, bitemporal_warehouse as pit
 from scanner import consumer_snapshot as boundary, catalyst_warehouse as catalysts
-from scanner.catalyst_pipeline import verify_coverage, OPTIONAL_PROVIDERS
+from scanner.catalyst_pipeline import verify_coverage, OPTIONAL_PROVIDERS, REQUIRED_PROVIDERS
 from scanner.catalogue_snapshot import instrument_cte, read_frozen_catalogue
 from scanner.warehouse_gate import coverage_frame, CoverageTier
 
@@ -48,7 +48,7 @@ def test_late_catalyst_evidence_and_correction_stay_invisible(database, commit, 
             cur.execute('SAVEPOINT provider_batch')
             catalysts._ingest_revision_cursor(cur, provider='TEST', provider_event_id='evt', ticker=symbol,
                 catalyst_type='NEWS', event_timestamp=event, warehouse_run_id=rid, payload={'headline': 'late revision'})
-            for provider in OPTIONAL_PROVIDERS:
+            for provider in REQUIRED_PROVIDERS+OPTIONAL_PROVIDERS:
                 cur.execute('''INSERT INTO catalyst_check
                     (provider,instrument_id,ticker,checked_at,warehouse_run_id,result_status,event_count)
                     VALUES (%s,%s,%s,clock_timestamp(),%s,'NO_EVENT',0)''', (provider, iid, symbol, rid))
@@ -59,17 +59,13 @@ def test_late_catalyst_evidence_and_correction_stay_invisible(database, commit, 
         before = catalysts.catalyst_context(**kwargs)
         assert before.iloc[0]['payload']['headline'] == 'original'
         assert catalysts.latest_catalyst_checks(tickers=[symbol], as_of=at, pg_snapshot=visibility).empty
-        assert verify_coverage([symbol], anchor=at, pg_snapshot=visibility)
-        warnings = capsys.readouterr().out
-        for provider in OPTIONAL_PROVIDERS:
-            assert f'provider={provider} missing=1' in warnings
+        with pytest.raises(RuntimeError,match='CATALYST_COVERAGE_INCOMPLETE'):
+            verify_coverage([symbol], anchor=at, pg_snapshot=visibility)
         writer.commit() if commit else writer.rollback()
         pd.testing.assert_frame_equal(before, catalysts.catalyst_context(**kwargs))
         assert catalysts.latest_catalyst_checks(tickers=[symbol], as_of=at, pg_snapshot=visibility).empty
-        assert verify_coverage([symbol], anchor=at, pg_snapshot=visibility)
-        warnings = capsys.readouterr().out
-        for provider in OPTIONAL_PROVIDERS:
-            assert f'provider={provider} missing=1' in warnings
+        with pytest.raises(RuntimeError,match='CATALYST_COVERAGE_INCOMPLETE'):
+            verify_coverage([symbol], anchor=at, pg_snapshot=visibility)
         later, new_visibility = boundary.capture_boundary()
         latest = catalysts.catalyst_context(**dict(kwargs, as_of=later, end_time=later, pg_snapshot=new_visibility))
         assert latest.iloc[0]['payload']['headline'] == ('late revision' if commit else 'original')

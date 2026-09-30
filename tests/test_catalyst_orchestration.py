@@ -69,18 +69,21 @@ def test_control_plane_allows_optional_stale_or_missing_evidence(monkeypatch):
         def cursor(self): return Cursor(self.rows)
         def __enter__(self): return self
         def __exit__(self,*args): pass
-    providers=list(gate.OPTIONAL_PROVIDERS)
+    providers=list(gate.REQUIRED_PROVIDERS+gate.OPTIONAL_PROVIDERS)
+    monkeypatch.setattr("scanner.consumer_snapshot.resolve_pg_snapshot",lambda x: "10:10:")
     fresh=[("AAA",provider,tminus1) for provider in providers]
     monkeypatch.setattr("scanner.database.connection",lambda: Conn(fresh))
     assert gate.verify_coverage(["AAA"],anchor=t0) is True
 
     stale=[("AAA",provider,tminus25h) for provider in providers]
     monkeypatch.setattr("scanner.database.connection",lambda: Conn(stale))
-    assert gate.verify_coverage(["AAA"],anchor=t0) is True
+    with pytest.raises(RuntimeError,match="CATALYST_COVERAGE_INCOMPLETE"):
+        gate.verify_coverage(["AAA"],anchor=t0)
 
     missing=[("AAA",provider,tminus1) for provider in providers if provider!="ALPHA_VANTAGE"]
     monkeypatch.setattr("scanner.database.connection",lambda: Conn(missing))
-    assert gate.verify_coverage(["AAA"],anchor=t0) is True
+    with pytest.raises(RuntimeError,match="CATALYST_COVERAGE_INCOMPLETE"):
+        gate.verify_coverage(["AAA"],anchor=t0)
 
 
 def test_data_plane_reads_last_published_production_universe(monkeypatch):

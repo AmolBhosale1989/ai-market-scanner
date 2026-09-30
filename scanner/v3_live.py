@@ -4,6 +4,7 @@ import argparse
 from datetime import datetime, timezone
 
 import pandas as pd
+from .execution_timing import profiled
 
 from .broad_breakout import run as run_broad_discovery
 from .config import LIVE_ENRICH_LIMIT
@@ -44,6 +45,7 @@ def _fresh_discovery(reuse_current_broad_discovery: bool = False) -> pd.DataFram
     return out
 
 
+@profiled("v3")
 def run(input_file=None, limit=LIVE_ENRICH_LIMIT, reuse_current_broad_discovery: bool = False, *, defer_finalization: bool = False):
     """Production V3: PostgreSQL discovery -> warehouse refresh -> V3 decision.
 

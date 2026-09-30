@@ -5,6 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+from .execution_timing import profiled
 from .warehouse import DataRequirement, provide
 
 from .order_flow import bar_order_flow_proxy
@@ -92,6 +93,7 @@ def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float
     return same_clock_rvol(d,today,session_date,sessions=3)
 
 
+@profiled("momentum")
 def run(limit: int = 40):
     themed=_read_optional("rotation_leaders")
     broad=_read_optional("broad_breakout_discovery")

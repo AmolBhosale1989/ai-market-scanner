@@ -92,7 +92,7 @@ def test_verify_only_never_calls_provider_worker(monkeypatch):
     calls = []
     monkeypatch.setattr(pipeline, 'verify_coverage', lambda tickers, *, anchor: calls.append((tickers, anchor)))
     monkeypatch.setattr(pipeline, 'validate_price_snapshot', lambda anchor: None)
-    assert pipeline.main(['--verify-only'])['required_checks'] == 0
+    assert pipeline.main(['--verify-only'])['required_checks'] == 1
     assert calls == [(['AAA'], t0)]
 
 

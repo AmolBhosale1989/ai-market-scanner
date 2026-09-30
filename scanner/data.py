@@ -104,9 +104,11 @@ def download_batch(
 
     out={}
     remaining=tickers[:]
+    budget=float(os.getenv('INTRADAY_BATCH_BUDGET_SECONDS','8')) if interval == '5m' else float('inf')
+    deadline=time.monotonic()+budget
 
     for attempt in range(retries+1):
-        if not remaining:
+        if not remaining or time.monotonic() >= deadline:
             break
 
         # Never send the full universe in one Yahoo request.  Large first
@@ -138,6 +140,9 @@ def download_batch(
         if remaining and attempt<retries:
             sleep_for=RETRY_BACKOFF_SECONDS*(2**attempt)
             print(f"Retrying {len(remaining)} missing symbols after {sleep_for:.0f}s...")
+            if time.monotonic()+sleep_for >= deadline:
+                print(f'PROVIDER_RETRY_BUDGET_EXHAUSTED missing={len(remaining)}',flush=True)
+                break
             time.sleep(sleep_for)
 
     if remaining:

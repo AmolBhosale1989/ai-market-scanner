@@ -44,16 +44,17 @@ def test_disabled_enrichment_never_resolves_provider_state(monkeypatch):
     assert out.iloc[0]['catalyst_availability'] == 'unavailable'
 
 
-def test_disabled_coverage_requires_snapshot_and_does_not_query_db(monkeypatch, capsys):
-    monkeypatch.setenv('CATALYST_MODE', 'disabled')
-    monkeypatch.setattr('scanner.database.connection', lambda: pytest.fail('Catalyst SQL'))
-    t0 = datetime(2026, 9, 28, tzinfo=timezone.utc)
-    assert gate.verify_coverage(['AAA'], anchor=t0, pg_snapshot='10:10:')
-    output = capsys.readouterr().out
-    for provider in gate.OPTIONAL_PROVIDERS:
-        assert f'provider={provider} status=unavailable' in output
-    with pytest.raises(RuntimeError, match='PG_SNAPSHOT'):
-        gate.verify_coverage(['AAA'], anchor=t0)
+def test_disabled_enrichment_does_not_disable_required_alpha(monkeypatch):
+    from unittest.mock import MagicMock
+    monkeypatch.setenv('CATALYST_MODE','disabled')
+    conn=MagicMock(); cur=conn.__enter__.return_value.cursor.return_value.__enter__.return_value
+    cur.fetchall.return_value=[]
+    monkeypatch.setattr('scanner.database.connection',lambda:conn)
+    t0=datetime(2026,9,28,tzinfo=timezone.utc)
+    with pytest.raises(RuntimeError,match='CATALYST_COVERAGE_INCOMPLETE'):
+        gate.verify_coverage(['AAA'],anchor=t0,pg_snapshot='10:10:')
+    cur.fetchall.return_value=[('AAA','ALPHA_VANTAGE',t0)]
+    assert gate.verify_coverage(['AAA'],anchor=t0,pg_snapshot='10:10:')
 
 
 @pytest.mark.parametrize('bad', ['daily_only', 'failed', 'wrong_time', 'wrong_snapshot', None])
