@@ -25,7 +25,8 @@ python() {
   if [[ -n "$FAILED" && "$*" == *"-m scanner.$FAILED"* ]]; then return 7; fi
   return 0
 }
-timeout() { shift; "$@"; }
+timeout() { while [[ "$1" == --* ]]; do shift; done; shift; "$@"; }
+env() { while [[ "$1" == *=* ]]; do local "$1"; shift; done; "$@"; }
 bash() { printf '%s\\n' "$*"; }
 '''
     result = subprocess.run(['bash'], input=f'PIPELINE_MODE={lane}\nFAILED={failed}\n'+shim+body,

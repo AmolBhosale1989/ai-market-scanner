@@ -66,7 +66,8 @@ python() {
   if [[ "$FAIL_AT" == premarket && "$*" == *scanner.premarket* ]]; then return 7; fi
   return 0
 }
-timeout() { shift; "$@"; }
+timeout() { while [[ "$1" == --* ]]; do shift; done; shift; "$@"; }
+env() { while [[ "$1" == *=* ]]; do local "$1"; shift; done; "$@"; }
 bash() { printf '%s\\n' "$*"; }
 '''
     return subprocess.run(
