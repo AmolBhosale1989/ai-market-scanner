@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 PROVIDER_BOUNDARIES = {
-    "data.py", "warehouse_refresh.py", "universe.py", "events.py", "earnings_intel.py",
+    "data.py", "warehouse_refresh.py", "ingestion_fetch.py", "universe.py", "events.py", "earnings_intel.py",
     "catalysts.py", "options_microstructure.py",
 }
 FILE_IO_ALLOWLIST = {"control_plane.py", "warehouse_migrate.py", "production_audit.py"}

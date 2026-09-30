@@ -144,7 +144,87 @@ def latest_event_timestamps(tickers: list[str], data_type: str = "OHLCV", timefr
         cur.execute(sql, (wanted, data_type, timeframe))
         return {str(symbol): ts for symbol, ts in cur.fetchall() if ts is not None}
 
-def ingest_observations(frame: pd.DataFrame, run_id: str, provider: str, data_type: str, timeframe: str):
+def resolve_instrument_ids(tickers):
+    """Run-local writer identity map; never a cache of mutable reader metadata."""
+    wanted = list(dict.fromkeys(str(t).upper() for t in tickers))
+    with _connect() as conn, conn.cursor() as cur:
+        cur.execute("SELECT canonical_symbol,instrument_id FROM instrument "
+                    "WHERE canonical_symbol = ANY(%s) ORDER BY instrument_id", (wanted,))
+        ids = {}
+        for symbol, iid in cur.fetchall():
+            ids.setdefault(symbol, iid)
+        missing = sorted(set(wanted)-set(ids))
+        if missing:
+            cur.execute("""INSERT INTO instrument(canonical_symbol)
+                SELECT symbol FROM unnest(%s::text[]) AS symbol
+                WHERE NOT EXISTS (SELECT 1 FROM instrument i WHERE i.canonical_symbol=symbol)
+                RETURNING canonical_symbol,instrument_id""", (missing,))
+            ids.update(cur.fetchall())
+    return ids
+
+
+def ingest_observations(frame, run_id, provider, data_type, timeframe, *, instrument_ids=None):
+    """One set-based insert per bounded batch; revisions retain server writer_xid."""
+    from psycopg.types.json import Jsonb
+    from .ingestion_timing import BatchTiming
+    with BatchTiming(run_id=run_id, provider=provider, timeframe=timeframe,
+                     rows=len(frame), implementation='bulk') as timing:
+        with timing.phase('validation'):
+            missing = {'ticker', 'event_timestamp', 'ingested_at'}-set(frame.columns)
+            if missing:
+                raise RuntimeError(f"BITEMPORAL_INGEST_SCHEMA_FAILED: {sorted(missing)}")
+            if frame.empty:
+                return 0
+            normalized = frame.rename(columns={c:c.lower() for c in
+                                       ('Open','High','Low','Close','Volume')})
+            if not {'open','high','low','close','volume'} <= set(normalized.columns) or invalid_rows(normalized).any():
+                raise RuntimeError('BITEMPORAL_INGEST_QUALITY_FAILED: invalid OHLCV')
+        # Preserve sequential revision semantics for unusual multi-revision inputs.
+        if frame.assign(ticker=frame.ticker.astype(str).str.upper()).duplicated(['ticker','event_timestamp']).any():
+            return _legacy_ingest_observations(frame, run_id, provider, data_type, timeframe)
+        with timing.phase('instrument_lookup'):
+            ids = instrument_ids if instrument_ids is not None else resolve_instrument_ids(frame.ticker)
+            if set(frame.ticker.astype(str).str.upper())-set(ids):
+                raise RuntimeError('BITEMPORAL_INSTRUMENT_CACHE_MISS')
+        with timing.phase('row_preparation'):
+            rows=[]
+            excluded={'ticker','event_timestamp','ingested_at','Open','High','Low','Close','Volume'}
+            for r in frame.to_dict('records'):
+                rows.append(dict(instrument_id=ids[str(r['ticker']).upper()],
+                    event_timestamp=pd.Timestamp(r['event_timestamp']).isoformat(),
+                    ingested_at=pd.Timestamp(r['ingested_at']).isoformat(),
+                    open=r.get('Open'), high=r.get('High'), low=r.get('Low'),
+                    close=r.get('Close'), volume=r.get('Volume'),
+                    payload={k:None if pd.isna(v) else v for k,v in r.items() if k not in excluded}))
+        with timing.connection(_connect) as conn, conn.cursor() as cur:
+            with timing.phase('insert_execution'):
+                cur.execute("""INSERT INTO market_observation
+                    (instrument_id,data_type,timeframe,event_timestamp,ingested_at,
+                     warehouse_run_id,provider,open,high,low,close,volume,payload)
+                    SELECT b.instrument_id,%s,%s,b.event_timestamp,b.ingested_at,%s,%s,
+                           b.open,b.high,b.low,b.close,b.volume,b.payload
+                    FROM jsonb_to_recordset(%s::jsonb) AS b(
+                        instrument_id bigint,event_timestamp timestamptz,ingested_at timestamptz,
+                        open numeric,high numeric,low numeric,close numeric,volume numeric,payload jsonb)
+                    LEFT JOIN LATERAL (
+                        SELECT o.provider,o.open,o.high,o.low,o.close,o.volume,o.observation_id
+                        FROM market_observation o WHERE o.instrument_id=b.instrument_id
+                        AND o.data_type=%s AND o.timeframe=%s AND o.event_timestamp=b.event_timestamp
+                        ORDER BY o.ingested_at DESC,o.observation_id DESC LIMIT 1
+                    ) old ON true
+                    WHERE old.observation_id IS NULL OR old.provider IS DISTINCT FROM %s
+                       OR old.open IS DISTINCT FROM b.open OR old.high IS DISTINCT FROM b.high
+                       OR old.low IS DISTINCT FROM b.low OR old.close IS DISTINCT FROM b.close
+                       OR old.volume IS DISTINCT FROM b.volume""",
+                    (data_type,timeframe,run_id,provider,
+                     Jsonb(rows, dumps=lambda v: __import__('json').dumps(v, default=str, allow_nan=False)),
+                     data_type,timeframe,provider))
+                inserted=cur.rowcount
+            timing.inserted=inserted
+        return inserted
+
+
+def _legacy_ingest_observations(frame: pd.DataFrame, run_id: str, provider: str, data_type: str, timeframe: str):
     """Bulk insert a provider batch in one transaction; identical logical bars are idempotent."""
     required = {"ticker", "event_timestamp", "ingested_at"}
     missing = required - set(frame.columns)

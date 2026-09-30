@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+from contextlib import closing
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -9,6 +11,9 @@ import numpy as np
 from .bitemporal_warehouse import _connect, finish_run, ingest_observations, latest_event_timestamps, start_run, verify_health
 from .config import CRITICAL_MARKET_SYMBOLS, INGESTION_CRITICAL_SYMBOLS, RETRY_CHUNK_SIZE
 from .control_plane import read_dataset
+from .bitemporal_warehouse import resolve_instrument_ids
+from .ingestion_timing import BatchTiming
+from .ingestion_fetch import ordered_prefetch
 from .data import download_batch
 from .warehouse import _freshness_failures
 from .ohlcv_quality import invalid_rows
@@ -132,6 +137,11 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
         payload={"tickers": tickers, "period": period, "interval": interval},
     )
     try:
+        instrument_ids = None
+        if interval == '5m':
+            with BatchTiming(run_id=run_id, kind='instrument_cache') as timing:
+                with timing.phase('instrument_cache_load'):
+                    instrument_ids = resolve_instrument_ids(tickers)
         watermarks = {} if bootstrap else latest_event_timestamps(tickers, timeframe=interval)
         stale_existing=set(watermarks) if bootstrap else _refresh_candidates(watermarks,interval,tickers)
         incremental_period = "5d" if interval == "1d" else "2d"
@@ -141,64 +151,94 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
         provider_chunk = RETRY_CHUNK_SIZE
         ingested_symbols=set()
         observations=0
-        # Download and commit each small provider batch immediately. A later
-        # provider failure cannot discard already committed successful chunks.
-        for i in range(0, len(tickers), provider_chunk):
-            chunk=tickers[i:i+provider_chunk]
-            # A newly listed/missed symbol must receive the requested history;
-            # existing symbols use the bounded incremental window.
-            existing=[t for t in chunk if t in watermarks and t in stale_existing]
-            missing=[t for t in chunk if t not in watermarks]
-            batch={}
-            if existing:
-                batch.update(download_batch(existing, period=incremental_period, interval=interval))
-            if missing:
-                batch.update(download_batch(missing, period=period, interval=interval))
-            if interval == "1d":
-                # Recovery stays in ingestion. Retain the observed 5m inputs in
-                # PostgreSQL before publishing any reconstructed daily candle.
-                damaged=[t for t,f in batch.items() if not f.empty and
-                         invalid_rows(f.rename(columns={c:c.lower() for c in
-                             ("Open","High","Low","Close","Volume")})).any()]
-                for recovery_interval in ("5m","30m","60m"):
-                    if not damaged:
-                        break
-                    recovery=download_batch(damaged,period="5d",interval=recovery_interval)
-                    for t,bars in recovery.items():
-                        fixed=repair_daily(batch[t],bars,interval=recovery_interval)
-                        if "daily_bar_source" not in fixed:
-                            continue
-                        source=_normalize(t,bars,datetime.now(timezone.utc))
-                        evidence=fixed.dropna(subset=["daily_bar_source"]).iloc[-1]
-                        source=source[source.event_timestamp.between(
-                            pd.Timestamp(evidence.source_first_bar_utc),
-                            pd.Timestamp(evidence.source_last_bar_utc))]
-                        ingest_observations(source,run_id=run_id,provider="YAHOO_YFINANCE",
-                                            data_type="OHLCV",timeframe=recovery_interval)
-                        batch[t]=fixed
-                        damaged.remove(t)
-                        print(f"WAREHOUSE_DAILY_RECONSTRUCTED ticker={t} source=complete_{recovery_interval}_session",flush=True)
-            ingested_at=datetime.now(timezone.utc)
-            frames=[]
-            for t in chunk:
-                if t not in batch:
+        pending_frames=[]
+        pending_symbols=0
+        pending_rows=0
+        def persist(frame):
+            options = {'instrument_ids': instrument_ids} if instrument_ids is not None else {}
+            return ingest_observations(frame,run_id=run_id,provider="YAHOO_YFINANCE",
+                                       data_type="OHLCV",timeframe=interval,**options)
+        chunks=[tickers[i:i+provider_chunk] for i in range(0,len(tickers),provider_chunk)]
+        requests=[([t for t in chunk if t in watermarks and t in stale_existing],
+                   [t for t in chunk if t not in watermarks], incremental_period, period, interval)
+                  for chunk in chunks]
+        workers=max(1,min(2,int(os.getenv('INTRADAY_FETCH_WORKERS','1')))) if interval == '5m' else 1
+        def serial_fetch():
+            for existing,missing,incremental,requested,timeframe in requests:
+                batch={}
+                if existing:
+                    batch.update(download_batch(existing,period=incremental,interval=timeframe))
+                if missing:
+                    batch.update(download_batch(missing,period=requested,interval=timeframe))
+                yield batch
+        results=ordered_prefetch(requests,workers=workers) if workers > 1 else serial_fetch()
+        print(f'WAREHOUSE_FETCH_WORKERS workers={workers} provider_threads_per_worker={5 if workers > 1 else "default"}',flush=True)
+        # Closing guarantees all producer processes are joined, including on a
+        # database error. Only this process writes, in deterministic chunk order.
+        with closing(results):
+            for index,(chunk,batch) in enumerate(zip(chunks,results)):
+                i=index*provider_chunk
+                if interval == "1d":
+                    # Recovery stays in ingestion. Retain the observed 5m inputs in
+                    # PostgreSQL before publishing any reconstructed daily candle.
+                    damaged=[t for t,f in batch.items() if not f.empty and
+                             invalid_rows(f.rename(columns={c:c.lower() for c in
+                                 ("Open","High","Low","Close","Volume")})).any()]
+                    for recovery_interval in ("5m","30m","60m"):
+                        if not damaged:
+                            break
+                        recovery=download_batch(damaged,period="5d",interval=recovery_interval)
+                        for t,bars in recovery.items():
+                            fixed=repair_daily(batch[t],bars,interval=recovery_interval)
+                            if "daily_bar_source" not in fixed:
+                                continue
+                            source=_normalize(t,bars,datetime.now(timezone.utc))
+                            evidence=fixed.dropna(subset=["daily_bar_source"]).iloc[-1]
+                            source=source[source.event_timestamp.between(
+                                pd.Timestamp(evidence.source_first_bar_utc),
+                                pd.Timestamp(evidence.source_last_bar_utc))]
+                            ingest_observations(source,run_id=run_id,provider="YAHOO_YFINANCE",
+                                                data_type="OHLCV",timeframe=recovery_interval)
+                            batch[t]=fixed
+                            damaged.remove(t)
+                            print(f"WAREHOUSE_DAILY_RECONSTRUCTED ticker={t} source=complete_{recovery_interval}_session",flush=True)
+                with BatchTiming(run_id=run_id,kind='normalization',offset=i) as timing:
+                    with timing.phase('normalization_validation'):
+                        ingested_at=datetime.now(timezone.utc)
+                        frames=[]
+                        for t in chunk:
+                            if t not in batch:
+                                continue
+                            frame=_normalize(t,batch.get(t),ingested_at)
+                            frame=_completed_observations(frame, interval, ingested_at)
+                            watermark=watermarks.get(t)
+                            if watermark is not None and not frame.empty:
+                                wm=pd.Timestamp(watermark)
+                                wm=wm.tz_localize("UTC") if wm.tzinfo is None else wm.tz_convert("UTC")
+                                frame=frame[frame["event_timestamp"] >= wm]
+                            if not frame.empty:
+                                frames.append(frame)
+                if not frames:
                     continue
-                frame=_normalize(t,batch.get(t),ingested_at)
-                frame=_completed_observations(frame, interval, ingested_at)
-                watermark=watermarks.get(t)
-                if watermark is not None and not frame.empty:
-                    wm=pd.Timestamp(watermark)
-                    wm=wm.tz_localize("UTC") if wm.tzinfo is None else wm.tz_convert("UTC")
-                    frame=frame[frame["event_timestamp"] >= wm]
-                if not frame.empty:
-                    frames.append(frame)
-            if not frames:
-                continue
-            combined=pd.concat(frames,ignore_index=True,sort=False)
-            inserted=ingest_observations(combined,run_id=run_id,provider="YAHOO_YFINANCE",data_type="OHLCV",timeframe=interval)
+                combined=pd.concat(frames,ignore_index=True,sort=False)
+                pending_frames.append(combined)
+                pending_symbols += len(chunk)
+                pending_rows += len(combined)
+                if interval == '5m' and pending_symbols < 100 and pending_rows < 20000:
+                    continue
+                combined=pd.concat(pending_frames,ignore_index=True)
+                inserted=persist(combined)
+                pending_frames=[]
+                pending_symbols=pending_rows=0
+                observations += inserted
+                ingested_symbols.update(combined["ticker"].astype(str).str.upper().unique())
+                print(f"WAREHOUSE_CHUNK_COMMITTED offset={i} requested={len(chunk)} symbols={combined['ticker'].nunique()} inserted={inserted}", flush=True)
+        if pending_frames:
+            combined=pd.concat(pending_frames,ignore_index=True)
+            inserted=persist(combined)
             observations += inserted
-            ingested_symbols.update(combined["ticker"].astype(str).str.upper().unique())
-            print(f"WAREHOUSE_CHUNK_COMMITTED offset={i} requested={len(chunk)} symbols={combined['ticker'].nunique()} inserted={inserted}", flush=True)
+            ingested_symbols.update(combined['ticker'].astype(str).str.upper().unique())
+            print(f"WAREHOUSE_CHUNK_COMMITTED offset=tail symbols={combined['ticker'].nunique()} inserted={inserted}",flush=True)
         metadata={"requested_symbols":len(tickers),"ingested_symbols":len(ingested_symbols),
                   "observations":observations,"period":period,"interval":interval,
                   "mode":"BOOTSTRAP" if bootstrap else "INCREMENTAL_WITH_MISSING_BACKFILL",

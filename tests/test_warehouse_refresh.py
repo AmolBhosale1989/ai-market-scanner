@@ -91,6 +91,7 @@ def test_incremental_refresh_revisits_latest_bar(monkeypatch):
     event=pd.Timestamp("2026-09-23T18:20:00Z")
     frame=pd.DataFrame({"Open":[100.],"High":[102.],"Low":[99.],"Close":[101.],"Volume":[500.]},index=pd.DatetimeIndex([event]))
     captured=[]
+    monkeypatch.setattr(warehouse_refresh,"resolve_instrument_ids",lambda tickers: {t:i for i,t in enumerate(tickers)})
     monkeypatch.setattr(warehouse_refresh,"verify_health",lambda:None)
     monkeypatch.setattr(warehouse_refresh,"start_run",lambda **kw:"run")
     monkeypatch.setattr(warehouse_refresh,"finish_run",lambda *a,**kw:None)
