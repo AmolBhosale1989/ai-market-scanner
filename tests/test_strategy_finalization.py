@@ -73,6 +73,8 @@ def test_real_finalize_requires_completed_current_run_producers(monkeypatch, blo
     monkeypatch.setenv('WAREHOUSE_CONSUMER_SNAPSHOT', '1')
     _validated_anchor.cache_clear()
     try:
+        # An available empty premarket result must not block the producer join.
+        cp.write_dataset('premarket_discovery', pd.DataFrame(columns=['ticker']))
         cp.write_dataset('intraday_live', pd.DataFrame([{
             'ticker': 'AAA', 'live_trade_action': 'BUY / LIVE CONFIRMED',
             'monitor_state': 'LIVE_CONFIRMED'}]))
