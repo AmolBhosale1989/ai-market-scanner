@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 from .warehouse import DataRequirement, provide
+from .config import CORE_INTRADAY_MARKET_SYMBOLS, ROTATION_REQUIRED_SYMBOLS
+from .consumer_snapshot import consumer_anchor
 
 from .control_plane import read_dataset, write_dataset
 
@@ -40,7 +42,14 @@ def _normalize(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
 
 
 def _warehouse_batch(tickers: list[str], consumer: str, period: str="5d") -> dict[str,pd.DataFrame]:
-    view=provide(DataRequirement(consumer=consumer,tickers=tuple(tickers),interval="5m",period=period,max_age_minutes=10,view_name=consumer+"_5m"))
+    critical = set(CORE_INTRADAY_MARKET_SYMBOLS + ROTATION_REQUIRED_SYMBOLS)
+    view = provide(DataRequirement(
+        consumer=consumer, tickers=tuple(tickers), interval="5m", period=period,
+        max_age_minutes=10, view_name=consumer+"_5m",
+        minimum_fresh_coverage=0.0,
+        required_fresh_tickers=tuple(t for t in tickers if t.upper() in critical),
+        allow_empty_after_freshness_filter=True,
+    ))
     out={}
     for ticker,g in view.frame.groupby("ticker"):
         x=g.copy()
@@ -69,7 +78,8 @@ def run(input_file: str | None = None, batch_size: int = 80, top_n: int = 100):
     name_map = base.set_index("ticker").get("name", pd.Series(dtype=object)).to_dict()
     exchange_map = base.set_index("ticker").get("exchange", pd.Series(dtype=object)).to_dict()
 
-    now_et = datetime.now(NY)
+    anchor = consumer_anchor()
+    now_et = anchor.tz_convert(NY).to_pydatetime() if anchor is not None else datetime.now(NY)
     rows = []
     batches = math.ceil(len(tickers) / batch_size) if tickers else 0
     print(f"Premarket discovery: scanning {len(tickers):,} validated live-universe stocks in {batches} batches...")

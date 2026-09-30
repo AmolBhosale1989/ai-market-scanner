@@ -28,6 +28,7 @@ class DataRequirement:
     min_bars_per_symbol: int = 1
     minimum_fresh_coverage: float = 1.0
     required_fresh_tickers: tuple[str, ...] = ()
+    allow_empty_after_freshness_filter: bool = False
 
 
 @dataclass(frozen=True)
@@ -281,7 +282,11 @@ def provide(req: DataRequirement) -> WarehouseView:
                 f"{expectation}"
             )
         raw=raw[~raw["ticker"].astype(str).str.upper().isin(stale_set)].copy()
-    _assert_fresh(raw, req.interval, req.max_age_minutes, req.consumer)
+    # An explicitly tolerant consumer may publish a schema-preserving empty
+    # view after stale optional symbols were removed. Coverage/quality and
+    # required-symbol checks above still fail closed.
+    if not (raw.empty and stale and req.allow_empty_after_freshness_filter):
+        _assert_fresh(raw, req.interval, req.max_age_minutes, req.consumer)
     frame=_compat_frame(raw)
     if req.latest_only and not frame.empty:
         frame = frame.sort_values("bar_timestamp").groupby("ticker", as_index=False).tail(1)
