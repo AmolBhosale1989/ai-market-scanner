@@ -12,13 +12,14 @@ class Profile:
     def __init__(self, block):
         self.block, self.values = block, {}
         self.category = 'calculation'
-        self.wall, self.cpu = time.perf_counter(), time.thread_time()
+        self.wall, self.cpu, self.process_cpu = time.perf_counter(), time.thread_time(), time.process_time()
     def charge(self):
-        wall, cpu = time.perf_counter(), time.thread_time()
-        value = self.values.setdefault(self.category, [0., 0.])
+        wall, cpu, process_cpu = time.perf_counter(), time.thread_time(), time.process_time()
+        value = self.values.setdefault(self.category, [0., 0., 0.])
         value[0] += wall-self.wall
         value[1] += cpu-self.cpu
-        self.wall, self.cpu = wall, cpu
+        value[2] += process_cpu-self.process_cpu
+        self.wall, self.cpu, self.process_cpu = wall, cpu, process_cpu
 
 
 @contextmanager
@@ -62,6 +63,6 @@ def profiled(block):
                 profile.charge()
                 _active.reset(token)
                 print('EXECUTION_MICRO_TIMING '+json.dumps(dict(block=block,status=status,
-                    phases={k:dict(wall_seconds=v[0],cpu_seconds=v[1]) for k,v in profile.values.items()})),flush=True)
+                    phases={k:dict(wall_seconds=v[0],cpu_seconds=v[1],process_cpu_seconds=v[2]) for k,v in profile.values.items()})),flush=True)
         return wrapped
     return decorate

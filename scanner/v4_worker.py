@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from .execution_timing import profiled
 
 from .v4.adapters import YahooPollingAdapter
 from .v4.alerting import AlertRouter, DatabaseAlertSink, TelegramAlertSink
@@ -76,11 +77,20 @@ def parser() -> argparse.ArgumentParser:
     return value
 
 
+@profiled("v4_live")
+def run_once(args):
+    # Include constructor state reads and final health/runtime writes.
+    worker = build_worker(args)
+    metric = worker.run_cycle()
+    print(metric)
+    if not metric.success:
+        raise SystemExit(1)
+    return metric
+
+
 if __name__ == "__main__":
     args = parser().parse_args()
-    worker = build_worker(args)
     if args.once:
-        metric = worker.run_cycle()
-        print(metric)
-        raise SystemExit(0 if metric.success else 1)
-    worker.run_forever(max_cycles=args.max_cycles)
+        run_once(args)
+    else:
+        build_worker(args).run_forever(max_cycles=args.max_cycles)

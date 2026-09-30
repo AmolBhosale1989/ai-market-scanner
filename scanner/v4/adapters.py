@@ -9,6 +9,7 @@ from typing import Protocol
 
 import pandas as pd
 
+from ..execution_timing import phase
 from ..live import _empty_live, analyze_live_candidate
 from ..config import LIVE_PERIOD, LIVE_INTERVAL
 from ..warehouse import frames as warehouse_frames
@@ -83,20 +84,21 @@ class YahooPollingAdapter:
                 for key,value in _empty_live("ERROR").items():
                     output.at[index,key]=value
 
-        with ThreadPoolExecutor(max_workers=min(self.max_workers, len(output))) as pool:
-            future_to_index = {
-                pool.submit(self._analyze, row, histories[str(row["ticker"]).upper()]): index
-                for index, row in output.iterrows()
-                if str(row["ticker"]).upper() in histories
-            }
-            for future in as_completed(future_to_index):
-                index = future_to_index[future]
-                try:
-                    values = future.result()
-                except Exception:
-                    values = _empty_live("ERROR")
-                for key, value in values.items():
-                    output.at[index, key] = value
+        with phase("parallel_calculation"):
+            with ThreadPoolExecutor(max_workers=min(self.max_workers, len(output))) as pool:
+                future_to_index = {
+                    pool.submit(self._analyze, row, histories[str(row["ticker"]).upper()]): index
+                    for index, row in output.iterrows()
+                    if str(row["ticker"]).upper() in histories
+                }
+                for future in as_completed(future_to_index):
+                    index = future_to_index[future]
+                    try:
+                        values = future.result()
+                    except Exception:
+                        values = _empty_live("ERROR")
+                    for key, value in values.items():
+                        output.at[index, key] = value
 
         completed = datetime.now(timezone.utc).isoformat()
         duration_ms = round((time.monotonic() - started_wall) * 1000)

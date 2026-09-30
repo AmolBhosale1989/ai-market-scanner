@@ -11,6 +11,7 @@ import pandas as pd
 import yfinance as yf
 
 from .contracts import EventType, MarketEvent
+from ..execution_timing import profiled, phase
 from ..warehouse import history as warehouse_history
 
 
@@ -183,13 +184,15 @@ class YahooOptionsMicrostructureAdapter:
             "last_bar_dollar_volume": round(dollar_volume, 2) if dollar_volume is not None else None,
         }
 
+    @profiled("v4_options_symbol")
     def _fetch_ticker(self, symbol: str) -> dict[str, Any]:
         started = time.monotonic()
         ticker = yf.Ticker(symbol)
         options_error = ""
         micro_error = ""
         try:
-            options = self._options_snapshot(ticker)
+            with phase("options_fetch"):
+                options = self._options_snapshot(ticker)
         except Exception as exc:
             options_error = type(exc).__name__
             options = {
@@ -206,7 +209,8 @@ class YahooOptionsMicrostructureAdapter:
                 "put_implied_volatility": None,
             }
         try:
-            bars = warehouse_history(symbol, period="1d", interval="5m", max_age_minutes=15)
+            with phase("database_read"):
+                bars = warehouse_history(symbol, period="1d", interval="5m", max_age_minutes=15)
             micro = self._microstructure_snapshot(bars)
         except Exception as exc:
             micro_error = type(exc).__name__

@@ -373,6 +373,7 @@ def read_dataset(
     return pd.DataFrame(records)
 
 
+@timed("result_write")
 def append_state(namespace: str, document_key: str, payload, run_id: str | None = None) -> int:
     rid = run_id or current_run_id(False) or None
     with _connect() as conn, conn.cursor() as cur:
@@ -417,6 +418,7 @@ def read_state(namespace: str, document_key: str, default=None, *, as_of=None, p
     return row[0] if row else default
 
 
+@timed("result_write")
 def append_events(
     namespace: str,
     events: Iterable[Mapping],
