@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
-from contextlib import nullcontext
+from contextlib import nullcontext, contextmanager
 
 import pytest
 import requests
@@ -84,14 +84,34 @@ def test_persistence_progress_only_follows_completed_writes(monkeypatch, capsys)
     adapter = Mock(provider_name='ALPHA_VANTAGE')
     adapter.fetch_and_index.return_value = {}
     monkeypatch.setattr(ingestion, 'bounded_persistence', lambda: nullcontext(Mock()))
-    monkeypatch.setattr(ingestion, 'finish_run', lambda *a, **k: None)
-    write = Mock(side_effect=[[], RuntimeError('DB stalled')])
-    monkeypatch.setattr(ingestion, 'ingest_catalyst_batch', write)
+    from scanner import catalyst_bulk
+    write = Mock(side_effect=RuntimeError('DB stalled'))
+    monkeypatch.setattr(catalyst_bulk, 'persist_alpha', write)
     with pytest.raises(RuntimeError, match='DB stalled'):
         ingestion.ingest_alpha_vantage_batch(adapter,['AAA','BBB'],
             anchor=datetime.now(timezone.utc),lookforward=timedelta(days=14))
     output = capsys.readouterr().out
     assert 'CATALYST_FETCH_COMPLETE provider=ALPHA_VANTAGE' in output
-    assert 'staged=1 total=2' in output
+    write.assert_called_once()
     assert 'committed=' not in output
     assert 'CATALYST_PERSIST_COMPLETE' not in output
+
+
+def test_persistence_complete_waits_for_commit(monkeypatch, capsys):
+    from scanner import catalyst_bulk
+    adapter = Mock(provider_name='ALPHA_VANTAGE')
+    adapter.fetch_and_index.return_value = {}
+
+    @contextmanager
+    def failed_commit():
+        yield Mock()
+        raise RuntimeError('commit uncertain')
+
+    monkeypatch.setattr(ingestion, 'bounded_persistence', failed_commit)
+    monkeypatch.setattr(catalyst_bulk, 'persist_alpha', Mock(return_value=[{}, {}]))
+    with pytest.raises(RuntimeError, match='commit uncertain'):
+        ingestion.ingest_alpha_vantage_batch(adapter, ['AAA', 'BBB'],
+            anchor=datetime.now(timezone.utc), lookforward=timedelta(days=14))
+    output = capsys.readouterr().out
+    assert 'CATALYST_PERSIST_COMPLETE' not in output
+    assert 'committed=' not in output
