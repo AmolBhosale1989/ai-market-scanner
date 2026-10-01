@@ -46,3 +46,5 @@ consecutive live runs of this commit: exact source-bar expiry versus the next
 publication time, actual Gate 290/publication success, and sampled Render state.
 One fast run and finite UI samples alone cannot prove uninterrupted freshness.
 Do not infer a controlled saving by subtracting different historical workloads.
+Draft-branch validation runs are supervised individually; automatic continuation
+is limited to successful main-branch publications.
