@@ -64,9 +64,11 @@ def test_postgres_batch_atomic_visibility_and_idempotency(postgres_batch):
         cur.execute('SELECT count(*),bool_and(NOT pg_visible_in_snapshot(writer_xid,%s::pg_snapshot)) '
                     'FROM state_document WHERE namespace=%s',(before,engine.store.namespace))
         assert cur.fetchone() == (1,True)
-        cur.execute('SELECT count(*),bool_and(NOT pg_visible_in_snapshot(writer_xid,%s::pg_snapshot)) '
-                    'FROM event_record WHERE namespace=%s',(before,engine.store.namespace+'.events'))
-        assert cur.fetchone() == (60,True)
+        # Immutable event records do not have writer_xid; snapshot visibility
+        # applies to the state revision. Verify event deduplication separately.
+        cur.execute('SELECT count(*) FROM event_record WHERE namespace=%s',
+                    (engine.store.namespace+'.events',))
+        assert cur.fetchone()[0] == 60
 
 
 @pytest.mark.postgres_integration
@@ -74,6 +76,9 @@ def test_postgres_failure_after_event_insert_rolls_back(monkeypatch,postgres_bat
     original=cp._insert_event_rows
     def fail(cur, rows):
         original(cur,rows)
+        # Another connection cannot see the uncommitted events or state.
+        assert postgres_batch.store.load_events() == []
+        assert postgres_batch.store.load_states() == {}
         raise RuntimeError('injected after insert')
     monkeypatch.setattr(cp,'_insert_event_rows',fail)
     with pytest.raises(RuntimeError,match='injected'):
@@ -97,3 +102,4 @@ def test_postgres_bulk_events_duplicate_counts(postgres_batch):
     item=event()
     assert store.append_events([item,item]) == 1
     assert store.append_events([item]) == 0
+
