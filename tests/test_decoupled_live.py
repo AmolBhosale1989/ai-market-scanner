@@ -145,7 +145,8 @@ def test_cutover_is_opt_in_and_publisher_mutex_is_shared():
     assert "vars.LIVE_PIPELINES_ENABLED == 'true'" in feeder
     assert "vars.LIVE_PIPELINES_ENABLED == 'true'" in engine
     assert "vars.LIVE_PIPELINES_ENABLED != 'true'" in production
-    assert 'group: market-hunt-production' in engine and 'group: market-hunt-production' in production
+    assert 'group: market-hunt-production' in engine
+    assert "group: ${{ inputs.mode == 'feeder' && 'market-hunt-feeder-dispatch' || 'market-hunt-production' }}" in production
     assert 'group: market-hunt-live-feeder' in feeder
     for text in (feeder, engine):
         assert 'cancel-in-progress: false' in text

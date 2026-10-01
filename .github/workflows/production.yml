@@ -14,7 +14,9 @@ on:
     - cron: "7,22,37,52 13-22 * * 1-5"
 
 concurrency:
-  group: market-hunt-production
+  # A supervised Feeder must not replace a queued production publication.
+  # The called workflow separately owns market-hunt-live-feeder.
+  group: ${{ inputs.mode == 'feeder' && 'market-hunt-feeder-dispatch' || 'market-hunt-production' }}
   cancel-in-progress: false
 
 permissions:
