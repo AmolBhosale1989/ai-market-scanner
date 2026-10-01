@@ -204,13 +204,8 @@ class ContinuousMomentumWorker:
                 if parsed and str(row.get("live_status", "")) == "LIVE":
                     event_lags.append(max(0.0, (processed_at - parsed).total_seconds() * 1000))
                 events.append(self.engine.snapshot_event(row, observed))
-            observations = []
-            transitions = []
-            for event in events:
-                transition = self.engine.process(event)
-                observations.append((event, transition))
-                if transition is not None:
-                    transitions.append(transition)
+            observations = self.engine.process_batch(events)
+            transitions = [transition for _, transition in observations if transition is not None]
             if self.outcome_ledger is not None:
                 self.outcome_ledger.observe_many(observations)
             transitions_count = len(transitions)

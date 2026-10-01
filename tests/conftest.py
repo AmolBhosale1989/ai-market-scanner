@@ -66,11 +66,19 @@ def memory_control_plane(monkeypatch, request):
         frame = read_dataset(name, **kwargs)
         return frame.iloc[-1].to_dict() if not frame.empty else {}
 
+    def update_state_events(namespace, key, event_namespace, event_keys, transform):
+        payload, records, result = transform(read_state(namespace, key, default={}), set(events.get(event_namespace, {})))
+        append_events(event_namespace, records)
+        if payload is not None:
+            append_state(namespace, key, payload)
+        return result
+
     replacements = {
         "current_run_id": current_run_id,
         "write_dataset": write_dataset,
         "read_dataset": read_dataset,
         "append_state": append_state,
+        "update_state_events": update_state_events,
         "read_state": read_state,
         "append_events": append_events,
         "read_events": read_events,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from ..control_plane import append_events, append_state, read_events, read_state
+from ..control_plane import append_events, append_state, read_events, read_state, update_state_events
 from .contracts import MarketEvent, SCHEMA_VERSION
 
 
@@ -30,3 +30,6 @@ class PostgresEventStore:
 
     def load_events(self, limit: int | None = None) -> list[dict]:
         return read_events(f"{self.namespace}.events", limit=limit)
+
+    def reduce_events(self, event_keys, transform):
+        return update_state_events(self.namespace, "signal_state", f"{self.namespace}.events", event_keys, transform)
