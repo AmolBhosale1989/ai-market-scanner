@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import os
+import signal
 import subprocess
 import sys
 import time
@@ -15,13 +17,32 @@ INTERVALS = {'feeder': 60, 'engine': 120}
 CYCLE_LIMITS = {'feeder': 240, 'engine': 600}
 
 
+def execute_cycle(command, *, check):
+    """Forward cancellation to the whole timeout/cycle group, then reap it."""
+    process = subprocess.Popen(command, start_new_session=True)
+    try:
+        code = process.wait()
+    except BaseException:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        except ProcessLookupError:
+            process.wait()
+        raise
+    if check and code:
+        raise subprocess.CalledProcessError(code, command)
+
+
 def next_slot(origin, now, interval):
     """An overrun starts the next cycle immediately, never concurrent catch-up."""
     return max(origin + interval, now)
 
 
 def run_session(role, *, max_cycles=1, minutes=45, clock=time.monotonic,
-                sleep=time.sleep, execute=subprocess.run,
+                sleep=time.sleep, execute=execute_cycle,
                 session_check=should_continue_live_session):
     if role not in INTERVALS or not 1 <= max_cycles <= 60 or not 1 <= minutes <= 60:
         raise ValueError('invalid bounded session settings')
@@ -66,6 +87,9 @@ def main():
     parser.add_argument('--max-cycles', type=int, default=1)
     parser.add_argument('--minutes', type=int, default=45)
     args = parser.parse_args()
+    def terminate(signum, frame):
+        raise RuntimeError(f'LIVE_SESSION_TERMINATED: signal={signum}')
+    signal.signal(signal.SIGTERM, terminate)
     run_session(args.role, max_cycles=args.max_cycles, minutes=args.minutes)
 
 

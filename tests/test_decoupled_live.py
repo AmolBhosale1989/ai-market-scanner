@@ -39,6 +39,41 @@ def test_session_failure_does_not_start_another_cycle():
     assert len(calls) == 1
 
 
+def test_session_cancellation_terminates_the_cycle_group(monkeypatch):
+    import signal
+    events = []
+    class Child:
+        pid = 12345
+        calls = 0
+        def wait(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise KeyboardInterrupt()
+            events.append(('reaped', kwargs))
+            return -15
+    monkeypatch.setattr(live_session.subprocess, 'Popen', lambda *a, **k: Child())
+    monkeypatch.setattr(live_session.os, 'killpg', lambda pid, sig: events.append((pid, sig)))
+    with pytest.raises(KeyboardInterrupt):
+        live_session.execute_cycle(['timeout', '600s', 'example'], check=True)
+    assert events == [(12345, signal.SIGTERM), ('reaped', {'timeout': 5})]
+
+
+def test_engine_failure_terminates_parallel_strategy_processes(monkeypatch):
+    import signal
+    from scanner import live_cycle
+    killed = []
+    class Child:
+        pid = 12345
+        args = ['bash', 'scripts/live_engine.sh']
+        def wait(self):
+            return 7
+    monkeypatch.setattr(live_cycle.subprocess, 'Popen', lambda *a, **k: Child())
+    monkeypatch.setattr(live_cycle.os, 'killpg', lambda pid, sig: killed.append((pid, sig)))
+    with pytest.raises(subprocess.CalledProcessError):
+        live_cycle.run_engine()
+    assert killed == [(12345, signal.SIGKILL)]
+
+
 def test_closed_session_never_starts_a_cycle():
     assert live_session.run_session('engine',
         execute=lambda *a, **k: pytest.fail('off-hours cycle'),
