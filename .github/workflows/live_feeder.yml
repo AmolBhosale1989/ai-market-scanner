@@ -1,0 +1,43 @@
+name: Live ingestion feeder
+
+on:
+  workflow_dispatch:
+    inputs:
+      cycles:
+        description: Supervised cycles (1 to 60); failures stop the session
+        type: number
+        default: 1
+  schedule:
+    # Watchdog only. Minute cadence lives inside a bounded session, not cron.
+    - cron: '3,18,33,48 13-20 * * 1-5'
+
+concurrency:
+  group: market-hunt-live-feeder
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.LIVE_PIPELINES_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSLMODE: require
+      PYTHONUNBUFFERED: '1'
+      INTRADAY_FETCH_WORKERS: '10'
+      CATALYST_MODE: optional
+      ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+      LIVE_MAX_CYCLES: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.cycles) || '60' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m scanner.control_plane migrate
+      - name: Run bounded ingestion session
+        run: python -m scanner.live_session feeder --max-cycles "$LIVE_MAX_CYCLES" --minutes 45

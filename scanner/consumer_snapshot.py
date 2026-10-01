@@ -60,7 +60,7 @@ def resolve_pg_snapshot(explicit=None):
     return current if explicit is None else explicit
 
 
-def capture_boundary(*, run_id=None):
+def capture_boundary(*, run_id=None, require_feeder=False):
     """Capture the server clock and transaction visibility in one SQL statement."""
     from .database import connection
     with connection() as conn, conn.cursor() as cur:
@@ -70,4 +70,7 @@ def capture_boundary(*, run_id=None):
         if run_id is not None:
             from .catalogue_snapshot import freeze_catalogues
             freeze_catalogues(cur, run_id, at, visibility)
+        if require_feeder:
+            from .feeder_handoff import bind_at_snapshot
+            bind_at_snapshot(cur, run_id, at, visibility)
     return pd.Timestamp(at), validate_pg_snapshot(visibility)

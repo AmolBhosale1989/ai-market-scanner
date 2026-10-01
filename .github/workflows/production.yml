@@ -23,6 +23,9 @@ permissions:
 
 jobs:
   publish:
+    # Opt-in cutover: the daily full lane remains authoritative; scheduled live
+    # work moves to live_feeder/live_engine only after explicit activation.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.LIVE_PIPELINES_ENABLED != 'true' || github.event.schedule == '37 12 * * 1-5' }}
     runs-on: ubuntu-latest
     timeout-minutes: 110
     env:
@@ -186,7 +189,7 @@ jobs:
       - name: Evaluate live-session continuation
         id: live_continuation
         # Supervised draft-branch validation must not enqueue an unbounded chain.
-        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        if: ${{ success() && github.ref == 'refs/heads/main' && vars.LIVE_PIPELINES_ENABLED != 'true' }}
         run: python -m scanner.workflow_continuation >> "$GITHUB_OUTPUT"
       - name: Queue next live refresh
         if: ${{ steps.live_continuation.outputs.dispatch == 'true' }}
