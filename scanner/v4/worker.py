@@ -9,6 +9,7 @@ import time
 
 import numpy as np
 import pandas as pd
+from ..execution_timing import phase
 
 from ..control_plane import append_state, read_state, write_dataset, write_record
 from ..live import NY, _market_state
@@ -147,7 +148,8 @@ class ContinuousMomentumWorker:
             detail = f"{detail}; ranking={ranking_mode}".strip("; ")
             batch = select_poll_batch(shortlist, self.cycle_index, self.settings)
             if self.catalyst_adapter is not None:
-                catalyst_result = self.catalyst_adapter.poll(batch)
+                with phase("catalyst_poll"):
+                    catalyst_result = self.catalyst_adapter.poll(batch)
                 new_catalysts = self.engine.store.append_events(catalyst_result.events)
                 retained_events = load_recent_catalyst_events(self.engine.store.load_events())
                 active_catalysts = events_frame(retained_events)
@@ -162,7 +164,8 @@ class ContinuousMomentumWorker:
                 ).strip("; ")
             if self.options_microstructure_adapter is not None:
                 try:
-                    evidence = self.options_microstructure_adapter.poll(batch)
+                    with phase("options_poll"):
+                        evidence = self.options_microstructure_adapter.poll(batch)
                     new_evidence = self.engine.store.append_events(evidence.events)
                     write_dataset("v4_options_microstructure", evidence.frame, entity_key="ticker")
                     write_record("v4_options_microstructure_health", evidence.health)
@@ -201,13 +204,8 @@ class ContinuousMomentumWorker:
                 if parsed and str(row.get("live_status", "")) == "LIVE":
                     event_lags.append(max(0.0, (processed_at - parsed).total_seconds() * 1000))
                 events.append(self.engine.snapshot_event(row, observed))
-            observations = []
-            transitions = []
-            for event in events:
-                transition = self.engine.process(event)
-                observations.append((event, transition))
-                if transition is not None:
-                    transitions.append(transition)
+            observations = self.engine.process_batch(events)
+            transitions = [transition for _, transition in observations if transition is not None]
             if self.outcome_ledger is not None:
                 self.outcome_ledger.observe_many(observations)
             transitions_count = len(transitions)

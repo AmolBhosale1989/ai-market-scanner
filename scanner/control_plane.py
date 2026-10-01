@@ -373,6 +373,7 @@ def read_dataset(
     return pd.DataFrame(records)
 
 
+@timed("result_write")
 def append_state(namespace: str, document_key: str, payload, run_id: str | None = None) -> int:
     rid = run_id or current_run_id(False) or None
     with _connect() as conn, conn.cursor() as cur:
@@ -417,6 +418,7 @@ def read_state(namespace: str, document_key: str, default=None, *, as_of=None, p
     return row[0] if row else default
 
 
+@timed("result_write")
 def append_events(
     namespace: str,
     events: Iterable[Mapping],
@@ -436,17 +438,70 @@ def append_events(
         rows.append((namespace, key, rid, payload.get(observed_field) or None, _canonical(payload)))
     if not rows:
         return 0
-    inserted = 0
     with _connect() as conn, conn.cursor() as cur:
-        for row in rows:
+        return _insert_event_rows(cur, rows)
+
+
+def _insert_event_rows(cur, rows) -> int:
+    """One set-based INSERT, retaining unique-key retry semantics (psycopg 3)."""
+    if not rows:
+        return 0
+    cur.execute(
+        """WITH inserted AS (
+            INSERT INTO event_record(namespace,event_key,pipeline_run_id,observed_at,payload)
+            SELECT r.namespace,r.event_key,r.pipeline_run_id,r.observed_at,r.payload
+            FROM jsonb_to_recordset(%s::jsonb) AS r(
+                namespace text,event_key text,pipeline_run_id uuid,
+                observed_at timestamptz,payload jsonb)
+            ON CONFLICT (namespace,event_key) DO NOTHING RETURNING 1)
+           SELECT count(*) FROM inserted""",
+        (_canonical([dict(namespace=n, event_key=k, pipeline_run_id=r,
+                          observed_at=t, payload=json.loads(p)) for n,k,r,t,p in rows]),),
+    )
+    return int(cur.fetchone()[0])
+
+
+@timed("result_write")
+def update_state_events(namespace, document_key, event_namespace, event_keys, transform):
+    """Serialize an operational state reduction and its immutable events atomically.
+
+    The callback does no I/O. It receives one latest state document and returns
+    (new document, event records, result). Market-history snapshot reads are
+    unchanged. This uses the same lock as append_state to prevent lost updates.
+    """
+    rid = current_run_id(False) or None
+    with _connect() as conn, conn.cursor() as cur:
+        cur.execute("SET LOCAL lock_timeout='3s'")
+        cur.execute("SET LOCAL statement_timeout='15s'")
+        cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                    (f"{namespace}\x1f{document_key}",))
+        with phase("database_read"):
+            cur.execute("SELECT revision,payload FROM state_document "
+                        "WHERE namespace=%s AND document_key=%s ORDER BY revision DESC LIMIT 1",
+                        (namespace, document_key))
+            previous = cur.fetchone()
+            cur.execute("SELECT event_key FROM event_record WHERE namespace=%s AND event_key=ANY(%s)",
+                        (event_namespace, list(event_keys)))
+            seen = {row[0] for row in cur.fetchall()}
+        with phase("calculation"):
+            payload, events, result = transform(previous[1] if previous else {}, seen)
+        rows = []
+        for event in events:
+            key = str(event.get("event_id", "")).strip()
+            if not key:
+                raise RuntimeError("CONTROL_PLANE_EVENT_KEY_MISSING")
+            rows.append((event_namespace, key, rid, event.get("observed_at_utc") or None,
+                         _canonical(event)))
+        _insert_event_rows(cur, rows)
+        if payload is not None:
             cur.execute(
-                """INSERT INTO event_record(namespace,event_key,pipeline_run_id,observed_at,payload)
-                   VALUES (%s,%s,%s,%s,%s::jsonb)
-                   ON CONFLICT (namespace,event_key) DO NOTHING RETURNING 1""",
-                row,
+                "INSERT INTO state_document(namespace,document_key,revision,pipeline_run_id,payload) "
+                "VALUES (%s,%s,%s,%s,%s::jsonb)",
+                (namespace, document_key, int(previous[0])+1 if previous else 1, rid, _canonical(payload)),
             )
-            inserted += int(cur.fetchone() is not None)
-    return inserted
+    # Return transitions only after the pool context has committed successfully.
+    return result
+
 
 
 @timed("database_read")

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import math
 from typing import Any, Iterable, Mapping
 
-from .contracts import CandidateState, EventType, MarketEvent
+from .contracts import CandidateState, EventType, MarketEvent, SCHEMA_VERSION
 from .state_machine import next_state
 from .store import PostgresEventStore
 
@@ -43,11 +43,13 @@ class MomentumEngine:
         return number if math.isfinite(number) else None
 
     def process(self, event: MarketEvent) -> Transition | None:
-        self.store.append_events([event])
+        return self.process_batch([event])[0][1]
+
+    def _reduce(self, event, states, records):
+        records.append(event.to_dict())
         if event.event_type is not EventType.CANDIDATE_SNAPSHOT:
             return None
 
-        states = self.store.load_states()
         prior_record = states.get(event.signal_id, {})
         prior_value = prior_record.get("state")
         prior = CandidateState(prior_value) if prior_value else None
@@ -61,7 +63,6 @@ class MomentumEngine:
             "stop": event.payload.get("stop"),
             "effective_target": event.payload.get("effective_target"),
         }
-        self.store.save_states(states)
 
         previous_value = prior.value if prior else "NEW"
         if previous_value == current.value:
@@ -88,16 +89,32 @@ class MomentumEngine:
             source="v4-momentum-engine",
             payload=transition.to_dict(),
         )
-        self.store.append_events([transition_event])
+        records.append(transition_event.to_dict())
         return transition
 
+    def process_batch(self, events: Iterable[MarketEvent]):
+        events = list(events)
+        if not events:
+            return []
+
+        def reduce(payload, seen):
+            states = dict(payload.get("signals", {}))
+            records, observations = [], []
+            changed = False
+            for event in events:
+                if event.event_id in seen:
+                    observations.append((event, None))
+                    continue
+                seen.add(event.event_id)
+                observations.append((event, self._reduce(event, states, records)))
+                changed |= event.event_type is EventType.CANDIDATE_SNAPSHOT
+            document = {"schema_version": SCHEMA_VERSION, "signals": states} if changed else None
+            return document, records, observations
+
+        return self.store.reduce_events([e.event_id for e in events], reduce)
+
     def process_many(self, events: Iterable[MarketEvent]) -> list[Transition]:
-        transitions = []
-        for event in events:
-            transition = self.process(event)
-            if transition is not None:
-                transitions.append(transition)
-        return transitions
+        return [transition for _, transition in self.process_batch(events) if transition is not None]
 
     @staticmethod
     def snapshot_event(row: Mapping[str, Any], observed_at_utc: str | None = None) -> MarketEvent:
