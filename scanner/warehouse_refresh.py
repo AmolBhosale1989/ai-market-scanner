@@ -162,7 +162,7 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
         requests=[([t for t in chunk if t in watermarks and t in stale_existing],
                    [t for t in chunk if t not in watermarks], incremental_period, period, interval)
                   for chunk in chunks]
-        workers=max(1,min(2,int(os.getenv('INTRADAY_FETCH_WORKERS','1')))) if interval == '5m' else 1
+        workers=max(1,min(10,int(os.getenv('INTRADAY_FETCH_WORKERS','10')))) if interval == '5m' else 1
         def serial_fetch():
             for existing,missing,incremental,requested,timeframe in requests:
                 batch={}
@@ -171,10 +171,10 @@ def refresh(tickers: list[str], period: str = "5d", interval: str = "1d", bootst
                 if missing:
                     batch.update(download_batch(missing,period=requested,interval=timeframe))
                 yield batch
-        results=ordered_prefetch(requests,workers=workers) if workers > 1 else serial_fetch()
-        print(f'WAREHOUSE_FETCH_WORKERS workers={workers} provider_threads_per_worker={5 if workers > 1 else "default"}',flush=True)
-        # Closing guarantees all producer processes are joined, including on a
-        # database error. Only this process writes, in deterministic chunk order.
+        results=ordered_prefetch(requests,workers=workers) if interval == '5m' else serial_fetch()
+        print(f'WAREHOUSE_FETCH_WORKERS workers={workers} provider_threads_per_worker={1 if interval == "5m" else "default"} scheduling=rolling_symbols',flush=True)
+        # Closing joins producers, including on a database error. Only this
+        # caller writes, in deterministic chunk order and before T0 capture.
         with closing(results):
             for index,(chunk,batch) in enumerate(zip(chunks,results)):
                 i=index*provider_chunk

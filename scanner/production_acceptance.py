@@ -67,18 +67,20 @@ def deterministic_friday_session() -> dict:
 
 
 def audit_current_run(run_id=None):
-    """Read the actual run, stage DAG, immutable rows and source snapshot in one transaction."""
+    """Validate the actual run and atomically exclude expired optional signals."""
     import pandas as pd
     from . import control_plane as cp
     from .production_telemetry import REQUIRED_DATASETS, OPTIONAL_DATASETS
-    from .signal_freshness import signal_expiry_reason
     from .stage_contract import read_and_validate_stages
 
     rid = run_id or cp.current_run_id()
     with cp._connect() as conn, conn.cursor() as cur:
-        # The final pointer swap repeats integrity/freshness checks. This audit
-        # is read-only and cannot make a failed or absent producer publishable.
-        cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        # Source observations/catalogues stay immutable. Only unpublished
+        # outputs may be reduced, after validating their original content.
+        # The pointer swap repeats filtering with its actual database clock.
+        cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+        cur.execute("SELECT set_config('lock_timeout','3s',true), "
+                    "set_config('statement_timeout','15s',true)")
         lane, stages, now = read_and_validate_stages(cur, rid, acceptance_running=True)
         cur.execute("""SELECT dataset_name,dataset_version_id,content_hash,row_count
                        FROM dataset_version WHERE pipeline_run_id=%s AND status='AVAILABLE'
@@ -106,15 +108,14 @@ def audit_current_run(run_id=None):
             frozen = read_frozen_catalogue(name, rid, anchor, snapshots[0].get("pg_snapshot"))
             if cp._hash(frozen.to_dict("records")) != cp._hash(datasets[name]):
                 raise RuntimeError(f"ACCEPTANCE_CATALOGUE_CHANGED: {name}")
-        reason = signal_expiry_reason(datasets, now_utc=now)
-        if reason:
-            raise RuntimeError("ACCEPTANCE_SIGNAL_FRESHNESS: " + reason)
         from .catalyst_pipeline import verify_coverage
         live_rows=datasets.get("live_universe",[])
         live_tickers=[row.get("ticker") for row in live_rows if row.get("ticker")]
         if not live_tickers:
             raise RuntimeError("ACCEPTANCE_CATALYST_UNIVERSE_EMPTY")
         verify_coverage(live_tickers,anchor=anchor.to_pydatetime(),pg_snapshot=snapshots[0].get("pg_snapshot"))
+        cur.execute('SELECT clock_timestamp()')
+        cp._filter_signal_outputs(cur, rid, versions, datasets, cur.fetchone()[0], boundary='ACCEPTANCE')
         return {"status": "PASS", "production_run_id": rid, "lane": lane,
                 "stages": len(stages), "datasets": len(versions),
                 "warehouse_as_of_utc": anchor.isoformat()}

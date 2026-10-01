@@ -80,6 +80,10 @@ class DatabaseAlertSink:
     def send(self, alert: Alert) -> None:
         append_events("v4.alerts", [asdict(alert)], key_field="alert_id", observed_field="observed_at_utc")
 
+    def send_many(self, alerts: list[Alert]) -> None:
+        append_events("v4.alerts", [asdict(alert) for alert in alerts],
+                      key_field="alert_id", observed_field="observed_at_utc")
+
 
 class TelegramAlertSink:
     name = "telegram"
@@ -120,12 +124,34 @@ class AlertRouter:
         delivered = self._load()
         sent = 0
         failures = []
+        audit_pending = {}
+        for transition in transitions:
+            if transition.current_state in ACTIONABLE_STATES:
+                alert = Alert.from_transition(transition)
+                audit_pending[alert.alert_id] = alert
+        # Audit-only production dispatch writes all alert records in one atomic
+        # insert. External sinks keep their original per-message acknowledgement.
+        for sink in self.sinks:
+            if not isinstance(sink, DatabaseAlertSink):
+                continue
+            batch = [a for a in audit_pending.values() if sink.name not in delivered.get(a.alert_id, [])]
+            if not batch:
+                continue
+            try:
+                sink.send_many(batch)
+                for alert in batch:
+                    delivered[alert.alert_id] = sorted(set(delivered.get(alert.alert_id, [])) | {sink.name})
+                sent += len(batch)
+            except Exception as exc:
+                failures.extend(f'{sink.name}:{type(exc).__name__}' for _ in batch)
         for transition in transitions:
             if transition.current_state not in ACTIONABLE_STATES:
                 continue
             alert = Alert.from_transition(transition)
             successful_sinks = set(delivered.get(alert.alert_id, []))
             for sink in self.sinks:
+                if isinstance(sink, DatabaseAlertSink):
+                    continue
                 if sink.name in successful_sinks:
                     continue
                 try:

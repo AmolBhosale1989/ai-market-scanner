@@ -214,3 +214,123 @@ def test_missing_core_dataset_remains_fatal(real_run):
                     "WHERE pipeline_run_id=%s AND dataset_name='recommended_trades'", (real_run,))
     with pytest.raises(RuntimeError, match="ACCEPTANCE_DATASET_MISSING: recommended_trades"):
         audit_current_run(real_run)
+
+
+def filtering_fixture(rid, monkeypatch, *, optional='18:50', critical='18:55'):
+    from scanner import signal_freshness
+    clock = [pd.Timestamp('2026-09-25T19:09:33Z')]
+    monkeypatch.setattr(signal_freshness, '_session_window',
+                        lambda _: (pd.Timestamp('2026-09-25T13:30Z'), clock[0]))
+    for name, field in [('sector_rotation', 'updated_at_et'), ('trending_themes', 'live_bar_at_et')]:
+        rows = [dict(etf='SKYY', theme='Cloud', **{field: f'2026-09-25T{optional}:00Z'}),
+                dict(etf='SPY', theme='Market', **{field: f'2026-09-25T{critical}:00Z'})]
+        cp.write_dataset(name, pd.DataFrame(rows), entity_key='theme', run_id=rid)
+    cp.write_dataset('product_feed', pd.DataFrame([{'market_hunt': {
+        'themes': cp.read_dataset('trending_themes', run_id=rid).to_dict('records')}}]),
+        entity_key=None, run_id=rid)
+    return clock
+
+
+def finish_acceptance(rid, monkeypatch):
+    from scanner import warehouse_gate
+    # Market coverage/snapshot visibility have their own integration tests.
+    monkeypatch.setattr(warehouse_gate, 'validate_publication_freshness', lambda rid: None)
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute("UPDATE pipeline_stage SET status='PASS',completed_at=clock_timestamp() "
+                    "WHERE pipeline_run_id=%s AND stage_name='acceptance'", (rid,))
+
+
+@pytest.mark.postgres_integration
+def test_acceptance_persists_filtered_rows_hashes_and_feed(real_run, monkeypatch):
+    filtering_fixture(real_run, monkeypatch)
+    assert audit_current_run(real_run)['status'] == 'PASS'
+    for name in ('sector_rotation', 'trending_themes'):
+        assert cp.read_dataset(name, run_id=real_run).etf.tolist() == ['SPY']
+    feed = cp.read_dataset('product_feed', run_id=real_run).iloc[0]['market_hunt']
+    assert [r['etf'] for r in feed['themes']] == ['SPY']
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute("SELECT metadata FROM dataset_version WHERE pipeline_run_id=%s "
+                    "AND dataset_name='sector_rotation'", (real_run,))
+        meta = cur.fetchone()[0]
+    assert meta['freshness_exclusions'][0]['symbol'] == 'SKYY'
+    finish_acceptance(real_run, monkeypatch)
+    result = cp.publish('production', REQUIRED_DATASETS, run_id=real_run)
+    assert next(r for r in result['datasets'] if r['name'] == 'sector_rotation')['rows'] == 1
+    assert cp.read_dataset('sector_rotation', published_mode='production').etf.tolist() == ['SPY']
+
+
+@pytest.mark.postgres_integration
+def test_row_expiring_after_acceptance_is_removed_inside_publication(real_run, monkeypatch):
+    clock = filtering_fixture(real_run, monkeypatch, optional='18:55', critical='19:00')
+    assert audit_current_run(real_run)['status'] == 'PASS'
+    assert len(cp.read_dataset('sector_rotation', run_id=real_run)) == 2
+    clock[0] = pd.Timestamp('2026-09-25T19:10:00.001Z')
+    finish_acceptance(real_run, monkeypatch)
+    result = cp.publish('production', REQUIRED_DATASETS, run_id=real_run)
+    rows = cp.read_dataset('sector_rotation', published_mode='production').to_dict('records')
+    assert [r['etf'] for r in rows] == ['SPY']
+    manifest = next(r for r in result['datasets'] if r['name'] == 'sector_rotation')
+    assert manifest['hash'] == cp._hash(rows)
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute('SELECT metadata,manifest_hash FROM publication_snapshot WHERE pipeline_run_id=%s', (real_run,))
+        metadata, digest = cur.fetchone()
+    assert digest == cp._hash(metadata['datasets']) == result['manifest_hash']
+
+
+@pytest.mark.postgres_integration
+def test_critical_expiry_does_not_partially_prune_optional_rows(real_run, monkeypatch):
+    filtering_fixture(real_run, monkeypatch, critical='18:50')
+    with pytest.raises(RuntimeError, match='ACCEPTANCE_SIGNAL_FRESHNESS.*SPY'):
+        audit_current_run(real_run)
+    assert cp.read_dataset('sector_rotation', run_id=real_run).etf.tolist() == ['SKYY', 'SPY']
+    finish_acceptance(real_run, monkeypatch)
+    with pytest.raises(RuntimeError, match='PUBLICATION_SIGNAL_FRESHNESS.*SPY'):
+        cp.publish('production', REQUIRED_DATASETS, run_id=real_run)
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute('SELECT count(*) FROM publication_snapshot WHERE pipeline_run_id=%s', (real_run,))
+        assert cur.fetchone()[0] == 0
+
+
+@pytest.mark.postgres_integration
+def test_publication_failure_rolls_back_filtered_rows_and_pointer(real_run, monkeypatch):
+    filtering_fixture(real_run, monkeypatch)
+    finish_acceptance(real_run, monkeypatch)
+    original = cp._filter_signal_outputs
+    def fail_after_filter(*args, **kwargs):
+        assert original(*args, **kwargs)
+        raise RuntimeError('injected after pruning')
+    monkeypatch.setattr(cp, '_filter_signal_outputs', fail_after_filter)
+    with pytest.raises(RuntimeError, match='injected after pruning'):
+        cp.publish('production', REQUIRED_DATASETS, run_id=real_run)
+    assert cp.read_dataset('sector_rotation', run_id=real_run).etf.tolist() == ['SKYY', 'SPY']
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute('SELECT count(*) FROM publication_snapshot WHERE pipeline_run_id=%s', (real_run,))
+        assert cur.fetchone()[0] == 0
+
+
+@pytest.mark.postgres_integration
+def test_stale_optional_corruption_cannot_be_hidden_by_filtering(real_run, monkeypatch):
+    filtering_fixture(real_run, monkeypatch)
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute("UPDATE dataset_version SET content_hash='tampered' WHERE pipeline_run_id=%s "
+                    "AND dataset_name='sector_rotation'", (real_run,))
+    with pytest.raises(RuntimeError, match='DATASET_CORRUPT: sector_rotation'):
+        audit_current_run(real_run)
+
+
+@pytest.mark.postgres_integration
+def test_filter_cannot_rewrite_an_already_published_snapshot(real_run, monkeypatch):
+    clock = filtering_fixture(real_run, monkeypatch, optional='18:55', critical='19:00')
+    assert audit_current_run(real_run)['status'] == 'PASS'
+    finish_acceptance(real_run, monkeypatch)
+    cp.publish('production', REQUIRED_DATASETS, run_id=real_run)
+    clock[0] = pd.Timestamp('2026-09-25T19:10:00.001Z')
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute('SELECT dataset_name,dataset_version_id,content_hash,row_count '
+                    'FROM dataset_version WHERE pipeline_run_id=%s', (real_run,))
+        versions = {r[0]: r[1:] for r in cur.fetchall()}
+        records = cp._read_version_records(cur, (v[0] for v in versions.values()))
+        datasets = {name: records[v[0]] for name, v in versions.items()}
+        with pytest.raises(RuntimeError, match='SIGNAL_FILTER_RUN_NOT_WRITABLE'):
+            cp._filter_signal_outputs(cur, real_run, versions, datasets, clock[0], boundary='ACCEPTANCE')
+    assert cp.read_dataset('sector_rotation', published_mode='production').etf.tolist() == ['SKYY', 'SPY']

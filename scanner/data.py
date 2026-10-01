@@ -9,6 +9,54 @@ import yfinance as yf
 from .config import BATCH_RETRIES, RETRY_CHUNK_SIZE, RETRY_BACKOFF_SECONDS
 from .provider_diagnostics import describe_response
 
+
+def download_symbol(symbol, *, period, interval, max_attempts=2):
+    """One independently scheduled intraday symbol, with bounded retry admission.
+
+    The 120-second ingestion process deadline remains the final hard bound.
+    yfinance may make multiple HTTP calls inside history; its socket timeout
+    alone is not a hard deadline for the complete operation.
+    """
+    budget = max(.1, min(8., float(os.getenv('INTRADAY_BATCH_BUDGET_SECONDS', '8'))))
+    deadline = time.monotonic() + budget
+    client = yf.Ticker(symbol)
+    attempts = max(1, min(2, max_attempts))
+    for attempt in range(1, attempts + 1):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        started, clock = datetime.now(timezone.utc), time.monotonic()
+        frame, error = pd.DataFrame(), ''
+        try:
+            frame = client.history(period=period, interval=interval, auto_adjust=True,
+                                   actions=False, prepost=False, timeout=min(8., remaining),
+                                   raise_errors=True)
+            frame = _normalize_single(frame)
+            if frame.empty:
+                error = 'empty_response'
+        except Exception as exc:
+            frame = pd.DataFrame()
+            label = (type(exc).__name__ + ' ' + str(exc)).lower()
+            if '429' in label or 'ratelimit' in label or 'rate limit' in label:
+                error = 'rate_limit'
+            elif 'timeout' in label or 'timed out' in label:
+                error = 'http_timeout'
+            else:
+                error = type(exc).__name__
+        received = datetime.now(timezone.utc)
+        diagnostic = describe_response(symbol, frame, period=period, interval=interval,
+            started=started, received=received, elapsed=time.monotonic()-clock)
+        diagnostic.update(transport='yfinance.Ticker.history', attempt=attempt,
+                          retry_count=attempt-1, max_attempts=attempts,
+                          error=error, socket_timeout_seconds=min(8., remaining))
+        print('PROVIDER_RESPONSE ' + json.dumps(diagnostic, allow_nan=False), flush=True)
+        if not frame.empty:
+            return frame
+        # Do not wait out a rate limit. A missing symbol goes to the existing gate.
+        if error == 'rate_limit':
+            break
+    return pd.DataFrame()
+
 def _normalize_single(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
