@@ -55,7 +55,8 @@ def test_gate_captures_and_uses_same_visibility_for_every_tier(monkeypatch):
                                   ingested_at=at, bars=10, invalid_bars=0)])
     monkeypatch.setattr(gate, 'coverage_frame', coverage)
     result = gate.run(pd.DataFrame({'ticker': ['AAA']}), pd.DataFrame({'ticker': ['AAA']}))
-    assert seen == [(at, visibility), (at, visibility)]
+    # Overlapping tiers read their identical timeframe once at the same boundary.
+    assert seen == [(at, visibility)]
     assert result['pg_snapshot'] == visibility
     replay = gate.run(pd.DataFrame({'ticker': ['FUTURE']}), pd.DataFrame({'ticker': ['FUTURE']}),
                       as_of=at, pg_snapshot=visibility)

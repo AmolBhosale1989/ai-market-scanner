@@ -96,7 +96,7 @@ jobs:
             stage live_plan 50 python -m scanner.universe_plan --include-daily-candidates
           fi
 
-          export INTRADAY_FETCH_WORKERS=2
+          export INTRADAY_FETCH_WORKERS=10
           stage intraday_warehouse 60 timeout 3600s python -m scanner.live_ingestion
           # Collect mandatory Alpha evidence before T0; technical enrichment
           # remains disabled for strategies. Optional provider I/O stays skipped.

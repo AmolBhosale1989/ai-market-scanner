@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from ..execution_timing import phase
 
-from ..control_plane import append_state, read_state, write_dataset, write_record
+from ..control_plane import append_state, read_state, write_dataset, write_record, batch_datasets
 from ..live import NY, _market_state
 from .adapters import LiveMarketAdapter
 from .alerting import AlertRouter
@@ -114,6 +114,7 @@ class ContinuousMomentumWorker:
         parsed = parse_utc(value)
         return parsed.isoformat() if parsed else fallback
 
+    @batch_datasets()
     def run_cycle(self) -> CycleMetric:
         cycle_started = datetime.now(timezone.utc)
         source_name = "unknown"

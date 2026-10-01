@@ -1,45 +1,56 @@
-"""Bounded, ordered provider prefetch; worker processes never acquire DB handles."""
-from collections import deque
-from concurrent.futures import ProcessPoolExecutor
-from multiprocessing import get_context
-import os
+"""Rolling, bounded intraday fetches; only the caller normalizes and writes."""
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 
-def initialize_worker():
-    # Isolate yfinance's process-global thread settings and cap total fan-out.
-    os.environ['YAHOO_DOWNLOAD_THREADS'] = '5'
+MAX_FETCH_WORKERS = 10
 
 
-def fetch_chunk(request):
-    from .data import download_batch
-    existing, missing, incremental_period, period, interval = request
-    batch = {}
-    if existing:
-        batch.update(download_batch(existing, period=incremental_period, interval=interval))
-    if missing:
-        batch.update(download_batch(missing, period=period, interval=interval))
-    return batch
+def fetch_symbol(request):
+    from .data import download_symbol
+    symbol, period, interval = request
+    return download_symbol(symbol, period=period, interval=interval)
 
 
-def ordered_prefetch(requests, *, workers=2, executor_factory=ProcessPoolExecutor):
-    """At most 2*workers queued results; drain workers before returning/errors."""
-    workers = max(1, min(2, workers))
-    source = iter(requests)
-    with executor_factory(max_workers=workers, mp_context=get_context('spawn'),
-                          initializer=initialize_worker) as executor:
-        pending = deque()
+def ordered_prefetch(requests, *, workers=10, executor_factory=ThreadPoolExecutor):
+    """Bound HTTP callers and lookahead while retaining deterministic DB order.
+
+    Each task owns a Ticker.history call; no nested yf.download batch executor.
+    A completed symbol immediately frees a slot without a provider-batch barrier.
+    """
+    workers = max(1, min(MAX_FETCH_WORKERS, int(workers)))
+    requests = list(requests)
+    tasks, expected = [], []
+    for index, (existing, missing, incremental, period, interval) in enumerate(requests):
+        symbols = [(symbol, incremental, interval) for symbol in existing]
+        symbols += [(symbol, period, interval) for symbol in missing]
+        expected.append(len(symbols))
+        tasks.extend((index, request) for request in symbols)
+    ready = [{} for _ in requests]
+    received = [0 for _ in requests]
+    next_task = next_chunk = 0
+    with executor_factory(max_workers=workers) as executor:
+        pending = {}
         try:
-            for _ in range(2 * workers):
-                request = next(source, None)
-                if request is None:
-                    break
-                pending.append(executor.submit(fetch_chunk, request))
-            while pending:
-                result = pending.popleft().result()
-                yield result
-                request = next(source, None)
-                if request is not None:
-                    pending.append(executor.submit(fetch_chunk, request))
+            while next_chunk < len(requests):
+                while next_chunk < len(requests) and received[next_chunk] == expected[next_chunk]:
+                    yield ready[next_chunk]
+                    ready[next_chunk] = None
+                    next_chunk += 1
+                while next_task < len(tasks) and len(pending) < 2 * workers:
+                    index, request = tasks[next_task]
+                    if index >= next_chunk + max(2, workers):
+                        break
+                    pending[executor.submit(fetch_symbol, request)] = (index, request[0])
+                    next_task += 1
+                if not pending:
+                    continue
+                done, _ = wait(pending, return_when=FIRST_COMPLETED)
+                for future in done:
+                    index, symbol = pending.pop(future)
+                    frame = future.result()
+                    received[index] += 1
+                    if frame is not None and not frame.empty:
+                        ready[index][symbol] = frame
         finally:
             for future in pending:
                 future.cancel()

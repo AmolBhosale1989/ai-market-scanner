@@ -97,6 +97,7 @@ def test_incremental_refresh_revisits_latest_bar(monkeypatch):
     monkeypatch.setattr(warehouse_refresh,"finish_run",lambda *a,**kw:None)
     monkeypatch.setattr(warehouse_refresh,"latest_event_timestamps",lambda *a,**kw:{"AAPL":event})
     monkeypatch.setattr(warehouse_refresh,"download_batch",lambda *a,**kw:{"AAPL":frame})
+    monkeypatch.setattr('scanner.ingestion_fetch.fetch_symbol', lambda request: frame)
     monkeypatch.setattr(warehouse_refresh,"ingest_observations",lambda f,**kw:captured.append(f) or len(f))
     warehouse_refresh.refresh(["AAPL"],interval="5m",benchmark_backfill=False,include_ingestion_dependencies=False)
     assert len(captured)==1

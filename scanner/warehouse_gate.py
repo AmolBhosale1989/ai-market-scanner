@@ -4,8 +4,10 @@ import argparse
 import hashlib
 import json
 import os
+import time
 import uuid
-from dataclasses import asdict, dataclass
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -85,7 +87,7 @@ def coverage_frame(tier: CoverageTier, as_of: datetime, pg_snapshot: str | None 
         WHERE o.instrument_id=w.instrument_id AND o.data_type='OHLCV' AND o.timeframe=%s
           AND o.event_timestamp <= %s AND o.ingested_at <= %s
           {clause}
-        ORDER BY o.event_timestamp,o.ingested_at DESC,o.observation_id DESC
+        ORDER BY o.event_timestamp DESC,o.ingested_at DESC,o.observation_id DESC
       ) v
     ) s WHERE s.bars>0 ORDER BY w.ticker"""
     params = catalogue_params + (list(tier.symbols),tier.timeframe,event_cutoff(tier.timeframe,as_of),as_of)
@@ -93,7 +95,43 @@ def coverage_frame(tier: CoverageTier, as_of: datetime, pg_snapshot: str | None 
         params += (visibility,)
     with _connect() as conn:
         with phase('coverage_sql_'+tier.name):
-            return pd.read_sql_query(sql,conn,params=params)
+            started = time.perf_counter()
+            status = 'PASS'
+            try:
+                return pd.read_sql_query(sql,conn,params=params)
+            except BaseException:
+                status = 'FAIL'
+                raise
+            finally:
+                print('WAREHOUSE_COVERAGE_QUERY ' + json.dumps(dict(
+                    tier=tier.name, timeframe=tier.timeframe, symbols=len(tier.symbols),
+                    status=status, sql_seconds=time.perf_counter()-started)), flush=True)
+
+
+def coverage_frames(tiers, as_of, pg_snapshot):
+    """Read each timeframe once, with at most two independent DB readers.
+
+    Every query carries the same explicit T0 and xid8 boundary. History/quality
+    are identical for overlapping symbols; each tier still applies its own
+    coverage, minimum history and freshness thresholds to its complete set.
+    """
+    groups = {}
+    for tier in tiers:
+        groups.setdefault(tier.timeframe, []).append(tier)
+    shared = [replace(group[0], name='SHARED_'+timeframe,
+                      symbols=tuple(dict.fromkeys(s for t in group for s in t.symbols)))
+              for timeframe, group in groups.items()]
+    with phase('coverage_sql_parallel'):
+        if len(shared) > 1:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = {t.timeframe: executor.submit(coverage_frame, t, as_of, pg_snapshot) for t in shared}
+                frames = {timeframe: future.result() for timeframe, future in futures.items()}
+        else:
+            frames = {t.timeframe: coverage_frame(t, as_of, pg_snapshot) for t in shared}
+    return {tier.name: (frames[tier.timeframe].loc[
+                frames[tier.timeframe].ticker.isin(tier.symbols)].copy()
+                if not frames[tier.timeframe].empty else frames[tier.timeframe].copy())
+            for tier in tiers}
 
 
 def evaluate_tier(tier: CoverageTier, frame: pd.DataFrame, *, now_utc=None) -> dict:
@@ -156,6 +194,49 @@ def build_tiers(master: Iterable[str], live: Iterable[str]) -> tuple[CoverageTie
     )
 
 
+def _publication_coverage(record, tiers, run_id, as_of, visibility):
+    """Reuse certified immutable counts; re-evaluate EVERY symbol's age now.
+
+    Append-only OHLCV plus the saved xid8 snapshot fixes historical quality and
+    history counts. The Stage 70 snapshot binds the evidence content hash, run,
+    policy, frozen symbol set and exact visibility boundary. It does not cache
+    a freshness decision. Old manifests use the complete SQL path.
+    """
+    from .control_plane import read_dataset, _hash
+    if 'coverage_evidence_version' not in record:
+        return {t.name: coverage_frame(t, as_of, visibility) for t in tiers}
+    if record.get('coverage_evidence_version') != 1:
+        raise RuntimeError('PUBLICATION_COVERAGE_EVIDENCE_VERSION')
+    evidence = read_dataset('warehouse_coverage', run_id=run_id)
+    if _hash(evidence.to_dict('records')) != record.get('coverage_content_hash'):
+        raise RuntimeError('PUBLICATION_COVERAGE_EVIDENCE_HASH')
+    if len(evidence) != len(tiers) or set(evidence.get('tier', [])) != {t.name for t in tiers}:
+        raise RuntimeError('PUBLICATION_COVERAGE_EVIDENCE_TIERS')
+    frames = {}
+    for tier in tiers:
+        row = evidence.loc[evidence.tier.eq(tier.name)].iloc[0]
+        if (row.get('production_run_id') != run_id or row.get('pg_snapshot') != visibility
+                or pd.Timestamp(row.get('as_of_utc')) != as_of
+                or row.get('symbols_hash') != _catalogue_hash(tier.symbols)
+                or row.get('timeframe') != tier.timeframe
+                or row.get('minimum_bars') != tier.minimum_bars
+                or row.get('minimum_coverage') != tier.minimum_coverage
+                or row.get('max_age_minutes') != tier.max_age_minutes):
+            raise RuntimeError(f'PUBLICATION_COVERAGE_EVIDENCE_PROVENANCE: {tier.name}')
+        records = row.get('evidence')
+        if not isinstance(records, list):
+            raise RuntimeError(f'PUBLICATION_COVERAGE_EVIDENCE_MISSING: {tier.name}')
+        frame = pd.DataFrame(records)
+        if not frame.empty:
+            required = {'ticker', 'bars', 'invalid_bars', 'event_timestamp', 'ingested_at'}
+            if (not required.issubset(frame.columns) or frame.ticker.duplicated().any()
+                    or not set(frame.ticker).issubset(tier.symbols)):
+                raise RuntimeError(f'PUBLICATION_COVERAGE_EVIDENCE_INVALID: {tier.name}')
+        frames[tier.name] = frame
+    print(f'PUBLICATION_COVERAGE_EVIDENCE_VERIFIED tiers={len(tiers)} as_of={as_of.isoformat()} pg_snapshot={visibility}', flush=True)
+    return frames
+
+
 def validate_publication_freshness(run_id: str, *, now_utc=None) -> None:
     """Recheck the frozen input snapshot, never newer rows the signals did not use."""
     from .control_plane import read_dataset
@@ -175,8 +256,15 @@ def validate_publication_freshness(run_id: str, *, now_utc=None) -> None:
     from .catalogue_snapshot import read_frozen_catalogue
     master = _symbols(read_frozen_catalogue("master_universe", run_id, as_of, visibility), "master_universe")
     live = _symbols(read_frozen_catalogue("live_universe", run_id, as_of, visibility), "live_universe")
-    for tier in build_tiers(master, live):
-        result = evaluate_tier(tier, coverage_frame(tier, as_of, visibility), now_utc=now)
+    tiers = build_tiers(master, live)
+    frames = _publication_coverage(record, tiers, run_id, as_of, visibility)
+    if now_utc is None:
+        # Loading evidence must not spend a stale copy of the publication clock.
+        now = pd.Timestamp.now(tz='UTC')
+        if record.get('daily_session') != completed_daily_session(now).isoformat():
+            raise RuntimeError('PUBLICATION_FRESHNESS_BLOCKED: daily session changed; rebuild required')
+    for tier in tiers:
+        result = evaluate_tier(tier, frames[tier.name], now_utc=now)
         if result["status"] != "PASS":
             raise RuntimeError(f"PUBLICATION_FRESHNESS_BLOCKED: {tier.name}: {result}")
 
@@ -200,9 +288,21 @@ def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | 
     master = _symbols(read_frozen_catalogue("master_universe", current_run_id(), as_of, pg_snapshot), "master_universe")
     live = _symbols(read_frozen_catalogue("live_universe", current_run_id(), as_of, pg_snapshot, required=False), "live_universe", required="LIVE_INTRADAY" in selected or not selected)
     tiers=[x for x in build_tiers(master,live) if not selected or x.name in selected]
-    results=[evaluate_tier(tier,coverage_frame(tier,as_of,pg_snapshot),now_utc=as_of) for tier in tiers]
+    frames = coverage_frames(tiers, as_of, pg_snapshot)
+    results = [evaluate_tier(tier, frames[tier.name], now_utc=as_of) for tier in tiers]
+    from .control_plane import _clean, _hash
+    diagnostic_samples = {'missing_sample', 'short_history_sample', 'invalid_sample', 'stale_sample'}
+    coverage_records = [_clean({
+        **{key: value for key, value in result.items() if key not in diagnostic_samples},
+        'production_run_id': current_run_id(), 'as_of_utc': as_of.isoformat(),
+        'pg_snapshot': pg_snapshot, 'symbols_hash': _catalogue_hash(tier.symbols),
+        'max_age_minutes': tier.max_age_minutes,
+        'evidence': frames[tier.name].to_dict('records'),
+    }) for tier, result in zip(tiers, results)]
     snapshot={
-        "schema_version":2,
+        "schema_version":3,
+        "coverage_evidence_version":1,
+        "coverage_content_hash":_hash(coverage_records),
         "pg_snapshot":pg_snapshot,
         "production_run_id":current_run_id(),
         "as_of_utc":as_of.isoformat(),
@@ -213,12 +313,12 @@ def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | 
         "tiers":results,
         "status":"PASS" if results and all(x["status"]=="PASS" for x in results) else "FAIL",
     }
-    write_dataset("warehouse_snapshot",pd.DataFrame([snapshot]),entity_key=None)
     write_dataset(
         "warehouse_coverage",
-        pd.DataFrame(results).drop(columns=["missing_sample","short_history_sample","invalid_sample","stale_sample"]),
+        pd.DataFrame(coverage_records),
         entity_key="tier",
     )
+    write_dataset("warehouse_snapshot",pd.DataFrame([snapshot]),entity_key=None)
     for result in results:
         print(
             "WAREHOUSE_TIER "

@@ -6,6 +6,8 @@ import json
 import math
 import os
 import uuid
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Iterable, Mapping
@@ -17,6 +19,91 @@ from .bitemporal_warehouse import _connect
 
 
 from .execution_timing import timed, profiled, phase
+
+_dataset_batch = ContextVar('dataset_batch', default=None)
+
+
+@contextmanager
+def batch_datasets():
+    """Stage related outputs and commit them together; discard on an exception.
+
+    Used by V4's cycle only. Operational event/state transactions retain their
+    own locking and idempotency. Pending dataset reads see this cycle's writes.
+    """
+    if _dataset_batch.get() is not None:
+        raise RuntimeError('CONTROL_PLANE_NESTED_DATASET_BATCH')
+    pending = {}
+    token = _dataset_batch.set(pending)
+    try:
+        yield
+        if pending:
+            _flush_dataset_batch(list(pending.values()))
+    finally:
+        _dataset_batch.reset(token)
+
+
+@timed('result_write')
+@profiled('dataset_batch')
+def _flush_dataset_batch(items):
+    """Four set-based statements for all V4 output datasets, one transaction."""
+    with phase('connection_acquisition'):
+        checkout = _connect()
+        conn = checkout.__enter__()
+    operation = 'statement'
+    try:
+        with conn.cursor() as cur:
+            with phase('timeout_configuration'):
+                cur.execute("SELECT set_config('lock_timeout','3s',true), "
+                            "set_config('statement_timeout','15s',true)")
+            versions = [{key: item[key] for key in ('run_id', 'name', 'schema_version', 'metadata')}
+                        for item in sorted(items, key=lambda item: (item['run_id'], item['name']))]
+            with phase('version_upsert'):
+                cur.execute("""INSERT INTO dataset_version
+                    (pipeline_run_id,dataset_name,schema_version,status,metadata)
+                    SELECT d.run_id,d.name,d.schema_version,'WRITING',d.metadata
+                    FROM jsonb_to_recordset(%s::jsonb)
+                      AS d(run_id uuid,name text,schema_version integer,metadata jsonb)
+                    ORDER BY d.run_id,d.name
+                    ON CONFLICT (pipeline_run_id,dataset_name) DO UPDATE SET
+                      schema_version=EXCLUDED.schema_version,status='WRITING',row_count=0,
+                      content_hash=NULL,completed_at=NULL,metadata=EXCLUDED.metadata
+                    RETURNING pipeline_run_id::text,dataset_name,dataset_version_id""", (_canonical(versions),))
+                ids = {(str(rid), name): version for rid, name, version in cur.fetchall()}
+            with phase('row_delete'):
+                cur.execute('DELETE FROM dataset_row WHERE dataset_version_id=ANY(%s)', (list(ids.values()),))
+            rows, summaries = [], []
+            with phase('row_preparation'):
+                for item in items:
+                    version = ids[(item['run_id'], item['name'])]
+                    rows.extend(dict(version=version, ordinal=i,
+                        entity_key=str(row.get(item['entity_key'], '')) if item['entity_key'] else None,
+                        payload=row) for i, row in enumerate(item['records']))
+                    summaries.append(dict(version=version, count=len(item['records']), digest=item['digest']))
+            if rows:
+                with phase('row_insert'):
+                    cur.execute("""INSERT INTO dataset_row(dataset_version_id,row_ordinal,entity_key,payload)
+                        SELECT r.version,r.ordinal,r.entity_key,r.payload
+                        FROM jsonb_to_recordset(%s::jsonb)
+                          AS r(version bigint,ordinal integer,entity_key text,payload jsonb)""", (_canonical(rows),))
+            with phase('version_finalize'):
+                cur.execute("""UPDATE dataset_version d SET status='AVAILABLE',row_count=s.count,
+                    content_hash=s.digest,completed_at=now()
+                    FROM jsonb_to_recordset(%s::jsonb) AS s(version bigint,count integer,digest text)
+                    WHERE d.dataset_version_id=s.version""", (_canonical(summaries),))
+        operation = 'commit'
+        with phase('transaction_commit'):
+            conn.commit()
+    except BaseException as exc:
+        # A lost commit acknowledgement does not prove rollback.
+        outcome = 'COMMIT_UNCERTAIN' if operation == 'commit' else 'TRANSACTION_ABORTED'
+        print(f'DATASET_BATCH_FAILURE phase={operation} outcome={outcome} '
+              f'sqlstate={getattr(exc, "sqlstate", None)} error={type(exc).__name__}', flush=True)
+        checkout.__exit__(type(exc), exc, exc.__traceback__)
+        raise
+    else:
+        with phase('pool_release'):
+            checkout.__exit__(None, None, None)
+    print(f'DATASET_BATCH_COMMITTED datasets={len(items)} rows={len(rows)}', flush=True)
 
 def _json_default(value):
     if isinstance(value, uuid.UUID):
@@ -279,6 +366,13 @@ def write_dataset(
         records, provenance = _v3_provenance(records, rid)
         metadata.update(provenance)
     digest = _hash(records)
+    pending = _dataset_batch.get()
+    if pending is not None:
+        pending[(rid, dataset_name)] = dict(run_id=rid, name=dataset_name,
+            records=records, entity_key=entity_key, schema_version=schema_version,
+            metadata=metadata, digest=digest)
+        return {'dataset_version_id': None, 'row_count': len(records), 'content_hash': digest,
+                'metadata': metadata, 'pending': True}
     with _connect() as conn, conn.cursor() as cur:
         cur.execute(
             """INSERT INTO dataset_version
@@ -339,6 +433,9 @@ def read_dataset(
     required: bool = True,
 ) -> pd.DataFrame:
     rid = run_id or (current_run_id(False) if not published_mode else None)
+    pending = _dataset_batch.get()
+    if not published_mode and pending is not None and (rid, dataset_name) in pending:
+        return pd.DataFrame(pending[(rid, dataset_name)]['records'])
     if not rid and not published_mode:
         if required:
             raise RuntimeError("CONTROL_PLANE_RUN_REQUIRED: no current run or published mode")
