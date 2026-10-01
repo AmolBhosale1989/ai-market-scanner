@@ -48,3 +48,27 @@ One fast run and finite UI samples alone cannot prove uninterrupted freshness.
 Do not infer a controlled saving by subtracting different historical workloads.
 Draft-branch validation runs are supervised individually; automatic continuation
 is limited to successful main-branch publications.
+
+## Expired optional signal projection
+
+Run 86 stopped at acceptance: SKYY's latest returned bar was already 9m02s
+old at fetch time and expired before the strategy join. Its 5m30s failed job
+did not include atomic publication and is not an end-to-end speed measurement.
+
+Acceptance now excludes expired non-critical signal rows from unpublished
+outputs, including sector rotation/themes and embedded product-feed copies.
+The 21 core/rotation benchmark symbols retain fatal expiry checks. Missing
+datasets/identities, invalid or future timestamps, original hash corruption and
+failed producers remain fatal. The ten-minute boundary is unchanged.
+
+Original dataset hashes are verified before filtering. Exclusions, original
+hashes and the actual validation clock are recorded in version metadata. Row
+replacement, updated hashes and publication manifests are transactional; a
+failure rolls everything back. Source observations and T0/xid8 do not change.
+Historical journals and already-published versions cannot be pruned.
+
+The final publication transaction repeats filtering at its actual clock and
+rebuilds the manifest if rows expired after acceptance. A bounded recheck
+prevents filtering SQL time from hiding another expired row. Render continues
+to enforce strict freshness on the actual retained payload; this does not keep
+an old publication green indefinitely or prove consecutive-run overlap.

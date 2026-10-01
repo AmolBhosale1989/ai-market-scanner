@@ -697,6 +697,61 @@ def _read_version_records(cur, version_ids: Iterable[int]) -> dict[int, list]:
     return records
 
 
+def _filter_signal_outputs(cur, rid, versions, datasets, now, *, boundary):
+    """Prune verified, unpublished output rows within the caller's transaction.
+
+    Callers verify the original hashes first. Any later validation/commit error
+    rolls back the exclusions, hashes and publication pointer together.
+    """
+    from .signal_freshness import filter_noncritical_signal_rows
+    try:
+        filtered, exclusions = filter_noncritical_signal_rows(datasets, now)
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
+        raise RuntimeError(f'{boundary}_SIGNAL_FRESHNESS: {exc}') from exc
+    changed = {name: rows for name, rows in filtered.items() if rows != datasets[name]}
+    if not changed:
+        return False
+    cur.execute('SELECT status FROM pipeline_run WHERE pipeline_run_id=%s FOR UPDATE', (rid,))
+    state = cur.fetchone()
+    if state is None or state[0] not in {'STARTED', 'VALIDATING'}:
+        raise RuntimeError('SIGNAL_FILTER_RUN_NOT_WRITABLE')
+    ids = [versions[name][0] for name in changed]
+    cur.execute("""SELECT count(*) FROM publication_dataset p
+        JOIN publication_snapshot s USING(publication_snapshot_id)
+        WHERE p.dataset_version_id=ANY(%s) AND s.status<>'VALIDATING'""", (ids,))
+    if cur.fetchone()[0]:
+        raise RuntimeError('SIGNAL_FILTER_PUBLISHED_VERSION')
+    rows, summaries = [], []
+    for name, records in changed.items():
+        version, original_hash, _ = versions[name]
+        key = 'theme' if name in {'sector_rotation', 'trending_themes'} else 'ticker'
+        rows.extend(dict(version=version, ordinal=i, entity_key=row.get(key), payload=row)
+                    for i, row in enumerate(records))
+        summaries.append(dict(version=version, count=len(records), digest=_hash(records),
+                              source_hash=original_hash, checked_at=pd.Timestamp(now).isoformat(),
+                              exclusions=exclusions))
+    cur.execute('DELETE FROM dataset_row WHERE dataset_version_id=ANY(%s)', (ids,))
+    if rows:
+        cur.execute("""INSERT INTO dataset_row(dataset_version_id,row_ordinal,entity_key,payload)
+            SELECT r.version,r.ordinal,r.entity_key,r.payload FROM jsonb_to_recordset(%s::jsonb)
+            AS r(version bigint,ordinal bigint,entity_key text,payload jsonb)""", (_canonical(rows),))
+    cur.execute("""UPDATE dataset_version d SET row_count=s.count,content_hash=s.digest,
+        completed_at=clock_timestamp(),metadata=d.metadata || jsonb_build_object(
+          'content_hash',s.digest,'freshness_checked_at',s.checked_at,
+          'filter_source_content_hash',coalesce(d.metadata->>'filter_source_content_hash',s.source_hash),
+          'freshness_exclusions',coalesce(d.metadata->'freshness_exclusions','[]'::jsonb) || s.exclusions)
+        FROM jsonb_to_recordset(%s::jsonb)
+          AS s(version bigint,count bigint,digest text,source_hash text,checked_at text,exclusions jsonb)
+        WHERE d.dataset_version_id=s.version AND d.pipeline_run_id=%s""", (_canonical(summaries), rid))
+    for name, records in changed.items():
+        versions[name] = (versions[name][0], _hash(records), len(records))
+        datasets[name] = records
+    print('SIGNAL_ROWS_EXCLUDED ' + _canonical(dict(boundary=boundary, run_id=rid,
+          checked_at=pd.Timestamp(now).isoformat(), exclusions=exclusions,
+          remaining_rows={name: len(records) for name, records in changed.items()})), flush=True)
+    return True
+
+
 @profiled("publication")
 def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = None,
             *, optional_datasets: Iterable[str] = ()) -> dict:
@@ -754,14 +809,12 @@ def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = No
             )
         with phase('payload_read'):
             all_records = _read_version_records(cur, (version[0] for version in versions.values()))
-        from .signal_freshness import SIGNAL_BAR_FIELDS
-        signal_records = {}
+        datasets = {}
         for name, (version_id, expected_hash, expected_rows) in versions.items():
             records = all_records[version_id]
-            if name in SIGNAL_BAR_FIELDS:
-                signal_records[name] = records
             if len(records) != int(expected_rows) or _hash(records) != expected_hash:
                 raise RuntimeError(f"CONTROL_PLANE_PUBLICATION_BLOCKED: corrupt={name}")
+            datasets[name] = records
         manifest = [{"name": name, "version": versions[name][0], "hash": versions[name][1],
                      "rows": versions[name][2]} for name in sorted(versions)]
         manifest_hash = _hash(manifest)
@@ -778,11 +831,23 @@ def publish(mode: str, required_datasets: Iterable[str], run_id: str | None = No
             [(snapshot_id, name, versions[name][0]) for name in versions],
         )
         if mode == "production":
-            from .signal_freshness import signal_expiry_reason
-            cur.execute("SELECT clock_timestamp()")
-            reason = signal_expiry_reason(signal_records, now_utc=cur.fetchone()[0])
-            if reason:
-                raise RuntimeError("PUBLICATION_SIGNAL_FRESHNESS_BLOCKED: " + reason)
+            # Acceptance may have passed several seconds ago. Filter again at
+            # the pointer boundary, including rows expiring during these writes.
+            # A bounded loop avoids publishing an expired row or an unbounded
+            # retry; normal execution is one pass (two when rows are removed).
+            for _ in range(3):
+                cur.execute("SELECT clock_timestamp()")
+                if not _filter_signal_outputs(cur, rid, versions, datasets, cur.fetchone()[0],
+                                              boundary='PUBLICATION'):
+                    break
+                manifest = [{"name": name, "version": versions[name][0], "hash": versions[name][1],
+                             "rows": versions[name][2]} for name in sorted(versions)]
+                manifest_hash = _hash(manifest)
+                cur.execute("""UPDATE publication_snapshot SET manifest_hash=%s,metadata=%s::jsonb
+                    WHERE publication_snapshot_id=%s AND status='VALIDATING'""",
+                    (manifest_hash, _canonical({'datasets': manifest}), snapshot_id))
+            else:
+                raise RuntimeError('PUBLICATION_SIGNAL_FRESHNESS_UNSTABLE')
         cur.execute(
             """UPDATE publication_snapshot SET status='PUBLISHED',published_at=clock_timestamp()
                WHERE publication_snapshot_id=%s""", (snapshot_id,)
