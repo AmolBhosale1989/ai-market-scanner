@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Full rebuild or live refresh from the last atomic snapshot
+        description: Full rebuild, live refresh, or one supervised Feeder-only cycle
         type: choice
-        options: [full, live]
+        options: [full, live, feeder]
         default: live
   schedule:
     # Offset requests from the busiest hour/quarter-hour boundaries.
@@ -22,10 +22,18 @@ permissions:
   actions: write
 
 jobs:
+  feeder_validation:
+    # The new workflow is not registered on main until the split is merged.
+    # Reuse its exact branch version for one explicitly selected supervised cycle.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'feeder' }}
+    uses: ./.github/workflows/live_feeder.yml
+    with:
+      cycles: 1
+    secrets: inherit
   publish:
     # Opt-in cutover: the daily full lane remains authoritative; scheduled live
     # work moves to live_feeder/live_engine only after explicit activation.
-    if: ${{ github.event_name == 'workflow_dispatch' || vars.LIVE_PIPELINES_ENABLED != 'true' || github.event.schedule == '37 12 * * 1-5' }}
+    if: ${{ inputs.mode != 'feeder' && (github.event_name == 'workflow_dispatch' || vars.LIVE_PIPELINES_ENABLED != 'true' || github.event.schedule == '37 12 * * 1-5') }}
     runs-on: ubuntu-latest
     timeout-minutes: 110
     env:

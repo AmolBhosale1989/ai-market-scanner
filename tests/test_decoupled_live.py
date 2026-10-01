@@ -154,6 +154,21 @@ def test_cutover_is_opt_in_and_publisher_mutex_is_shared():
         assert 'format(\'{0}\', inputs.cycles)' in text  # zero stays zero and is rejected
 
 
+def test_supervised_feeder_dispatch_cannot_execute_the_publisher():
+    production = Path('.github/workflows/production.yml').read_text()
+    feeder = Path('.github/workflows/live_feeder.yml').read_text()
+    jobs = production.split('\njobs:\n', 1)[1]
+    assert re.findall(r'^  ([a-z_]+):$', jobs, re.M) == ['feeder_validation', 'publish']
+    validation, publisher = jobs.split('\n  publish:\n', 1)
+    assert "if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'feeder' }}" in validation
+    assert 'uses: ./.github/workflows/live_feeder.yml' in validation
+    assert 'with:\n      cycles: 1\n' in validation
+    assert "if: ${{ inputs.mode != 'feeder' && (" in publisher
+    assert '  workflow_call:\n' in feeder
+    assert 'scanner.live_session feeder' in feeder
+    assert 'options: [full, live, feeder]' in production
+
+
 @pytest.fixture
 def db_handoff(monkeypatch):
     if not os.getenv('DATABASE_URL'):

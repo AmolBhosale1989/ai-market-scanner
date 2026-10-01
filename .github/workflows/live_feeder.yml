@@ -1,6 +1,12 @@
 name: Live ingestion feeder
 
 on:
+  workflow_call:
+    inputs:
+      cycles:
+        description: Explicit supervised cycle budget from the registered dispatcher
+        type: number
+        default: 1
   workflow_dispatch:
     inputs:
       cycles:

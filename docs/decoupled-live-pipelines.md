@@ -76,6 +76,13 @@ the split, apply production migrations or authorize supervised runs.
 
 Before activation:
 
+GitHub does not register a new manual workflow until it exists on the default
+branch. For draft-branch Feeder validation, choose `production.yml`, select
+the draft branch and explicitly select `mode=feeder`. This calls that commit's
+exact `live_feeder.yml` with `cycles: 1`; the publisher job is excluded.
+It neither starts the Engine nor activates the scheduled split. Normal
+`full` and `live` modes retain their existing behavior.
+
 1. Verify CI including real PostgreSQL late-commit, immutable receipt and
    acceptance/publication tests.
 2. During an active session, authorize a bounded Feeder run, then an Engine
