@@ -9,14 +9,14 @@ import pytest
 from scanner import control_plane as cp
 from scanner.production_acceptance import audit_current_run
 from scanner.production_telemetry import REQUIRED_DATASETS
-from scanner.stage_contract import FULL_STAGES, FULL_DEPENDENCIES, LIVE_DEPENDENCIES, validate_stages
+from scanner.stage_contract import FULL_STAGES, FULL_DEPENDENCIES, LIVE_DEPENDENCIES, ENGINE_DEPENDENCIES, validate_stages
 
 
 START = datetime(2026, 9, 25, 19, 0, tzinfo=timezone.utc)
 
 
 def stage_rows(start=START, lane="live", accepting=False):
-    deps = LIVE_DEPENDENCIES if lane == "live" else FULL_DEPENDENCIES
+    deps = {'live': LIVE_DEPENDENCIES, 'full': FULL_DEPENDENCIES, 'engine': ENGINE_DEPENDENCIES}[lane]
     rows = {}
     for name, parents in deps.items():
         begin = max((rows[p]["completed_at"] for p in parents), default=start)
@@ -334,3 +334,72 @@ def test_filter_cannot_rewrite_an_already_published_snapshot(real_run, monkeypat
         with pytest.raises(RuntimeError, match='SIGNAL_FILTER_RUN_NOT_WRITABLE'):
             cp._filter_signal_outputs(cur, real_run, versions, datasets, clock[0], boundary='ACCEPTANCE')
     assert cp.read_dataset('sector_rotation', published_mode='production').etf.tolist() == ['SKYY', 'SPY']
+
+
+def engine_fixture(rid, *, bind):
+    from scanner.catalogue_snapshot import CATALOGUE_DATASETS
+    from scanner.consumer_snapshot import capture_boundary, _validated_anchor
+    from scanner.feeder_handoff import FEEDER_STAGES, complete_feeder
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute("UPDATE pipeline_run SET mode='production',metadata='{\"lane\":\"engine\"}'::jsonb "
+                    "WHERE pipeline_run_id=%s RETURNING source_commit", (rid,))
+        commit = cur.fetchone()[0]
+    if bind:
+        feeder = cp.start_run('feeder', source_commit=commit)
+        for name in CATALOGUE_DATASETS:
+            cp.write_dataset(name, cp.read_dataset(name, run_id=rid), run_id=feeder)
+        for i, name in enumerate(FEEDER_STAGES):
+            cp.stage_started(name, i, run_id=feeder)
+            cp.stage_finished(name, run_id=feeder)
+        complete_feeder(feeder)
+    at, visibility = capture_boundary(run_id=rid, require_feeder=bind)
+    cp.write_dataset('warehouse_snapshot', pd.DataFrame([dict(status='PASS',
+        production_run_id=rid, as_of_utc=at.isoformat(), pg_snapshot=visibility)]),
+        entity_key=None, run_id=rid)
+    _validated_anchor.cache_clear()  # fixture reuses a run; real cycles are new processes
+    rows = stage_rows(lane='engine', accepting=True)
+    gate = next(row for row in rows if row['stage_name'] == 'warehouse_gate')
+    midpoint = gate['started_at'] + (gate['completed_at'] - gate['started_at']) / 2
+    start = at.to_pydatetime() - (midpoint - START) / 1_000_000
+    for row in rows:
+        for key in ('started_at', 'completed_at'):
+            if row[key] is not None:
+                row[key] = start + (row[key] - START) / 1_000_000
+    with cp._connect() as conn, conn.cursor() as cur:
+        cur.execute('DELETE FROM pipeline_stage WHERE pipeline_run_id=%s', (rid,))
+        cur.execute('UPDATE pipeline_run SET started_at=%s WHERE pipeline_run_id=%s', (start, rid))
+        cur.executemany("""INSERT INTO pipeline_stage
+            (pipeline_run_id,stage_name,stage_order,status,started_at,completed_at)
+            VALUES (%s,%s,%s,%s,%s,%s)""",
+            [(rid, r['stage_name'], i, r['status'], r['started_at'], r['completed_at'])
+             for i, r in enumerate(rows)])
+
+
+@pytest.mark.postgres_integration
+def test_engine_acceptance_and_publication_enforce_feeder_binding(real_run, monkeypatch):
+    engine_fixture(real_run, bind=True)
+    assert audit_current_run(real_run)['lane'] == 'engine'
+    finish_acceptance(real_run, monkeypatch)
+    result = cp.publish('production', REQUIRED_DATASETS, run_id=real_run)
+    assert result['pipeline_run_id'] == real_run
+
+
+@pytest.mark.postgres_integration
+def test_engine_cannot_skip_handoff_at_acceptance_or_pointer_swap(real_run, monkeypatch):
+    engine_fixture(real_run, bind=False)
+    with pytest.raises(RuntimeError, match='ENGINE_FEEDER_BINDING_MISSING'):
+        audit_current_run(real_run)
+    finish_acceptance(real_run, monkeypatch)
+    with pytest.raises(RuntimeError, match='ENGINE_FEEDER_BINDING_MISSING'):
+        cp.publish('production', REQUIRED_DATASETS, run_id=real_run)
+
+
+@pytest.mark.postgres_integration
+def test_engine_keeps_critical_expiry_fatal(real_run, monkeypatch):
+    engine_fixture(real_run, bind=True)
+    filtering_fixture(real_run, monkeypatch, critical='18:50')
+    with pytest.raises(RuntimeError, match='ACCEPTANCE_SIGNAL_FRESHNESS.*SPY'):
+        audit_current_run(real_run)
+    finish_acceptance(real_run, monkeypatch)
+    with pytest.raises(RuntimeError, match='PUBLICATION_SIGNAL_FRESHNESS.*SPY'):
+        cp.publish('production', REQUIRED_DATASETS, run_id=real_run)

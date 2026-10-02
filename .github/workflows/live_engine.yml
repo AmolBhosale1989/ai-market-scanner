@@ -1,0 +1,49 @@
+name: Live snapshot strategy engine
+
+on:
+  workflow_call:
+    inputs:
+      cycles:
+        description: Explicit supervised cycle budget from the registered dispatcher
+        type: number
+        default: 1
+  workflow_dispatch:
+    inputs:
+      cycles:
+        description: Supervised cycles (1 to 60); failures stop the session
+        type: number
+        default: 1
+  schedule:
+    # Initial Engine may fail until a matching feeder commits. This watchdog
+    # retries in a fresh job; it does not bypass the immutable feeder handoff.
+    - cron: '6,21,36,51 13-20 * * 1-5'
+
+concurrency:
+  # Serialize publishers with legacy/full/manual production, not the Feeder.
+  group: market-hunt-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.LIVE_PIPELINES_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSLMODE: require
+      PYTHONUNBUFFERED: '1'
+      CATALYST_MODE: disabled
+      LIVE_MAX_CYCLES: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.cycles) || '60' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m scanner.control_plane migrate
+      - name: Run bounded snapshot evaluation session
+        run: python -m scanner.live_session engine --max-cycles "$LIVE_MAX_CYCLES" --minutes 45

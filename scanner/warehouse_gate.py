@@ -270,7 +270,7 @@ def validate_publication_freshness(run_id: str, *, now_utc=None) -> None:
 
 
 @profiled("warehouse_gate")
-def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | None = None, selected: set[str] | None = None, pg_snapshot: str | None = None) -> dict:
+def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | None = None, selected: set[str] | None = None, pg_snapshot: str | None = None, require_feeder: bool = False) -> dict:
     verify_health()
     selected=selected or set()
     master=_symbols(master_frame,"master_universe")
@@ -280,8 +280,11 @@ def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | 
         if pg_snapshot is not None:
             raise RuntimeError("WAREHOUSE_REPLAY_ANCHOR_REQUIRED")
         with phase('snapshot_capture'):
-            as_of, pg_snapshot = capture_boundary(run_id=current_run_id())
+            kwargs = {'require_feeder': True} if require_feeder else {}
+            as_of, pg_snapshot = capture_boundary(run_id=current_run_id(), **kwargs)
     else:
+        if require_feeder:
+            raise RuntimeError('ENGINE_REQUIRES_NEW_BOUNDARY')
         # Never manufacture today's visibility for an old timestamp.
         pg_snapshot = validate_pg_snapshot(pg_snapshot)
     from .catalogue_snapshot import read_frozen_catalogue
@@ -340,6 +343,8 @@ def run(master_frame: pd.DataFrame, live_frame: pd.DataFrame, as_of: datetime | 
 
 def main():
     p=argparse.ArgumentParser(description="Fail-closed production warehouse coverage gate")
+    p.add_argument('--require-feeder', action='store_true',
+                   help='Bind a committed feeder receipt inside the Engine T0 transaction')
     p.add_argument(
         "--tier",action="append",
         choices=["MASTER_DAILY","CRITICAL_DAILY","CRITICAL_INTRADAY","THEME_INTRADAY","LIVE_INTRADAY"],
@@ -353,7 +358,8 @@ def main():
     selected=set(args.tier or ())
     if live.empty and "LIVE_INTRADAY" not in selected:
         live=master.iloc[0:0].copy()
-    snapshot=run(master,live,as_of=as_of,selected=selected,pg_snapshot=args.pg_snapshot)
+    snapshot=run(master,live,as_of=as_of,selected=selected,pg_snapshot=args.pg_snapshot,
+                 require_feeder=args.require_feeder)
     print(f"WAREHOUSE_SNAPSHOT_AVAILABLE run_id={snapshot['production_run_id']} as_of={snapshot['as_of_utc']} pg_snapshot={snapshot['pg_snapshot']}")
 
 

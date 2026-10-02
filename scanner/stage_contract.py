@@ -24,6 +24,14 @@ LIVE_DEPENDENCIES = {
     "acceptance": ("audit",),
 }
 
+# In the decoupled lane ingestion belongs to another real run. Its immutable
+# receipt is checked at T0 and again at acceptance/publication, never represented
+# as locally executed Stage 60/65 events.
+ENGINE_DEPENDENCIES = {'engine_seed': (), 'warehouse_gate': ('engine_seed',)}
+ENGINE_DEPENDENCIES.update({name: parents for name, parents in LIVE_DEPENDENCIES.items()
+                          if name not in {'seed_snapshot', 'intraday_warehouse',
+                                          'catalyst_ingest', 'warehouse_gate'}})
+
 
 # Insertion order is topological for telemetry fixtures and audit tooling.
 _FULL_PREFIX = (
@@ -66,8 +74,9 @@ def validate_stages(rows, *, run_started_at, now, acceptance_running=False):
     stages = {row["stage_name"]: row for row in rows}
     if len(stages) != len(rows):
         raise RuntimeError("ACCEPTANCE_DUPLICATE_STAGE")
-    lane = "live" if "seed_snapshot" in stages else "full"
-    dependencies = LIVE_DEPENDENCIES if lane == "live" else FULL_DEPENDENCIES
+    lane = 'engine' if 'engine_seed' in stages else ('live' if 'seed_snapshot' in stages else 'full')
+    dependencies = {'engine': ENGINE_DEPENDENCIES, 'live': LIVE_DEPENDENCIES,
+                    'full': FULL_DEPENDENCIES}[lane]
     missing, extra = set(dependencies) - set(stages), set(stages) - set(dependencies)
     if missing or extra:
         raise RuntimeError(f"ACCEPTANCE_STAGE_SET: missing={','.join(sorted(missing))}; unexpected={','.join(sorted(extra))}")
@@ -86,7 +95,7 @@ def validate_stages(rows, *, run_started_at, now, acceptance_running=False):
 
 
 def read_and_validate_stages(cur, run_id, *, acceptance_running=False):
-    cur.execute("SELECT started_at FROM pipeline_run WHERE pipeline_run_id=%s", (run_id,))
+    cur.execute("SELECT started_at,metadata->>'lane' FROM pipeline_run WHERE pipeline_run_id=%s", (run_id,))
     run = cur.fetchone()
     if run is None:
         raise RuntimeError("ACCEPTANCE_RUN_MISSING")
@@ -98,4 +107,9 @@ def read_and_validate_stages(cur, run_id, *, acceptance_running=False):
     now = cur.fetchone()[0]
     lane = validate_stages(rows, run_started_at=run[0], now=now,
                            acceptance_running=acceptance_running)
+    if (run[1] == 'engine') != (lane == 'engine'):
+        raise RuntimeError('ACCEPTANCE_ENGINE_LANE_MISMATCH')
+    if lane == 'engine':
+        from .feeder_handoff import validate_binding
+        validate_binding(cur, run_id)
     return lane, rows, now
