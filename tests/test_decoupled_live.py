@@ -146,7 +146,7 @@ def test_cutover_is_opt_in_and_publisher_mutex_is_shared():
     assert "vars.LIVE_PIPELINES_ENABLED == 'true'" in engine
     assert "vars.LIVE_PIPELINES_ENABLED != 'true'" in production
     assert 'group: market-hunt-production' in engine
-    assert "group: ${{ inputs.mode == 'feeder' && 'market-hunt-feeder-dispatch' || 'market-hunt-production' }}" in production
+    assert "group: ${{ inputs.mode == 'feeder' && 'market-hunt-feeder-dispatch' || inputs.mode == 'engine' && 'market-hunt-engine-dispatch' || 'market-hunt-production' }}" in production
     assert 'group: market-hunt-live-feeder' in feeder
     for text in (feeder, engine):
         assert 'cancel-in-progress: false' in text
@@ -155,19 +155,22 @@ def test_cutover_is_opt_in_and_publisher_mutex_is_shared():
         assert 'format(\'{0}\', inputs.cycles)' in text  # zero stays zero and is rejected
 
 
-def test_supervised_feeder_dispatch_cannot_execute_the_publisher():
+@pytest.mark.parametrize('role', ['feeder', 'engine'])
+def test_supervised_dispatch_runs_only_its_single_cycle(role):
     production = Path('.github/workflows/production.yml').read_text()
-    feeder = Path('.github/workflows/live_feeder.yml').read_text()
+    workflow = Path(f'.github/workflows/live_{role}.yml').read_text()
     jobs = production.split('\njobs:\n', 1)[1]
-    assert re.findall(r'^  ([a-z_]+):$', jobs, re.M) == ['feeder_validation', 'publish']
-    validation, publisher = jobs.split('\n  publish:\n', 1)
-    assert "if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'feeder' }}" in validation
-    assert 'uses: ./.github/workflows/live_feeder.yml' in validation
+    assert re.findall(r'^  ([a-z_]+):$', jobs, re.M) == ['feeder_validation', 'engine_validation', 'publish']
+    validation = re.search(rf'^  {role}_validation:\n(.*?)(?=^  \w+:)', jobs, re.M | re.S).group(1)
+    publisher = jobs.split('\n  publish:\n', 1)[1]
+    assert "if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == '" + role + "' }}" in validation
+    assert f'uses: ./.github/workflows/live_{role}.yml' in validation
     assert 'with:\n      cycles: 1\n' in validation
-    assert "if: ${{ inputs.mode != 'feeder' && (" in publisher
-    assert '  workflow_call:\n' in feeder
-    assert 'scanner.live_session feeder' in feeder
-    assert 'options: [full, live, feeder]' in production
+    assert 'secrets: inherit' in validation
+    assert "if: ${{ inputs.mode != 'feeder' && inputs.mode != 'engine' && (" in publisher
+    assert '  workflow_call:\n' in workflow
+    assert f'scanner.live_session {role}' in workflow
+    assert 'options: [full, live, feeder, engine]' in production
 
 
 @pytest.fixture

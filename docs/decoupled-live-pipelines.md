@@ -37,6 +37,20 @@ delayed or dropped. The 15-minute offset cron entries are restart watchdogs,
 not claims of a one-/two-minute scheduler. Runner replacement and failures can
 still create gaps. See [GitHub scheduling documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 
+`cancel-in-progress: false` protects the running job, not an unlimited queue:
+the default concurrency policy retains only one pending run and replaces it
+when another arrives. Self-dispatch still needs an available runner and does
+not remove that delay. An Engine taking 210 seconds cannot start every 120
+seconds while remaining serial. These are target intervals, not guarantees.
+Receipt completion age also differs from the underlying source-bar age; a
+freshly committed receipt cannot make an old provider bar fresh.
+
+Session bounding uses the NYSE calendar, not fixed UTC bash hours. A check
+inside a job can skip subsequent work but cannot undo runner provisioning
+already performed. In this draft the calendar check runs after dependency
+setup, and again before each cycle. No claim of zero off-hours runner cost is
+made.
+
 The first Engine attempt requires a completed, matching feeder receipt. If
 provider startup is delayed, it fails closed and the next watchdog is a new
 attempt. This startup/restart behavior must be included in availability tests.
@@ -77,11 +91,15 @@ the split, apply production migrations or authorize supervised runs.
 Before activation:
 
 GitHub does not register a new manual workflow until it exists on the default
-branch. For draft-branch Feeder validation, choose `production.yml`, select
-the draft branch and explicitly select `mode=feeder`. This calls that commit's
-exact `live_feeder.yml` with `cycles: 1`; the publisher job is excluded.
-It neither starts the Engine nor activates the scheduled split. Normal
-`full` and `live` modes retain their existing behavior.
+branch. For draft-branch validation, choose `production.yml`, select the
+draft branch and explicitly select `mode=feeder` or `mode=engine`. Each calls
+that commit's exact reusable workflow with `cycles: 1`; the other lane and
+monolithic publisher job are excluded. Dispatch the Engine only after a fresh
+matching Feeder receipt is confirmed. The dispatch wrappers have separate
+concurrency groups so they do not hold the called workflows' locks. The
+called Engine retains `market-hunt-production`, shared with full/live
+publication. Neither dispatch activates the scheduled split. Normal `full`
+and `live` modes retain their existing behavior.
 
 1. Verify CI including real PostgreSQL late-commit, immutable receipt and
    acceptance/publication tests.

@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Full rebuild, live refresh, or one supervised Feeder-only cycle
+        description: Full rebuild, live refresh, or one supervised Feeder/Engine cycle
         type: choice
-        options: [full, live, feeder]
+        options: [full, live, feeder, engine]
         default: live
   schedule:
     # Offset requests from the busiest hour/quarter-hour boundaries.
@@ -14,9 +14,9 @@ on:
     - cron: "7,22,37,52 13-22 * * 1-5"
 
 concurrency:
-  # A supervised Feeder must not replace a queued production publication.
-  # The called workflow separately owns market-hunt-live-feeder.
-  group: ${{ inputs.mode == 'feeder' && 'market-hunt-feeder-dispatch' || 'market-hunt-production' }}
+  # Dispatch wrappers must not hold the called workflows' concurrency locks.
+  # The Engine itself still serializes with all production publishers.
+  group: ${{ inputs.mode == 'feeder' && 'market-hunt-feeder-dispatch' || inputs.mode == 'engine' && 'market-hunt-engine-dispatch' || 'market-hunt-production' }}
   cancel-in-progress: false
 
 permissions:
@@ -32,10 +32,16 @@ jobs:
     with:
       cycles: 1
     secrets: inherit
+  engine_validation:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'engine' }}
+    uses: ./.github/workflows/live_engine.yml
+    with:
+      cycles: 1
+    secrets: inherit
   publish:
     # Opt-in cutover: the daily full lane remains authoritative; scheduled live
     # work moves to live_feeder/live_engine only after explicit activation.
-    if: ${{ inputs.mode != 'feeder' && (github.event_name == 'workflow_dispatch' || vars.LIVE_PIPELINES_ENABLED != 'true' || github.event.schedule == '37 12 * * 1-5') }}
+    if: ${{ inputs.mode != 'feeder' && inputs.mode != 'engine' && (github.event_name == 'workflow_dispatch' || vars.LIVE_PIPELINES_ENABLED != 'true' || github.event.schedule == '37 12 * * 1-5') }}
     runs-on: ubuntu-latest
     timeout-minutes: 110
     env:
