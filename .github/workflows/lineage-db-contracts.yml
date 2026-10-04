@@ -1,7 +1,5 @@
 name: Isolated lineage contracts - PostgreSQL 18
 
-# A push trigger avoids registering a new workflow on main for manual dispatch.
-# This workflow belongs ONLY on the dedicated validation branch.
 on:
   push:
     branches: [validation/lineage-db-contracts]
@@ -23,7 +21,9 @@ jobs:
       github.repository == 'AmolBhosale1989/ai-market-scanner' &&
       github.ref == 'refs/heads/validation/lineage-db-contracts'
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 18
+    env:
+      LINEAGE_FULL_REPOSITORY: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,16 +48,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install isolated driver and test dependencies
-        run: python -m pip install --disable-pip-version-check --retries 1 --timeout 15 -r ci/lineage-db/requirements-ci.txt
-      - name: Execute original 18 contracts on an isolated PostgreSQL 18 server
+      - name: Install full repository and isolated test dependencies
+        run: python -m pip install --disable-pip-version-check --retries 1 --timeout 15 -r requirements.txt -r requirements-dev.txt -r ci/lineage-db/requirements-ci.txt
+      - name: Execute original contracts and full-schema application gate
         run: bash ci/lineage-db/run_postgres18.sh
-      - name: Print database evidence for connector review
+      - name: Print all database and repository evidence
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          for name in prepared_package.txt postgres_identity.json postgres_contract_result.json execution_exit.json postgres_server.log container_cleanup.log python_freeze.txt; do
+          for name in prepared_package.txt postgres_identity.json postgres_contract_result.json repository_provenance.json repository_suite_result.json repository_contract_result.json repository_migrations.log repository_audit.log repository_pytest.log repository_contracts.log execution_exit.json postgres_server.log container_cleanup.log; do
             echo "===== BEGIN ${name} ====="
             if [[ -f "ci/lineage-db/evidence/${name}" ]]; then
               cat "ci/lineage-db/evidence/${name}"
@@ -66,7 +66,7 @@ jobs:
             fi
             echo "===== END ${name} ====="
           done
-      - name: Preserve database evidence even on failure
+      - name: Preserve evidence even on failure
         if: always()
         uses: actions/upload-artifact@v4
         with:

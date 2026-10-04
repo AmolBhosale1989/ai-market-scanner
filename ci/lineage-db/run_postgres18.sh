@@ -42,9 +42,7 @@ python "$ROOT/prepare_bundle.py" "$TMP/reviewed" > "$EVIDENCE/prepared_package.t
 timeout 180 docker pull postgres:18 > "$EVIDENCE/image_pull.log" 2>&1
 timeout 10 docker image inspect postgres:18 > "$EVIDENCE/postgres_image.json"
 IMAGE_ID="$(docker image inspect postgres:18 --format '{{.Id}}')"
-# No TCP listener, no network, no host DB access, no production volumes/credentials.
 # Keep the image initializer's default socket as well as the private test socket.
-# Its docker_process_sql clears PGHOST, so PGHOST alone cannot fix initialization.
 CONTAINER="$(docker run -d --name "$NONCE" --network none --memory 768m --cpus 2 \
   --pids-limit 256 --security-opt no-new-privileges=true \
   --tmpfs /var/lib/postgresql:rw,size=512m \
@@ -65,6 +63,10 @@ done
 if [ "$ready" != 1 ]; then echo 'POSTGRES_STARTUP_FAILED' >&2; exit 1; fi
 export LINEAGE_TEST_SOCKET="$TMP/socket" LINEAGE_CLUSTER_ID="$NONCE"
 python -m pip freeze > "$EVIDENCE/python_freeze.txt"
-# These are the original 18 tests. A skip, error, startup failure or timeout fails CI.
+# Original 18 contracts remain byte-for-byte unchanged.
 timeout --kill-after=10s 180 python "$ROOT/run_contract_suite.py" \
   "$TMP/reviewed/lineage_db_gate" "$EVIDENCE" 2>&1 | tee "$EVIDENCE/postgres_contracts.txt"
+if [[ "${LINEAGE_FULL_REPOSITORY:-0}" == 1 ]]; then
+  timeout --kill-after=10s 600 python "$ROOT/run_repository_gate.py" \
+    "$TMP/reviewed/lineage_db_gate" "$EVIDENCE" 2>&1 | tee "$EVIDENCE/repository_execution.log"
+fi
