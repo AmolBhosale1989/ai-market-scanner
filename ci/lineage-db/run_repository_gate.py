@@ -57,7 +57,6 @@ def main():
     with archive.open('wb') as out:subprocess.run(['git','archive',head],stdout=out,check=True,timeout=30)
     source=temp/'source';source.mkdir()
     with tarfile.open(archive) as tar:tar.extractall(source,filter='data')
-    # No generated migrations, no replacing application code after checkout.
     names=sorted(p.name for p in (source/'sql').glob('*.sql'))
     if len(names)!=10 or names[-2:]!=list(MIGRATIONS):raise RuntimeError('ACTUAL_MIGRATION_INVENTORY_MISMATCH')
     files=[p for folder in ('sql','scanner','tests/integration') for p in (source/folder).rglob('*') if p.is_file()]
@@ -93,10 +92,12 @@ def main():
     sys.path.insert(0,str(source))
     module=importlib.import_module('tests.integration.test_lineage_contracts')
     suite=unittest.defaultTestLoader.loadTestsFromTestCase(module.RepositoryContracts)
+    boundary=importlib.import_module('tests.integration.test_completed_bar_boundary')
+    suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(boundary.CompletedBarContracts))
     expected=suite.countTestCases()
     with (evidence/'repository_contracts.log').open('w') as stream:
         result=unittest.TextTestRunner(stream=stream,verbosity=2,resultclass=EvidenceResult).run(suite)
-    ok=result.wasSuccessful() and result.testsRun==expected==56 and not result.skipped
+    ok=result.wasSuccessful() and result.testsRun==expected==57 and not result.skipped
     summary=dict(status='PASS' if ok else 'FAIL',tests=result.testsRun,failures=len(result.failures),errors=len(result.errors),
         skipped=len(result.skipped),test_results=result.records,application_commit=head,production_validation=False,
         scope='native application modules, partitioned DB and nonsuperuser test logins; no live cutover or external sends')

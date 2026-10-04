@@ -115,7 +115,12 @@ def point_in_time(req: PointInTimeRequirement, *, evidence=None, connection_fact
         {visibility_clause}
     )
     SELECT * FROM ranked WHERE version_rank=1 ORDER BY ticker,event_timestamp"""
-    params = catalogue_params + (tickers, req.data_type, req.timeframe, event_cutoff(req.timeframe, as_of), as_of)
+    upper = event_cutoff(req.timeframe, as_of)
+    if evidence is not None and req.timeframe == '5m':
+        # The evidence-enabled consumer uses completed bars only. Bound the
+        # actual SQL parameter, not merely the descriptive manifest timestamp.
+        upper = min(pd.Timestamp(upper), pd.Timestamp(as_of) - pd.Timedelta(minutes=5))
+    params = catalogue_params + (tickers, req.data_type, req.timeframe, upper, as_of)
     if lower is not None:
         params += (lower,)
     if visibility:
@@ -125,8 +130,7 @@ def point_in_time(req: PointInTimeRequirement, *, evidence=None, connection_fact
             df = pd.read_sql_query(sql, conn, params=params)
         else:
             df = evidence.read(sql,conn,params,req=req,as_of=as_of,visibility=visibility,
-                lower=lower,catalogue=catalogue,catalogue_params=catalogue_params,
-                upper=event_cutoff(req.timeframe,as_of))
+                lower=lower,catalogue=catalogue,catalogue_params=catalogue_params,upper=upper)
     if df.empty:
         raise RuntimeError(f"WAREHOUSE_POINT_IN_TIME_EMPTY: {req.consumer}")
     return df
@@ -135,7 +139,7 @@ def point_in_time(req: PointInTimeRequirement, *, evidence=None, connection_fact
 
 def latest_event_timestamps(tickers: list[str], data_type: str = "OHLCV", timeframe: str = "1d") -> dict[str, datetime]:
     """Newest stored event time per symbol, used to make provider refreshes incremental."""
-    wanted = list(dict.fromkeys(str(x).upper() for x in tickers))
+    wanted = list(dict.fromkeys(str(x).upper() for x in tickers if x))
     if not wanted:
         return {}
     # Invalid current versions must trigger a full bounded per-symbol backfill.
