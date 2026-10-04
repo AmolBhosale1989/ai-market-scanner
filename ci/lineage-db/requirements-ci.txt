@@ -1,0 +1,4 @@
+# Separate test environment; does not modify application requirements.
+numpy==2.2.6
+pandas==2.2.3
+psycopg[binary]==3.2.10

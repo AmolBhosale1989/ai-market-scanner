@@ -1,0 +1,32 @@
+{
+  "baseline_commit": "25c2c8bfca2cb648bf265e0baed5ffe25a6fec69",
+  "repository": "AmolBhosale1989/ai-market-scanner",
+  "test_branch": "validation/lineage-db-contracts",
+  "original_bundle_sha256": "f96464de4b39be9125e04d075fe596c5b27ae2f4417e3936b8c5335ffb293195",
+  "schema_sha256": "0b0508c92b72271666dfc32a801504608085f9fb2075bf32548a9ed78069c957",
+  "test_module_sha256": "6cd623bc18018ae1a4657ae19de895300d756c7bfd7da0252ae4afd788ca50c4",
+  "expected_test_names": [
+    "test_01_schema_created",
+    "test_02_original_read_survives_failed_publication",
+    "test_03_atomic_success",
+    "test_04_uncommitted_intent_invisible",
+    "test_05_derived_artifact_is_allowed_after_t0",
+    "test_06_artifact_immutable_update",
+    "test_07_artifact_immutable_delete",
+    "test_08_artifact_immutable_truncate",
+    "test_09_bound_run_clock_cannot_drift",
+    "test_10_binding_mismatch_rejected",
+    "test_11_source_late_commit_excluded",
+    "test_12_concurrent_catalogue_revision_uses_original",
+    "test_13_no_head_without_evidence_certificate",
+    "test_14_expiry_before_final_constraint_rolls_back",
+    "test_15_two_workers_cannot_claim_same_locked_row",
+    "test_16_late_intent_append_rejected",
+    "test_17_http_200_alone_not_delivery",
+    "test_18_delivery_unknown_is_terminal"
+  ],
+  "target_postgres_major": 18,
+  "schema_scope": "reduced synthetic fixture, not complete repository migrations",
+  "production_changes_allowed": false,
+  "current_execution_status": "NOT_RUN_NO_POSTGRES_RUNTIME"
+}

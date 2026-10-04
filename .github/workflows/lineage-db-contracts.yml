@@ -1,0 +1,76 @@
+name: Isolated lineage contracts - PostgreSQL 18
+
+# A push trigger avoids registering a new workflow on main for manual dispatch.
+# This workflow belongs ONLY on the dedicated validation branch.
+on:
+  push:
+    branches: [validation/lineage-db-contracts]
+    paths:
+      - '.github/workflows/lineage-db-contracts.yml'
+      - 'ci/lineage-db/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lineage-db-contracts-isolated-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  postgres18-contracts:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'AmolBhosale1989/ai-market-scanner' &&
+      github.ref == 'refs/heads/validation/lineage-db-contracts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Enforce frozen-source and test-only changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=25c2c8bfca2cb648bf265e0baed5ffe25a6fec69
+          git merge-base --is-ancestor "$BASE" HEAD
+          git diff --name-only "$BASE" HEAD > /tmp/lineage_changed_paths
+          python - <<'PY'
+          from pathlib import Path
+          paths = Path('/tmp/lineage_changed_paths').read_text().splitlines()
+          assert paths, 'No test bundle changes'
+          assert all(p.startswith('ci/lineage-db/') or
+                     p == '.github/workflows/lineage-db-contracts.yml'
+                     for p in paths), f'Non-test changes: {paths}'
+          PY
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated driver and test dependencies
+        run: python -m pip install --disable-pip-version-check --retries 1 --timeout 15 -r ci/lineage-db/requirements-ci.txt
+      - name: Execute original 18 contracts on an isolated PostgreSQL 18 server
+        run: bash ci/lineage-db/run_postgres18.sh
+      - name: Print database evidence for connector review
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in prepared_package.txt postgres_identity.json postgres_contract_result.json execution_exit.json postgres_server.log container_cleanup.log python_freeze.txt; do
+            echo "===== BEGIN ${name} ====="
+            if [[ -f "ci/lineage-db/evidence/${name}" ]]; then
+              cat "ci/lineage-db/evidence/${name}"
+            else
+              echo 'NOT PRODUCED'
+            fi
+            echo "===== END ${name} ====="
+          done
+      - name: Preserve database evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lineage-pg18-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci/lineage-db/evidence/
+          if-no-files-found: warn
+          retention-days: 14
