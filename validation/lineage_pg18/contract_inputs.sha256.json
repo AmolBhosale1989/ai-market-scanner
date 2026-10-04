@@ -1,0 +1,9 @@
+{
+  "sql/lineage_gate_DRAFT.sql": "0b0508c92b72271666dfc32a801504608085f9fb2075bf32548a9ed78069c957",
+  "tests/fixture_core.sql": "33568599e03fde9728009a49bc79574c06b97c0290b7b4cee6919a5ad67c9e39",
+  "tests/postgres_contracts.py": "6cd623bc18018ae1a4657ae19de895300d756c7bfd7da0252ae4afd788ca50c4",
+  "persistence.py": "50040ad859b820e1c845655bf8a021dbb335f720c32b6e97878351f9c97462d2",
+  "upstream/warehouse_lineage_phase2/dependency_suppression.py": "3fbb97fadb43d39a310b1437d01c124421ecb268c274b64b790628d80998f3fd",
+  "upstream/warehouse_lineage_phase2/pit_evidence.py": "1005a01594853984d4efeb275a49b6d5d723d9dfe2aaf05d137f0016968a6ba1",
+  "upstream/warehouse_lineage_phase2/rotation_lineage.py": "d234b018cce72ac6e87f10e4ef0e19bf00b93eb6eadc4d6cabf325a65a3895cf"
+}
