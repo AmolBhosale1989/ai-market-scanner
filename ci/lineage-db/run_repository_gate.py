@@ -45,7 +45,7 @@ class EvidenceResult(unittest.TextTestResult):
         self.at=time.monotonic()
         super().startTest(test)
     def record(self,test,status,detail=None):
-        self.records.append(dict(test=test.id(),status=status,seconds=round(time.monotonic()-self.at,6),detail=detail))
+        self.records.append(dict(test=test.id(),status=status,seconds=round(time.monotonic()-self.at,6),detail=detail,evidence=getattr(test,"evidence",None)))
     def addSuccess(self,test):
         super().addSuccess(test);self.record(test,'PASS')
     def addFailure(self,test,err):
@@ -83,8 +83,12 @@ def main():
     if hashlib.sha256(raw).hexdigest()!=manifest['schema_sha256']:
         raise RuntimeError('REVIEWED_SQL_CHANGED')
     (source/'sql/009_lineage_gate_DRAFT.sql').write_bytes(raw)
+    hardening=(ROOT/'hardening/010_authority_and_fencing.sql').read_bytes()
+    (source/'sql/010_authority_and_fencing.sql').write_bytes(hardening)
     provenance=dict(ci_head_sha=os.environ.get('GITHUB_SHA'),application_baseline=BASE,
-        scope='full frozen application + unchanged lineage draft as ninth migration; no producer/outbox integration',
+        scope='frozen application + original 009 + candidate 010 authority; candidate adapter/dispatcher exercised only in integration tests, not live producers',
+        hardening_sql_sha256=hashlib.sha256(hardening).hexdigest(),
+        hardening_modules={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT/'hardening').glob('*.py')},
         candidate_migration_sha256=hashlib.sha256(raw).hexdigest(),
         source_tar_sha256=hashlib.sha256(archive.read_bytes()).hexdigest(),
         source_export='git archive of frozen BASE; diagnostic CI packaging not included in product-tree boundary audit',
@@ -114,12 +118,12 @@ def main():
     expected=suite.countTestCases()
     with (evidence/'repository_contracts.log').open('w') as stream:
         result=unittest.TextTestRunner(stream=stream,verbosity=2,resultclass=EvidenceResult).run(suite)
-    ok=result.wasSuccessful() and result.testsRun==expected==26 and not result.skipped
+    ok=result.wasSuccessful() and result.testsRun==expected==44 and not result.skipped
     summary=dict(status='PASS' if ok else 'FAIL',tests=result.testsRun,failures=len(result.failures),
         errors=len(result.errors),skipped=len(result.skipped),test_results=result.records,production_validation=False)
     write_json(evidence/'repository_contract_result.json',summary)
     print(json.dumps(summary,indent=2))
-    full_ok=all(value==0 for value in statuses.values()) and counts.get('tests',0)>0 and counts.get('skipped',0)==0
+    full_ok=all(value==0 for value in statuses.values()) and counts.get('tests',0)==708 and counts.get('skipped',0)==0
     return 0 if ok and full_ok else 1
 
 
