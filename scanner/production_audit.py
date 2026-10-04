@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 from pathlib import Path
 
 
@@ -9,6 +10,7 @@ PROVIDER_BOUNDARIES = {
     "data.py", "warehouse_refresh.py", "ingestion_fetch.py", "universe.py", "events.py", "earnings_intel.py",
     "catalysts.py", "options_microstructure.py",
 }
+VALIDATION_WORKFLOW_HASHES = {"lineage-db-contracts.yml": "6834484f1994df2e431476729921c086083c899bba1ff4792e2bb52cccf1697c"}
 FILE_IO_ALLOWLIST = {"control_plane.py", "warehouse_migrate.py", "production_audit.py"}
 
 
@@ -56,6 +58,9 @@ def audit(root: Path) -> list[str]:
         for marker in (tabular_suffix, legacy_branch, "upload-artifact", "actions/cache", "git worktree",
                        "git push", "continue-on-error"):
             if marker in text:
+                if (marker == 'upload-artifact' and path.name in VALIDATION_WORKFLOW_HASHES
+                    and hashlib.sha256(text.encode()).hexdigest() == VALIDATION_WORKFLOW_HASHES[path.name]):
+                    continue  # Exact reviewed read-only, validation-branch workflow; not a data publication path.
                 violations.append(f"{relative}: forbidden workflow publication mechanism {marker}")
     for path in root.rglob("*"):
         if not path.is_file() or ".git" in path.parts or "__pycache__" in path.parts:

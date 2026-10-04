@@ -83,7 +83,7 @@ def period_start(period: str, as_of) -> pd.Timestamp:
 
 
 @timed("database_read")
-def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
+def point_in_time(req: PointInTimeRequirement, *, evidence=None, connection_factory=None) -> pd.DataFrame:
     """Return only versions that were known by req.as_of. Never query future ingestion."""
     from .consumer_snapshot import consumer_anchor, resolve_pg_snapshot
     visibility = resolve_pg_snapshot(req.pg_snapshot)
@@ -120,8 +120,13 @@ def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
         params += (lower,)
     if visibility:
         params += (visibility,)
-    with _connect() as conn:
-        df = pd.read_sql_query(sql, conn, params=params)
+    with (connection_factory or _connect)() as conn:
+        if evidence is None:
+            df = pd.read_sql_query(sql, conn, params=params)
+        else:
+            df = evidence.read(sql,conn,params,req=req,as_of=as_of,visibility=visibility,
+                lower=lower,catalogue=catalogue,catalogue_params=catalogue_params,
+                upper=event_cutoff(req.timeframe,as_of))
     if df.empty:
         raise RuntimeError(f"WAREHOUSE_POINT_IN_TIME_EMPTY: {req.consumer}")
     return df
@@ -130,7 +135,7 @@ def point_in_time(req: PointInTimeRequirement) -> pd.DataFrame:
 
 def latest_event_timestamps(tickers: list[str], data_type: str = "OHLCV", timeframe: str = "1d") -> dict[str, datetime]:
     """Newest stored event time per symbol, used to make provider refreshes incremental."""
-    wanted = list(dict.fromkeys(str(x).upper() for x in tickers if x))
+    wanted = list(dict.fromkeys(str(x).upper() for x in tickers))
     if not wanted:
         return {}
     # Invalid current versions must trigger a full bounded per-symbol backfill.

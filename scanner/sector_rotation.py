@@ -96,7 +96,11 @@ def _load_rotation_history() -> tuple[list[str], dict[str, pd.DataFrame]]:
 
 def run():
     tickers,raw=_load_rotation_history()
+    return evaluate_rotation(tickers,raw)
 
+
+def evaluate_rotation(tickers, raw, *, presentation=True, persist=True):
+    """Shared calculator. Lineage callers disable presentation and persistence."""
     spy_frame=_extract(raw.get("SPY",pd.DataFrame()),"SPY")
     session_date=latest_frame_session(spy_frame)
     cache={t:_stats(_extract(raw.get(t,pd.DataFrame()),t),t,session_date) for t in tickers}
@@ -143,18 +147,20 @@ def run():
 
     themes=pd.DataFrame(theme_rows)
     leaders=pd.DataFrame(leader_rows)
-    if not themes.empty:
+    if presentation and not themes.empty:
         themes=themes.sort_values(["rotation_score","rel_vs_spy_pct"],ascending=[False,False]).reset_index(drop=True)
         themes["rotation_rank"]=pd.Series(pd.NA,index=themes.index,dtype="Int64")
         ranked=themes["rotation_score"].notna()
         themes.loc[ranked,"rotation_rank"]=range(1,int(ranked.sum())+1)
-    if not leaders.empty:
+    if presentation and not leaders.empty:
         leaders=leaders.sort_values(["rotation_leader","rotation_leader_score","day_change_pct"],
                                     ascending=[False,False,False]).reset_index(drop=True)
         leaders["rotation_rank"]=pd.Series(pd.NA,index=leaders.index,dtype="Int64")
         ranked=leaders["rotation_leader_score"].notna()
         leaders.loc[ranked,"rotation_rank"]=range(1,int(ranked.sum())+1)
 
+    if not persist:
+        return themes,leaders
     write_dataset("sector_rotation",themes,entity_key="theme")
     write_dataset("rotation_leaders",leaders)
     health=pd.DataFrame([{

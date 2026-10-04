@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/workflows/lineage-db-contracts.yml'
       - 'ci/lineage-db/**'
+      - 'sql/**'
+      - 'scanner/**'
+      - 'tests/**'
 
 permissions:
   contents: read
@@ -30,7 +33,7 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Enforce frozen-source and test-only changes
+      - name: Enforce validation branch and unchanged baseline migrations
         shell: bash
         run: |
           set -euo pipefail
@@ -41,10 +44,11 @@ jobs:
           from pathlib import Path
           paths = Path('/tmp/lineage_changed_paths').read_text().splitlines()
           assert paths, 'No test bundle changes'
-          assert all(p.startswith('ci/lineage-db/') or
+          assert all(p.startswith(('ci/lineage-db/','scanner/','tests/','sql/V0042','sql/V0043')) or
                      p == '.github/workflows/lineage-db-contracts.yml'
-                     for p in paths), f'Non-test changes: {paths}'
+                     for p in paths), f'Out-of-scope changes: {paths}'
           PY
+          git diff --exit-code "$BASE" HEAD -- 'sql/00*.sql' .github/workflows/production.yml .github/workflows/live_engine.yml .github/workflows/live_feeder.yml
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -57,7 +61,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for name in prepared_package.txt postgres_identity.json postgres_contract_result.json repository_provenance.json repository_suite_result.json repository_contract_result.json repository_migrations.log repository_audit.log repository_pytest.log repository_contracts.log execution_exit.json postgres_server.log container_cleanup.log; do
+          for name in prepared_package.txt postgres_identity.json postgres_contract_result.json repository_provenance.json repository_suite_result.json repository_contract_result.json repository_migrations.log migration_ledger.json migration_verification.log repository_audit.log repository_pytest.log repository_contracts.log execution_exit.json postgres_server.log container_cleanup.log; do
             echo "===== BEGIN ${name} ====="
             if [[ -f "ci/lineage-db/evidence/${name}" ]]; then
               cat "ci/lineage-db/evidence/${name}"

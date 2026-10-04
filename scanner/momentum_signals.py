@@ -93,11 +93,9 @@ def _same_time_rvol(d: pd.DataFrame, today: pd.DataFrame, session_date) -> float
     return same_clock_rvol(d,today,session_date,sessions=3)
 
 
-@profiled("momentum")
-def run(limit: int = 40):
-    themed=_read_optional("rotation_leaders")
-    broad=_read_optional("broad_breakout_discovery")
-    now=datetime.now(NY)
+def select_candidates(themed, broad, limit=40):
+    """Preserve the producer's frozen top-N/dedup decision; not a display limit."""
+    themed=themed.copy(); broad=broad.copy()
 
     if not themed.empty:
         mask=themed.get("rotation_leader",pd.Series(False,index=themed.index)).astype(str).str.lower().isin(["true","1","yes"])
@@ -110,7 +108,7 @@ def run(limit: int = 40):
 
     leaders=pd.concat([themed,broad],ignore_index=True,sort=False) if (not themed.empty or not broad.empty) else pd.DataFrame()
     if leaders.empty:
-        return _write_outputs(pd.DataFrame(),now,_upstream_session_date(),0)
+        return leaders
 
     if "theme_rotation_score" not in leaders.columns:
         leaders["theme_rotation_score"]=0.0
@@ -123,6 +121,15 @@ def run(limit: int = 40):
     leaders["broad_breakout_score"]=pd.to_numeric(leaders["broad_breakout_score"],errors="coerce").fillna(0)
     leaders["candidate_priority"]=leaders[["theme_rotation_score","rotation_leader_score","broad_breakout_score"]].max(axis=1)
     leaders=leaders.sort_values(["candidate_priority","rel_vs_spy_pct"],ascending=[False,False]).drop_duplicates("ticker").head(limit)
+    return leaders
+
+
+@profiled("momentum")
+def run(limit: int = 40):
+    now=datetime.now(NY)
+    leaders=select_candidates(_read_optional("rotation_leaders"),_read_optional("broad_breakout_discovery"),limit)
+    if leaders.empty:
+        return _write_outputs(pd.DataFrame(),now,_upstream_session_date(),0)
     candidate_inputs=len(leaders)
     tickers=leaders["ticker"].astype(str).tolist()
     view=provide(DataRequirement(consumer="momentum_signals",tickers=tuple(tickers),interval="5m",period="5d",max_age_minutes=10,view_name="momentum_signals_5m"))
@@ -131,6 +138,12 @@ def run(limit: int = 40):
         x=g.copy(); x["bar_timestamp"]=pd.to_datetime(x["bar_timestamp"],utc=True,errors="coerce")
         raw[str(ticker)]=x.dropna(subset=["bar_timestamp"]).set_index("bar_timestamp")
 
+    out,session_date=evaluate_momentum(leaders,raw)
+    return _write_outputs(out,now,str(session_date),candidate_inputs)
+
+
+def evaluate_momentum(leaders, raw, *, presentation=True):
+    """Existing signal thresholds, scores and risk logic; no I/O or reselection."""
     available=[_extract(frame,ticker) for ticker,frame in raw.items()]
     available=[frame for frame in available if not frame.empty]
     if not available:
@@ -220,11 +233,11 @@ def run(limit: int = 40):
         })
 
     out=pd.DataFrame(rows,columns=MOMENTUM_COLUMNS)
-    if not out.empty:
+    if presentation and not out.empty:
         rank={"MOMENTUM BUY":0,"WATCH / NEAR ENTRY":1,"EXTENDED / WAIT RETEST":2,"NO SIGNAL":3}
         out["_rank"]=out["signal"].map(rank).fillna(9)
         out=out.sort_values(["_rank","theme_rotation_score","rel_vs_spy_pct"],ascending=[True,False,False]).drop(columns=["_rank"])
-    return _write_outputs(out,now,str(session_date),candidate_inputs)
+    return out,session_date
 
 
 if __name__=="__main__":
