@@ -43,6 +43,8 @@ timeout 180 docker pull postgres:18 > "$EVIDENCE/image_pull.log" 2>&1
 timeout 10 docker image inspect postgres:18 > "$EVIDENCE/postgres_image.json"
 IMAGE_ID="$(docker image inspect postgres:18 --format '{{.Id}}')"
 # No TCP listener, no network, no host DB access, no production volumes/credentials.
+# Keep the image initializer's default socket as well as the private test socket.
+# Its docker_process_sql clears PGHOST, so PGHOST alone cannot fix initialization.
 CONTAINER="$(docker run -d --name "$NONCE" --network none --memory 768m --cpus 2 \
   --pids-limit 256 --security-opt no-new-privileges=true \
   --tmpfs /var/lib/postgresql:rw,size=512m \
@@ -51,7 +53,7 @@ CONTAINER="$(docker run -d --name "$NONCE" --network none --memory 768m --cpus 2
   -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_INITDB_ARGS='--encoding=UTF8 --locale=C' \
   -e PGDATA=/var/lib/postgresql/lineage-data \
   "$IMAGE_ID" postgres -p 55482 -c listen_addresses='' \
-  -c unix_socket_directories=/lineage-socket -c unix_socket_permissions=0777 \
+  -c 'unix_socket_directories=/var/run/postgresql,/lineage-socket' -c unix_socket_permissions=0777 \
   -c "cluster_name=$NONCE" -c fsync=on -c synchronous_commit=on)"
 ready=0
 for _ in $(seq 1 45); do
