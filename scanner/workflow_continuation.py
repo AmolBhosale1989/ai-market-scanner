@@ -1,9 +1,25 @@
 from __future__ import annotations
 
+import argparse
+from dataclasses import dataclass
 from datetime import datetime, timezone
+import sys
+import time
 
 import pandas as pd
 import pandas_market_calendars as mcal
+
+
+MAX_RECOVERY_ATTEMPTS = 3
+RECOVERY_DELAY_SECONDS = 300
+
+
+@dataclass(frozen=True)
+class ContinuationPlan:
+    dispatch: bool
+    reason: str
+    recovery_attempt: int = 0
+    delay_seconds: int = 0
 
 
 def should_continue_live_session(
@@ -11,7 +27,7 @@ def should_continue_live_session(
     *,
     minimum_remaining_minutes: int = 20,
 ) -> tuple[bool, str]:
-    """Decide whether a successful live run should queue one successor.
+    """Decide whether the exchange session can accommodate another run.
 
     The exchange calendar, rather than a weekday/hour approximation, handles
     holidays and early closes. The final buffer prevents a new pipeline from
@@ -41,10 +57,61 @@ def should_continue_live_session(
     return True, f"market_open_{remaining:.1f}m_remaining"
 
 
-def main() -> None:
-    dispatch, reason = should_continue_live_session()
-    print(f"dispatch={'true' if dispatch else 'false'}")
-    print(f"reason={reason}")
+def plan_continuation(
+    now_utc: datetime | pd.Timestamp | None = None,
+    *,
+    result: str = "success",
+    recovery_attempt: int = 0,
+) -> ContinuationPlan:
+    """Keep publication failure visible while allowing bounded new observations."""
+    if result not in {"success", "failure", "cancelled", "skipped"}:
+        raise ValueError("Unknown workflow result")
+    if type(recovery_attempt) is not int or not 0 <= recovery_attempt <= MAX_RECOVERY_ATTEMPTS:
+        raise ValueError("Invalid recovery attempt")
+    if result in {"cancelled", "skipped"}:
+        return ContinuationPlan(False, f"run_{result}")
+
+    dispatch, reason = should_continue_live_session(now_utc)
+    if not dispatch:
+        return ContinuationPlan(False, reason)
+    if result == "success":
+        return ContinuationPlan(True, reason)
+    if recovery_attempt == MAX_RECOVERY_ATTEMPTS:
+        return ContinuationPlan(False, "recovery_limit_reached", recovery_attempt)
+    return ContinuationPlan(
+        True,
+        f"recovery_{recovery_attempt + 1}_{reason}",
+        recovery_attempt + 1,
+        RECOVERY_DELAY_SECONDS,
+    )
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Plan the next market observation")
+    parser.add_argument("--result", choices=["success", "failure", "cancelled", "skipped"], default="success")
+    parser.add_argument("--recovery-attempt", type=int, choices=range(MAX_RECOVERY_ATTEMPTS + 1), default=0)
+    parser.add_argument("--wait-before-retry", action="store_true")
+    args = parser.parse_args(argv)
+    plan = plan_continuation(result=args.result, recovery_attempt=args.recovery_attempt)
+    if plan.dispatch and plan.delay_seconds and args.wait_before_retry:
+        print(
+            f"::warning::Production failed; waiting {plan.delay_seconds}s before recovery "
+            f"attempt {plan.recovery_attempt}/{MAX_RECOVERY_ATTEMPTS}. Publication guards remain enforced.",
+            file=sys.stderr,
+            flush=True,
+        )
+        time.sleep(plan.delay_seconds)
+        # The exchange may enter its closing buffer during the backoff.
+        plan = plan_continuation(result=args.result, recovery_attempt=args.recovery_attempt)
+    if plan.reason == "recovery_limit_reached":
+        print(
+            "::error::Automatic production recovery exhausted after three attempts. "
+            "Inspect the failed runs; no publication was forced. The scheduled fallback remains configured.",
+            file=sys.stderr,
+        )
+    print(f"dispatch={'true' if plan.dispatch else 'false'}")
+    print(f"reason={plan.reason}")
+    print(f"recovery_attempt={plan.recovery_attempt}")
 
 
 if __name__ == "__main__":
